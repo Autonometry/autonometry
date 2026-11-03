@@ -28,12 +28,26 @@ autonometry validate --json --spec 0.2 robot.jsonl     # the same as stable JSON
 ```
 
 `validate` reads each file line by line. A line that is not one valid event (bad UTF-8, longer than
-64 KiB, not I-JSON, against the schema, an impossible `ts`, or a `seq` already used in its session)
-is rejected with an error code and its line number. Each session is then checked for structural
+64 KiB, not I-JSON, a lone surrogate or Unicode noncharacter, against the schema, an impossible
+`ts`, or a `seq` already used in its session) is rejected with an error code and its line number.
+Every rejected line is counted; the first 100 of each code are listed. Each session is then checked for structural
 problems (missing `session_start` or `session_end`, gaps in `seq`, silences longer than the heartbeat
 plus tolerance, `ts` going backwards, tasks that overlap or never close, and more), reported as
 warning flags. The codes are listed in [`spec/v0.2/rules.toml`](spec/v0.2/rules.toml). Event contents,
-such as actor ids, are never printed. Add `-v` before the command for debug output.
+such as actor ids, are never printed; the robot and session ids it does print are restricted by
+the schema to letters, digits and `._:-`, so a log cannot send control codes to your terminal. Add
+`-v` before the command for debug output.
+
+## Supported platforms
+
+Python 3.12 or newer on:
+
+- Linux x86-64 and ARM64, with glibc or musl
+- macOS
+- Windows
+
+`jsonschema-rs` ships binary wheels for these. On other platforms, such as 32-bit ARM, installing it
+needs a Rust toolchain to build it from source.
 
 ## Links
 
@@ -45,6 +59,7 @@ such as actor ids, are never printed. Add `-v` before the command for debug outp
 
 ```
 uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest
+uv run pytest -m slow --no-cov    # slow checks, such as memory use with a million rejected lines
 ```
 
 ## Licence
