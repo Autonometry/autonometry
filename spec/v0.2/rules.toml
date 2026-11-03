@@ -107,3 +107,18 @@ reconstructed_events_max_level = 1
 l3_station_only_max_share = 0.005
 l3_disputed_max_share = 0.02
 default_tau_s = 1.0
+
+# Sealing and verification (definitions.md section 10).
+[sealing]
+checkpoint_every_events = 1000
+checkpoint_every_s = 600.0
+max_commit_delay_s = 3600.0
+clock_tolerance_s = 1.0
+evidence_codes = [
+  "hash_mismatch", "chain_break", "bad_signature", "root_mismatch", "missing_events",
+  "bad_timestamp_token",
+]
+gap_codes = [
+  "unsealed", "no_checkpoint", "untrusted_checkpoint", "not_anchored", "late_anchor",
+  "clock_skew", "reconstructed",
+]

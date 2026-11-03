@@ -184,7 +184,12 @@ def test_missing_spec_root_is_a_spec_error(tmp_path: Path, monkeypatch: pytest.M
 
 def test_file_hashes_are_sha256_of_the_files() -> None:
     hashes = spec.spec_file_hashes("0.2")
-    assert list(hashes) == ["definitions.md", "event.schema.json", "rules.toml"]
+    assert list(hashes) == [
+        "checkpoint.schema.json",
+        "definitions.md",
+        "event.schema.json",
+        "rules.toml",
+    ]
     expected = hashlib.sha256((REPO_SPEC / "v0.2" / "rules.toml").read_bytes()).hexdigest()
     assert hashes["rules.toml"] == expected
 

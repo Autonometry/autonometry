@@ -42,6 +42,28 @@ FlagCode = Literal[
     "event_outside_session",
 ]
 
+# Codes of rules.toml [sealing] evidence_codes and gap_codes (definitions.md section 10.6).
+EvidenceCode = Literal[
+    "hash_mismatch",
+    "chain_break",
+    "bad_signature",
+    "root_mismatch",
+    "missing_events",
+    "bad_timestamp_token",
+]
+
+GapCode = Literal[
+    "unsealed",
+    "no_checkpoint",
+    "untrusted_checkpoint",
+    "not_anchored",
+    "late_anchor",
+    "clock_skew",
+    "reconstructed",
+]
+
+TrustStatus = Literal["verified", "partial", "unverified", "failed"]
+
 
 class Event(TypedDict, total=False):
     """One validated event, exactly as read (definitions.md 8). For typing only.
@@ -185,4 +207,54 @@ class LogCheck:
                 }
                 for f in self.flags
             ],
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class SealIssue:
+    """One evidence or gap code found while verifying a session (definitions.md section 10.6)."""
+
+    code: EvidenceCode | GapCode
+    detail: str
+
+
+@dataclass(frozen=True, slots=True)
+class SessionVerdict:
+    """The trust status of one session (definitions.md section 10.6).
+
+    ``sealed_through_seq`` is the last ``seq`` proven trust level L2, or ``None`` when no span of
+    the session is L2. Evidence codes made the status ``failed``; gaps never raise the level.
+    """
+
+    robot_id: str
+    session_id: str
+    status: TrustStatus
+    sealed_through_seq: int | None
+    evidence: tuple[SealIssue, ...]
+    gaps: tuple[SealIssue, ...]
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "robot_id": self.robot_id,
+            "session_id": self.session_id,
+            "status": self.status,
+            "sealed_through_seq": self.sealed_through_seq,
+            "evidence": [{"code": i.code, "detail": i.detail} for i in self.evidence],
+            "gaps": [{"code": i.code, "detail": i.detail} for i in self.gaps],
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class VerifyResult:
+    """Result of verifying one or more logs: one verdict per session, sorted by
+    ``(robot_id, session_id)`` (definitions.md section 10.6).
+    """
+
+    log_check: LogCheck
+    sessions: tuple[SessionVerdict, ...]
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "log": self.log_check.to_json(),
+            "sessions": [session.to_json() for session in self.sessions],
         }

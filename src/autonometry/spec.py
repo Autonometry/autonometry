@@ -13,6 +13,7 @@ import tomllib
 from collections.abc import Mapping
 from importlib import resources
 from importlib.resources.abc import Traversable
+from itertools import combinations
 from pathlib import Path
 from types import MappingProxyType
 from typing import Annotated, Any, Literal
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 _VERSION_RE = re.compile(r"v?([0-9]{1,4})\.([0-9]{1,4})")
 _FOLDER_RE = re.compile(r"v([0-9]{1,4})\.([0-9]{1,4})")
 _SCHEMA_FILE = "event.schema.json"
+_CHECKPOINT_SCHEMA_FILE = "checkpoint.schema.json"
 _RULES_FILE = "rules.toml"
 
 
@@ -139,6 +141,38 @@ class TrustRules(_Frozen):
     default_tau_s: float
 
 
+class SealingRules(_Frozen):
+    """Sealing and verification parameters and codes (definitions.md section 10)."""
+
+    checkpoint_every_events: PositiveInt
+    checkpoint_every_s: float
+    max_commit_delay_s: float
+    clock_tolerance_s: float
+    evidence_codes: tuple[
+        Literal[
+            "hash_mismatch",
+            "chain_break",
+            "bad_signature",
+            "root_mismatch",
+            "missing_events",
+            "bad_timestamp_token",
+        ],
+        ...,
+    ]
+    gap_codes: tuple[
+        Literal[
+            "unsealed",
+            "no_checkpoint",
+            "untrusted_checkpoint",
+            "not_anchored",
+            "late_anchor",
+            "clock_skew",
+            "reconstructed",
+        ],
+        ...,
+    ]
+
+
 def _read_only(value: Mapping[str, StateRule]) -> Mapping[str, StateRule]:
     return MappingProxyType(dict(value))
 
@@ -169,6 +203,7 @@ class Rules(_Frozen):
     flags: FlagRules
     errors: ErrorRules
     trust: TrustRules
+    sealing: SealingRules
 
 
 def spec_root() -> Traversable:
@@ -253,11 +288,13 @@ def load_schema(version: str) -> dict[str, Any]:
 
 def _no_retrieval(uri: str) -> Any:
     """Refuse to fetch a schema reference: loading and validation never touch the network."""
-    raise SpecError(f"the event schema refers to {uri}, which is not fetched")
+    raise SpecError(f"a schema refers to {uri}, which is not fetched")
 
 
-def compile_schema(version: str, schema: dict[str, Any]) -> jsonschema_rs.Draft202012Validator:
-    """Compile the event schema of a spec version into a validator (definitions.md section 8).
+def compile_schema(
+    version: str, schema: dict[str, Any], file_name: str = _SCHEMA_FILE
+) -> jsonschema_rs.Draft202012Validator:
+    """Compile a JSON Schema of a spec version into a validator (definitions.md section 8).
 
     Compiling checks the schema against the draft 2020-12 meta-schema and compiles every
     ``pattern`` as ECMA-262, the engine that then validates events. Formats are not checked
@@ -272,7 +309,21 @@ def compile_schema(version: str, schema: dict[str, Any]) -> jsonschema_rs.Draft2
         )
     except ValueError as exc:
         first_line = (str(exc).splitlines() or [type(exc).__name__])[0]
-        raise SpecError(f"{_SCHEMA_FILE} of spec {version} is invalid: {first_line}") from exc
+        raise SpecError(f"{file_name} of spec {version} is invalid: {first_line}") from exc
+
+
+def load_checkpoint_schema(version: str) -> dict[str, Any]:
+    """Load ``checkpoint.schema.json`` (definitions.md 10.4) and check it is draft 2020-12."""
+    try:
+        schema = json.loads(_read(version, _CHECKPOINT_SCHEMA_FILE))
+    except ValueError as exc:
+        raise SpecError(
+            f"{_CHECKPOINT_SCHEMA_FILE} of spec {version} is not valid JSON: {exc}"
+        ) from exc
+    if not isinstance(schema, dict):
+        raise SpecError(f"{_CHECKPOINT_SCHEMA_FILE} of spec {version} is not a JSON object")
+    compile_schema(version, schema, _CHECKPOINT_SCHEMA_FILE)
+    return schema
 
 
 def load_rules(version: str) -> Rules:
@@ -346,13 +397,25 @@ def find_inconsistencies(version: str, schema: dict[str, Any], rules: Rules) -> 
             f"{where} names unknown state {name!r}" for name in names if name not in rule_states
         ]
 
-    problems += _duplicates("flag code", rules.flags.codes)
-    problems += _duplicates("error code", rules.errors.codes)
-    problems += [
-        f"code {code!r} is both a flag and an error code"
-        for code in sorted(set(rules.flags.codes) & set(rules.errors.codes))
-    ]
+    code_tables = {
+        "flag": rules.flags.codes,
+        "error": rules.errors.codes,
+        "evidence": rules.sealing.evidence_codes,
+        "gap": rules.sealing.gap_codes,
+    }
+    for kind, codes in code_tables.items():
+        problems += _duplicates(f"{kind} code", codes)
+    for (kind_a, codes_a), (kind_b, codes_b) in combinations(code_tables.items(), 2):
+        a, b = f"{_article(kind_a)} {kind_a}", f"{_article(kind_b)} {kind_b}"
+        problems += [
+            f"code {code!r} is both {a} and {b} code"
+            for code in sorted(set(codes_a) & set(codes_b))
+        ]
     return problems
+
+
+def _article(word: str) -> str:
+    return "an" if word[0] in "aeiou" else "a"
 
 
 def _duplicates(kind: str, codes: tuple[str, ...]) -> list[str]:
@@ -366,7 +429,8 @@ def check_consistency(version: str) -> None:
     """Check that rules.toml and the schema of a version agree (definitions.md sections 2, 3, 8).
 
     Rule states equal the schema state enum, rule reasons equal the schema reason enum, every state
-    named in the rules exists, flag and error codes are unique and no code is both.
+    named in the rules exists, and flag, error, evidence and gap codes are each unique and never
+    shared across those four tables.
 
     Raises:
         SpecConsistencyError: all problems, on one line.

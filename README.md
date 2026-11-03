@@ -4,7 +4,9 @@ Autonometry measures how much of a robot's work is done by its AI and how much b
 It records every change of control in a sealed, tamper-evident log, verifies logs, reconciles a robot's log with a teleoperation station's log, and reports autonomy metrics with honest confidence intervals.
 It is open source and the reference implementation of an open standard; it only observes and never sits in a robot's control loop.
 
-**Status: pre-alpha.** Version 0.0.1.dev0 reads and checks event logs (`autonometry validate`). There are no autonomy metrics yet, and nothing is published on PyPI yet.
+**Status: pre-alpha.** Version 0.0.1.dev0 reads and checks event logs (`autonometry validate`) and
+seals and verifies them (`autonometry seal`, `timestamp`, `verify`; trust levels L1 and L2). There
+are no autonomy metrics yet, and nothing is published on PyPI yet.
 
 ## Install
 
@@ -37,6 +39,34 @@ warning flags. The codes are listed in [`spec/v0.2/rules.toml`](spec/v0.2/rules.
 such as actor ids, are never printed; the robot and session ids it does print are restricted by
 the schema to letters, digits and `._:-`, so a log cannot send control codes to your terminal. Add
 `-v` before the command for debug output.
+
+## Sealing and verification
+
+```
+autonometry keys generate --name autonometry/<robot_id> --out robot.key   # writes robot.key, robot.key.vkey
+autonometry seal robot.jsonl --key robot.key --out robot.sealed.jsonl     # + robot.sealed.checkpoints.jsonl
+autonometry timestamp robot.sealed.checkpoints.jsonl \
+    --tsa-url https://freetsa.org/tsr --tsa-root freetsa.pem             # optional, needs network
+autonometry verify robot.sealed.jsonl --vkey robot.key.vkey --json       # trust level per session
+```
+
+`seal` hash-chains every event (definitions.md section 8) and emits signed Merkle checkpoints
+(RFC 9162, C2SP's `signed-note` and `tlog-checkpoint` formats, Ed25519) as it goes (section 10.3),
+refusing input that has rejected lines, is already sealed, or would overwrite an existing output.
+`timestamp` anchors a checkpoint with a real RFC 3161 token from a Time Stamping Authority; an
+anchor file -- a copy of a checkpoint kept outside the log, by the customer or a witness -- does
+the same without a TSA. `verify` recomputes every hash and Merkle root from the events and never
+trusts a stored value; each session is reported `verified`, `partial`, `unverified` or `failed`,
+with evidence codes (any one means the log contradicts its own seals: tampering or corruption) and
+gap codes (never raise the trust level) from `spec/v0.2/rules.toml` `[sealing]`.
+
+What L2 proves: nothing was dropped, re-timed or edited after a checkpoint was anchored, and any
+such change is detected even without the original log. What it does not prove: a dishonest recorder
+can still log false events as they happen, and a key held in software can sign a second, fabricated
+log from scratch -- only an anchor made *before* the fabrication catches that (an anchor the
+fabricator can also redo does not). Sealing an old, unanchored log late is indistinguishable from a
+log that was sealed on time but anchored late, and shows up as `late_anchor`. Trust levels L3 (a
+second, independent witness) and L4 (hardware-rooted keys) follow in later spec versions.
 
 ## Supported platforms
 
