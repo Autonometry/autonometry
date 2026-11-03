@@ -13,6 +13,10 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   check:
     name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
@@ -23,6 +27,10 @@ jobs:
       matrix:
         python-version: ["3.12", "3.13"]
         os: [ubuntu-24.04, ubuntu-24.04-arm]
+        # The verifier and report must work on laptops; only the future recorder is Linux-only.
+        include:
+          - { os: windows-latest, python-version: "3.12" }
+          - { os: macos-latest, python-version: "3.12" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -35,10 +43,6 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy src
       - run: uv run pytest
-      - name: Audit locked requirements
-        run: |
-          uv export --locked --all-extras --no-emit-project --no-hashes --output-file "$RUNNER_TEMP/requirements.txt"
-          uv run pip-audit --requirement "$RUNNER_TEMP/requirements.txt" --no-deps --disable-pip
 
   lowest:
     name: Lowest direct dependencies (Python 3.12)
@@ -54,3 +58,37 @@ jobs:
       # Proves the minimum versions in pyproject.toml: direct dependencies resolve to their floors,
       # in a throwaway environment, so uv.lock is not touched.
       - run: uv run --isolated --all-extras --resolution lowest-direct pytest
+
+  audit:
+    name: Audit locked and lowest dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Any advisory fails the job except the two below, which cannot reach our code:
+    # - PYSEC-2026-3552 (cryptography < 50, CVE-2026-69247): a padding oracle in PKCS#7 / S/MIME
+    #   decryption (pkcs7_decrypt_*). Autonometry only signs and verifies with Ed25519 and never
+    #   decrypts PKCS#7 data. Only the lowest set (cryptography 49.0.0) contains it.
+    # - PYSEC-2026-113 (pyarrow < 23.0.1, CVE-2026-25087): a use-after-free in Arrow C++ when reading
+    #   IPC files with pre-buffering, an option the Python bindings do not expose; we read Parquet
+    #   through Python only. Only the lowest set (pyarrow 17.0.0) contains it.
+    env:
+      IGNORED: --ignore-vuln PYSEC-2026-3552 --ignore-vuln PYSEC-2026-113
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+      - run: uv sync --dev --locked
+      - name: Export the locked set
+        run: uv export --locked --all-extras --no-emit-project --no-hashes --output-file "$RUNNER_TEMP/locked.txt"
+      # The same floors the `lowest` job installs: direct dependencies at their minimum versions.
+      - name: Resolve the lowest set
+        run: >-
+          uv pip compile pyproject.toml --all-extras --group dev --resolution lowest-direct
+          --python-version 3.12 --universal --no-header --no-annotate
+          --output-file "$RUNNER_TEMP/lowest.txt"
+      - name: Audit the locked set
+        run: uv run pip-audit --requirement "$RUNNER_TEMP/locked.txt" --no-deps --disable-pip $IGNORED
+      - name: Audit the lowest set
+        run: uv run pip-audit --requirement "$RUNNER_TEMP/lowest.txt" --no-deps --disable-pip $IGNORED
