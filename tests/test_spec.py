@@ -8,7 +8,6 @@ from typing import Any
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from jsonschema import Draft202012Validator
 from pydantic import ValidationError
 
 from autonometry import spec
@@ -46,12 +45,12 @@ def test_available_versions_lists_v0_2() -> None:
 def test_schema_is_valid_draft_2020_12__defs_8() -> None:
     schema = spec.load_schema("0.2")
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-    Draft202012Validator.check_schema(schema)
+    spec.compile_schema("0.2", schema)
 
 
 def test_every_schema_example_validates__defs_8() -> None:
     schema = spec.load_schema("0.2")
-    validator = Draft202012Validator(schema)
+    validator = spec.compile_schema("0.2", schema)
     examples = schema["examples"]
     assert len(examples) > 5
     for example in examples:
@@ -71,7 +70,7 @@ def test_schema_rejects_human_transition_without_actor__defs_3() -> None:
         "state": "human_remote",
         "reason": "human_initiated",
     }
-    assert not Draft202012Validator(schema).is_valid(bad)
+    assert not spec.compile_schema("0.2", schema).is_valid(bad)
 
 
 def test_rules_load_as_frozen_model__defs_9() -> None:
@@ -133,6 +132,20 @@ def test_wrong_spec_version_in_rules_fails_consistency(spec_copy: Path) -> None:
 def test_invalid_schema_is_a_spec_error(spec_copy: Path) -> None:
     _edit_schema(spec_copy, lambda d: d.update(type=12))
     with pytest.raises(spec.SpecError, match="is invalid"):
+        spec.load_schema("0.2")
+
+
+def test_schema_pattern_that_does_not_compile_is_a_spec_error(spec_copy: Path) -> None:
+    _edit_schema(spec_copy, lambda d: d["$defs"]["scope"].update(pattern="^(unclosed$"))
+    with pytest.raises(spec.SpecError, match=r"event\.schema\.json of spec 0\.2 is invalid: "):
+        spec.load_schema("0.2")
+
+
+def test_schema_with_remote_reference_is_refused_without_fetching(spec_copy: Path) -> None:
+    _edit_schema(
+        spec_copy, lambda d: d["properties"].update(note={"$ref": "https://example.invalid/n.json"})
+    )
+    with pytest.raises(spec.SpecError, match=r"is invalid: .*not fetched"):
         spec.load_schema("0.2")
 
 
@@ -217,8 +230,20 @@ def test_rules_state_table_is_read_only__defs_2() -> None:
 def test_rules_error_table__defs_8() -> None:
     errors = spec.load_rules("0.2").errors
     assert errors.max_line_bytes == 65536
-    assert errors.codes[0] == "invalid_utf8"
-    assert len(errors.codes) == 10
+    assert errors.list_max_per_code == 100
+    assert errors.codes[:2] == ("invalid_utf8", "invalid_unicode")
+    assert len(errors.codes) == 11
+
+
+def test_non_positive_list_limit_is_a_spec_error__defs_8(spec_copy: Path) -> None:
+    _edit_rules(spec_copy, "list_max_per_code = 100", "list_max_per_code = 0")
+    with pytest.raises(spec.SpecError, match=r"errors\.list_max_per_code"):
+        spec.load_rules("0.2")
+
+
+def test_rules_flag_table_has_session_marker_codes__defs_1() -> None:
+    codes = spec.load_rules("0.2").flags.codes
+    assert {"repeated_session_marker", "event_outside_session"} <= set(codes)
 
 
 def test_non_positive_line_limit_is_a_spec_error__defs_8(spec_copy: Path) -> None:
@@ -228,7 +253,7 @@ def test_non_positive_line_limit_is_a_spec_error__defs_8(spec_copy: Path) -> Non
 
 
 def test_duplicate_error_code_fails_consistency__defs_8(spec_copy: Path) -> None:
-    _edit_rules(spec_copy, '"invalid_utf8", "line_too_long"', '"invalid_utf8", "invalid_utf8"')
+    _edit_rules(spec_copy, '"invalid_utf8", "invalid_unicode"', '"invalid_utf8", "invalid_utf8"')
     with pytest.raises(spec.SpecConsistencyError, match="error code 'invalid_utf8' appears more"):
         spec.check_consistency("0.2")
 

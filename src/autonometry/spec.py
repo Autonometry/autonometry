@@ -17,8 +17,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Annotated, Any, Literal
 
-from jsonschema import Draft202012Validator
-from jsonschema.exceptions import SchemaError
+import jsonschema_rs
 from pydantic import (
     AfterValidator,
     BaseModel,
@@ -123,10 +122,12 @@ class FlagRules(_Frozen):
 
 
 class ErrorRules(_Frozen):
-    """Codes for rejected lines and the line length limit in bytes (definitions.md 8)."""
+    """Codes for rejected lines, the line length limit in bytes and how many rejected lines of
+    each code a reader lists (definitions.md 8)."""
 
     codes: tuple[str, ...]
     max_line_bytes: PositiveInt
+    list_max_per_code: PositiveInt
 
 
 class TrustRules(_Frozen):
@@ -246,11 +247,32 @@ def load_schema(version: str) -> dict[str, Any]:
         raise SpecError(f"{_SCHEMA_FILE} of spec {version} is not valid JSON: {exc}") from exc
     if not isinstance(schema, dict):
         raise SpecError(f"{_SCHEMA_FILE} of spec {version} is not a JSON object")
-    try:
-        Draft202012Validator.check_schema(schema)
-    except SchemaError as exc:
-        raise SpecError(f"{_SCHEMA_FILE} of spec {version} is invalid: {exc.message}") from exc
+    compile_schema(version, schema)
     return schema
+
+
+def _no_retrieval(uri: str) -> Any:
+    """Refuse to fetch a schema reference: loading and validation never touch the network."""
+    raise SpecError(f"the event schema refers to {uri}, which is not fetched")
+
+
+def compile_schema(version: str, schema: dict[str, Any]) -> jsonschema_rs.Draft202012Validator:
+    """Compile the event schema of a spec version into a validator (definitions.md section 8).
+
+    Compiling checks the schema against the draft 2020-12 meta-schema and compiles every
+    ``pattern`` as ECMA-262, the engine that then validates events. Formats are not checked
+    (``ts`` is parsed separately) and references outside the schema are refused, never fetched.
+
+    Raises:
+        SpecError: the schema is invalid; the message is one line.
+    """
+    try:
+        return jsonschema_rs.Draft202012Validator(
+            schema, validate_formats=False, retriever=_no_retrieval
+        )
+    except ValueError as exc:
+        first_line = (str(exc).splitlines() or [type(exc).__name__])[0]
+        raise SpecError(f"{_SCHEMA_FILE} of spec {version} is invalid: {first_line}") from exc
 
 
 def load_rules(version: str) -> Rules:

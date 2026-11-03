@@ -3,7 +3,7 @@
 import json
 import logging
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Annotated, NoReturn
 
@@ -160,7 +160,11 @@ def validate(
 
 
 def summary_lines(result: LogCheck) -> list[str]:
-    """Return the human summary of a check: totals, then errors and flags grouped by code."""
+    """Return the human summary of a check: totals, then errors and flags grouped by code.
+
+    Each group shows its exact count, the first 20 items and how many more there are, also when
+    the result lists only some of the rejected lines.
+    """
     counts = result.counts
     lines = [
         f"spec {result.spec_version}: {counts.files} file(s), {counts.lines} line(s), "
@@ -170,12 +174,14 @@ def summary_lines(result: LogCheck) -> list[str]:
     lines += _grouped(
         "rejected lines",
         result.errors,
+        counts.errors_by_code,
         code=lambda e: e.code,
         describe=lambda e: f"{e.file}:{e.line}: {e.message}",
     )
     lines += _grouped(
         "flags (warnings)",
         result.flags,
+        counts.flags_by_code,
         code=lambda f: f.code,
         describe=lambda f: f"robot {f.robot_id} session {f.session_id} seq {f.seq}: {f.detail}",
     )
@@ -185,6 +191,7 @@ def summary_lines(result: LogCheck) -> list[str]:
 def _grouped[Item](
     title: str,
     items: Sequence[Item],
+    totals: Mapping[str, int],
     code: Callable[[Item], str],
     describe: Callable[[Item], str],
 ) -> list[str]:
@@ -195,11 +202,12 @@ def _grouped[Item](
         by_code.setdefault(code(item), []).append(item)
     lines = [f"{title}:"]
     for name in sorted(by_code):
-        group = by_code[name]
-        lines.append(f"  {name} ({len(group)})")
-        lines += [f"    {describe(item)}" for item in group[:_SHOWN_PER_CODE]]
-        if len(group) > _SHOWN_PER_CODE:
-            lines.append(f"    ... and {len(group) - _SHOWN_PER_CODE} more")
+        shown = by_code[name][:_SHOWN_PER_CODE]
+        total = totals[name]
+        lines.append(f"  {name} ({total})")
+        lines += [f"    {describe(item)}" for item in shown]
+        if total > len(shown):
+            lines.append(f"    ... and {total - len(shown)} more")
     return lines
 
 

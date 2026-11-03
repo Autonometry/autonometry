@@ -16,7 +16,9 @@ from autonometry.timestamps import ns_to_seconds, seconds_to_ns, ts_to_ns
 def check_session(session: Session, rules: Rules) -> list[Flag]:
     """Return the loader flags of one session in the order found.
 
-    Implements: ``no_session_start``, ``no_session_end`` (definitions.md 1, 2 rule 4);
+    Implements: ``no_session_start``, ``no_session_end``, ``repeated_session_marker`` (one flag
+    per repeated marker) and ``event_outside_session`` (one flag per side with the count; the first
+    ``session_start`` and ``session_end`` bound the session) (definitions.md 1, 2 rule 4);
     ``missing_initial_state`` (2 rule 1); ``undeclared_scope`` (1, control scope); ``seq_gap``,
     ``time_gap`` (2 rule 2; silence longer than the session's ``heartbeat_interval_s`` plus
     ``gap_tolerance_s``, in seconds); ``ts_regression`` (3, ``ts``); ``nested_task``,
@@ -41,15 +43,19 @@ def check_session(session: Session, rules: Rules) -> list[Flag]:
         heartbeat_s = start.get("heartbeat_interval_s", heartbeat_s)
     max_silence_ns = seconds_to_ns(heartbeat_s + rules.params.gap_tolerance_s)
     scopes = frozenset(start.get("scopes", ())) if start is not None else None
+    flags += [flag(seq, code, detail) for seq, code, detail in _markers(events)]
     flags += [flag(seq, code, detail) for seq, code, detail in _sequence(events, max_silence_ns)]
     flags += [flag(seq, code, detail) for seq, code, detail in _per_event(events, scopes)]
     flags += [flag(seq, code, detail) for seq, code, detail in _tasks(events)]
     reconstructed = [e["seq"] for e in events if _extension(e, "x_ts_reconstructed") is True]
     if reconstructed:
-        count = len(reconstructed)
-        detail = f"{count} event{'s' if count != 1 else ''} with x_ts_reconstructed: true"
+        detail = f"{_events(len(reconstructed))} with x_ts_reconstructed: true"
         flags.append(flag(reconstructed[0], "ts_reconstructed", detail))
     return flags
+
+
+def _events(count: int) -> str:
+    return f"{count} event{'s' if count != 1 else ''}"
 
 
 def _extension(event: Event, name: str) -> Any:
@@ -66,6 +72,28 @@ def _declarations(start: Event) -> Iterator[tuple[FlagCode, str]]:
         yield "undeclared_scope", f"initial_states names undeclared scope {scope!r}"
     for scope in sorted(set(start.get("scope_weights", {})) - scopes):
         yield "undeclared_scope", f"scope_weights names undeclared scope {scope!r}"
+
+
+def _markers(events: tuple[Event, ...]) -> Iterator[tuple[int, FlagCode, str]]:
+    """Repeated session_start or session_end, and events before the first session_start or after
+    the first session_end."""
+    first: dict[str, int] = {}
+    for event in events:
+        kind, seq = event["type"], event["seq"]
+        if kind in ("session_start", "session_end"):
+            if kind in first:
+                yield seq, "repeated_session_marker", f"{kind} repeats the one at seq {first[kind]}"
+            else:
+                first[kind] = seq
+    seqs = [event["seq"] for event in events]
+    start, end = first.get("session_start"), first.get("session_end")
+    outside = {
+        "before session_start": [s for s in seqs if start is not None and s < start],
+        "after session_end": [s for s in seqs if end is not None and s > end],
+    }
+    for where, found in outside.items():
+        if found:
+            yield found[0], "event_outside_session", f"{_events(len(found))} {where}"
 
 
 def _sequence(

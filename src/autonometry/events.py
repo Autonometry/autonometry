@@ -11,6 +11,7 @@ from typing import Any, Literal, NotRequired, Required, TypedDict
 # Codes of rules.toml [errors]. The reader refuses a spec whose table differs.
 ErrorCode = Literal[
     "invalid_utf8",
+    "invalid_unicode",
     "line_too_long",
     "invalid_json",
     "not_an_object",
@@ -37,6 +38,8 @@ FlagCode = Literal[
     "task_not_closed",
     "distance_regression",
     "ts_reconstructed",
+    "repeated_session_marker",
+    "event_outside_session",
 ]
 
 
@@ -112,7 +115,11 @@ class Session:
 
 @dataclass(frozen=True, slots=True)
 class Counts:
-    """Totals of one read. ``lines`` counts every line, blank and rejected ones included."""
+    """Totals of one read. ``lines`` counts every line, blank and rejected ones included.
+
+    Every count is exact, including ``rejected_lines`` and ``errors_by_code`` when the result lists
+    only some of the rejected lines (definitions.md 8, Rejected lines).
+    """
 
     files: int
     lines: int
@@ -128,8 +135,9 @@ class Counts:
 class LogCheck:
     """Result of reading and checking a log: sessions, rejected lines, flags and counts.
 
-    Sessions are sorted by ``(robot_id, session_id)``, errors by ``(file, line)`` and flags by
-    ``(robot_id, session_id, seq, code, detail)``.
+    ``errors`` lists at most ``list_max_per_code`` rejected lines of each code, the first ones
+    read; ``counts`` has the exact totals. Sessions are sorted by ``(robot_id, session_id)``,
+    errors by ``(file, line)`` and flags by ``(robot_id, session_id, seq, code, detail)``.
     """
 
     spec_version: str

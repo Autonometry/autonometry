@@ -120,7 +120,45 @@ def test_first_session_start_declares_the_scopes__defs_1() -> None:
         _event(2, 1, "help_request", scope="left_arm"),
         _event(3, 2, "session_end"),
     )
-    assert _codes(*events) == [(2, "undeclared_scope")]
+    assert _codes(*events) == [(1, "repeated_session_marker"), (2, "undeclared_scope")]
+
+
+def test_repeated_session_marker__defs_1() -> None:
+    events = (
+        _start(),
+        _event(1, 1, "session_end"),
+        _start(2),
+        _event(3, 2, "session_end"),
+        _event(4, 2.5, "session_end"),
+    )
+    flags = check_session(Session("r07", "s42", events), RULES)
+    repeated = [(f.seq, f.detail) for f in flags if f.code == "repeated_session_marker"]
+    assert repeated == [
+        (2, "session_start repeats the one at seq 0"),
+        (3, "session_end repeats the one at seq 1"),
+        (4, "session_end repeats the one at seq 1"),
+    ]
+
+
+def test_event_outside_session_once_per_side_with_count__defs_1() -> None:
+    events = (
+        _event(0, 0),
+        _event(1, 0),
+        _start(2),
+        _event(3, 1),
+        _event(4, 2, "session_end"),
+        _event(5, 3),
+    )
+    flags = check_session(Session("r07", "s42", events), RULES)
+    outside = [(f.seq, f.detail) for f in flags if f.code == "event_outside_session"]
+    assert outside == [(0, "2 events before session_start"), (5, "1 event after session_end")]
+    assert _codes(*events) == [(0, "event_outside_session"), (5, "event_outside_session")]
+
+
+def test_no_outside_flag_without_the_marker__defs_1() -> None:
+    events = (_event(0, 0), _event(1, 1, "session_end"))
+    assert _codes(*events) == [(0, "no_session_start")]
+    assert _codes(_start(), _event(1, 1)) == [(1, "no_session_end")]
 
 
 def test_distance_compares_with_the_previous_reading__defs_8() -> None:

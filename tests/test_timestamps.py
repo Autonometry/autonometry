@@ -8,7 +8,7 @@ from autonometry.timestamps import ns_to_seconds, seconds_to_ns, ts_to_ns
 
 
 def test_epoch_and_fraction_digits__defs_3() -> None:
-    assert ts_to_ns("1970-01-01T00:00:00Z") == 0
+    assert ts_to_ns("1970-01-01T00:00:00.000Z") == 0
     assert ts_to_ns("1970-01-01T00:00:01.250Z") == 1_250_000_000
     assert ts_to_ns("1970-01-01T00:00:00.000000001Z") == 1
     assert ts_to_ns("2026-10-30T09:15:02.250Z") == 1_793_351_702_250_000_000
@@ -22,12 +22,31 @@ def test_epoch_and_fraction_digits__defs_3() -> None:
         "2026-13-01T00:00:00.000Z",
         "2026-10-30T24:00:00.000Z",
         "2026-10-30T23:60:00.000Z",
-        "2026-12-31T23:59:60.000Z",
         "0000-01-01T00:00:00.000Z",
     ],
 )
 def test_impossible_instants_are_rejected__defs_3(ts: str) -> None:
     with pytest.raises(ValueError, match=r"."):
+        ts_to_ns(ts)
+
+
+def test_leap_second_is_invalid__defs_3() -> None:
+    with pytest.raises(ValueError, match=r"."):
+        ts_to_ns("2026-12-31T23:59:60.000Z")
+
+
+@pytest.mark.parametrize(
+    "ts",
+    [
+        "2026-10-30T09:00:00Z",
+        "2026-10-30T09:00:00.Z",
+        "2026-10-30T09:00:00.5Z",
+        "2026-10-30T09:00:00.25Z",
+        "2026-10-30T09:00:00.0000000001Z",
+    ],
+)
+def test_ts_needs_fraction__defs_3(ts: str) -> None:
+    with pytest.raises(ValueError, match="not YYYY"):
         ts_to_ns(ts)
 
 
@@ -37,9 +56,8 @@ def test_impossible_instants_are_rejected__defs_3(ts: str) -> None:
         "2026-10-30T09:00:00.000",
         "2026-10-30T09:00:00.000+00:00",
         "2026-10-30 09:00:00.000Z",
-        "2026-10-30T09:00:00.0000000001Z",
         "2026-10-30T09:00:00.000Z\n",
-        "٢026-10-30T09:00:00.000Z",
+        "\u0662026-10-30T09:00:00.000Z",
     ],
 )
 def test_other_forms_are_rejected__defs_3(ts: str) -> None:

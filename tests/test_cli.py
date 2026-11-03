@@ -1,3 +1,4 @@
+import json
 import logging
 from collections.abc import Iterator
 from pathlib import Path
@@ -159,6 +160,33 @@ def test_validate_shows_twenty_per_code_then_a_count(tmp_path: Path) -> None:
     assert lines[2] == "  not_an_object (26)"
     assert len([line for line in lines if line.startswith(f"    {log}:")]) == 20
     assert lines[-1] == "    ... and 6 more"
+
+
+def test_validate_more_uses_exact_counts_beyond_the_listed_lines__defs_8(tmp_path: Path) -> None:
+    limit = spec.load_rules("0.2").errors.list_max_per_code
+    log = tmp_path / "log.jsonl"
+    log.write_bytes(b"[]\n" * (limit + 30))
+    lines = _validate(str(log)).output.splitlines()
+    assert lines[0].endswith(f"{limit + 30} rejected, 0 flag(s)")
+    assert lines[2] == f"  not_an_object ({limit + 30})"
+    assert lines[-1] == f"    ... and {limit + 10} more"
+
+
+def test_validate_output_has_no_control_characters__defs_8(tmp_path: Path) -> None:
+    """A hostile robot_id cannot reach the terminal: it is rejected and never echoed."""
+    hostile = "r01\x1b[2J\x1b[H\x07\x1b]0;owned\x07"
+    event = {"robot_id": "r01", "session_id": "s01", "task_id": None, "seq": 0}
+    event |= {"ts": "2026-10-30T09:00:00.000Z", "type": "heartbeat"}
+    lines = [event | {"robot_id": hostile}, event | {"session_id": hostile}]
+    log = tmp_path / "log.jsonl"
+    log.write_text("".join(json.dumps(line) + "\n" for line in lines), encoding="utf-8")
+    text = _validate(str(log))
+    as_json = _validate("--json", str(log))
+    assert text.exit_code == as_json.exit_code == 1
+    assert "  schema_violation (2)" in text.output.splitlines()
+    assert json.loads(as_json.output)["counts"]["errors_by_code"] == {"schema_violation": 2}
+    for output in (text.output, as_json.output):
+        assert all(char == "\n" or ord(char) >= 0x20 for char in output)
 
 
 def test_validate_never_prints_event_contents__defs_8(monkeypatch: pytest.MonkeyPatch) -> None:

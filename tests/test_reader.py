@@ -7,11 +7,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import jsonschema_rs
 import pytest
-from hypothesis import assume, given
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator  # reference implementation, tests only
 
 from autonometry import reader, spec
 from autonometry.events import Event, LogCheck
@@ -338,7 +337,7 @@ def test_schema_with_a_remote_reference_is_refused_without_fetching(spec_copy: P
     schema = json.loads(path.read_text(encoding="utf-8"))
     schema["properties"]["note"] = {"$ref": "https://example.invalid/note.json"}
     path.write_text(json.dumps(schema), encoding="utf-8")
-    with pytest.raises(spec.SpecError, match="cannot be compiled"):
+    with pytest.raises(spec.SpecError, match="not fetched"):
         read_streams([], SPEC)
 
 
@@ -347,6 +346,113 @@ def test_loaded_spec_is_cached_and_read_only() -> None:
     assert reader._load_spec(SPEC) is first
     with pytest.raises(TypeError):
         first.schema["type"] = "array"  # type: ignore[index]
+
+
+# --- identifiers, integers and listing limits ---------------------------------------------------
+
+ID_PATTERN = spec.load_schema(SPEC)["$defs"]["id"]["pattern"]
+SCOPE_PATTERN = spec.load_schema(SPEC)["$defs"]["scope"]["pattern"]
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"robot_id": "r\x1b[2J\x07"},
+        {"session_id": ".s01"},
+        {"robot_id": ""},
+        {"robot_id": "r" * 129},
+        {"robot_id": None},
+        {"task_id": "t 1"},
+        {"actor_id": "op\u00e9"},
+        {"device_id": "-vr"},
+        {"type": "transition", "scope": "a" * 65, "state": "ai"},
+    ],
+)
+def test_identifier_outside_the_safe_set_is_rejected__defs_8(fields: dict[str, Any]) -> None:
+    result = _read(_jsonl(_event(1) | fields))
+    assert [e.code for e in result.errors] == ["schema_violation"]
+
+
+def test_identifiers_at_the_limits_are_accepted__defs_8() -> None:
+    longest = "r" * 128
+    event = _event(1, robot_id=longest, task_id="t.1:x-2_y", actor_id="ai:policy_v3")
+    start = _start(robot_id=longest, scopes=["s" * 64], initial_states={"s" * 64: "idle"})
+    result = _read(_jsonl(start, event))
+    assert result.errors == ()
+    assert result.sessions[0].robot_id == longest
+
+
+def test_identifier_errors_name_the_pattern__defs_8() -> None:
+    result = _read(_jsonl(_event(1, robot_id="r\x1b"), _event(1, robot_id=None)))
+    assert [e.message for e in result.errors] == [
+        f"/robot_id: does not match the pattern {ID_PATTERN}",
+        "/robot_id: must be of type string",
+    ]
+
+
+@pytest.mark.parametrize("field", ["initial_states", "scope_weights"])
+def test_scope_map_keys_follow_the_scope_rule__defs_8(field: str) -> None:
+    value = {"left arm": "idle"} if field == "initial_states" else {"left arm": 1.0}
+    result = _read(_jsonl(_start(**{field: value})))
+    assert [e.message for e in result.errors] == [
+        f"/{field}: has a key that does not match the pattern {SCOPE_PATTERN}"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("field", "text"),
+    [("seq", "5.0"), ("seq", "5e0"), ("related_seq", "1.0"), ("n_supervisors", "2E+0")],
+)
+def test_integer_literal__defs_8(field: str, text: str) -> None:
+    event = _event(5, 0, "supervision", level="none", n_supervisors=1, related_seq=None)
+    line = json.dumps(event | {field: 7}).replace(f'"{field}": 7', f'"{field}": {text}')
+    result = _read(_jsonl(line.encode()))
+    assert [(e.code, e.message) for e in result.errors] == [
+        ("schema_violation", f"/{field}: must be written as an integer")
+    ]
+
+
+def test_integer_fields_come_from_the_schema__defs_8() -> None:
+    schema = spec.load_schema(SPEC)
+    assert reader._integer_fields(schema) == ("n_supervisors", "related_seq", "seq")
+    changed = json.loads(json.dumps(schema))
+    changed["$defs"]["nonneg"]["type"] = "integer"
+    assert "dwell_s" in reader._integer_fields(changed)
+
+
+def test_errors_listed_up_to_list_max_per_code_with_exact_counts__defs_8() -> None:
+    limit = spec.load_rules(SPEC).errors.list_max_per_code
+    data = b"[]\n" * (limit + 50) + b"x\n" * 3
+    result = _read(data)
+    listed = [(e.line, e.code) for e in result.errors]
+    assert listed == [(n, "not_an_object") for n in range(1, limit + 1)] + [
+        (n, "invalid_json") for n in range(limit + 51, limit + 54)
+    ]
+    assert result.counts.rejected_lines == limit + 53
+    assert result.counts.errors_by_code == {"invalid_json": 3, "not_an_object": limit + 50}
+
+
+def test_ts_without_fraction_is_a_schema_violation__defs_3() -> None:
+    result = _read(_jsonl(_event(1) | {"ts": "2026-10-30T09:00:00Z"}))
+    assert [e.message for e in result.errors] == [
+        "/ts: does not match the pattern " + spec.load_schema(SPEC)["$defs"]["ts"]["pattern"]
+    ]
+
+
+def test_noncharacter_rejected__defs_8() -> None:
+    lines = [
+        _jsonl(_event(1, note="a\ufffeb")).replace(b"\\ufffe", "\ufffe".encode()),
+        _jsonl(_event(2, note="\U0010ffff")),
+        _jsonl(_event(3, note="\ud800")),
+        b'{"note": "\xed\xa0\x80"}\n',
+    ]
+    result = _read(b"".join(lines))
+    assert [e.code for e in result.errors] == [
+        "invalid_unicode",
+        "invalid_unicode",
+        "invalid_unicode",
+        "invalid_utf8",
+    ]
 
 
 # --- property tests ----------------------------------------------------------------------------
@@ -379,19 +485,23 @@ def test_truncated_log_never_crashes__defs_8(cut: int) -> None:
             assert original[(event["robot_id"], event["session_id"], event["seq"])] == event
 
 
-def _json_values(integers: st.SearchStrategy[int], floats: st.SearchStrategy[float]) -> Any:
+def _json_values(
+    integers: st.SearchStrategy[int],
+    floats: st.SearchStrategy[float],
+    characters: st.SearchStrategy[str],
+) -> Any:
     return st.recursive(
         st.none()
         | st.booleans()
         | integers
         | floats
-        | st.text(max_size=10)
+        | st.text(characters, max_size=10)
         | st.sampled_from(["r01", "s01", "heartbeat", "transition", "whole_robot", _ts(1)]),
         lambda inner: (
             st.lists(inner, max_size=3)
             | st.dictionaries(
                 st.sampled_from(["robot_id", "session_id", "task_id", "seq", "ts", "type", "scope"])
-                | st.text(max_size=5),
+                | st.text(characters, max_size=5),
                 inner,
                 max_size=7,
             )
@@ -400,10 +510,20 @@ def _json_values(integers: st.SearchStrategy[int], floats: st.SearchStrategy[flo
     )
 
 
-_any_json = _json_values(st.integers(), st.floats())
+def _i_json_character(code: int) -> bool:
+    """Not a surrogate or a noncharacter (definitions.md 8, JSON)."""
+    return not (0xD800 <= code <= 0xDFFF or 0xFDD0 <= code <= 0xFDEF or code & 0xFFFE == 0xFFFE)
+
+
+# Code points from U+0020 drawn as integers (cheap, unlike a st.characters() table).
+_i_json_characters = st.integers(0x20, 0x10FFFF).map(
+    lambda c: chr(c if _i_json_character(c) else 0xFFFD)
+)
+_any_json = _json_values(st.integers(), st.floats(), st.characters())
 _json = _json_values(
     st.integers(-MAX_SAFE_INTEGER, MAX_SAFE_INTEGER),
     st.floats(allow_nan=False, allow_infinity=False),
+    _i_json_characters,
 )
 
 
@@ -428,7 +548,12 @@ _STATES = [
 _HUMAN = {"human_local", "human_remote", "shared"}
 _REASONS = ["ai_requested_help", "human_initiated", "safety", "planned"]
 _scope = st.text("abcXYZ019_.-", min_size=1, max_size=8)
-_name = st.text(min_size=1, max_size=8)
+_ID_FIRST = "abcXYZ019"
+_id = st.builds(
+    lambda first, rest: first + rest,
+    st.sampled_from(_ID_FIRST),
+    st.text(_ID_FIRST + "._:-", max_size=8),
+)
 _nonneg = st.floats(min_value=0, max_value=1e9, allow_nan=False, allow_infinity=False)
 _sha = st.binary(min_size=32, max_size=32).map(bytes.hex)
 
@@ -450,18 +575,19 @@ def _transition(draw: st.DrawFn) -> dict[str, Any]:
     state = draw(st.sampled_from(_STATES))
     fields: dict[str, Any] = {"scope": draw(_scope), "state": state}
     if state in _HUMAN:
-        fields |= {"reason": draw(st.sampled_from(_REASONS)), "actor_id": draw(_name)}
+        fields |= {"reason": draw(st.sampled_from(_REASONS)), "actor_id": draw(_id)}
     elif state == "safety_stop":
         fields["reason"] = "safety"
     else:
-        fields |= {"reason": None, "actor_id": draw(st.none() | _name)}
+        fields |= {"reason": None, "actor_id": draw(st.none() | _id)}
     return fields
 
 
 def _human_input(reasons: list[str]) -> st.SearchStrategy[dict[str, Any]]:
     return st.fixed_dictionaries(
-        {"scope": _scope, "actor_id": _name},
-        optional={"reason": st.sampled_from(reasons), "dwell_s": _nonneg, "device_id": _name},
+        {"scope": _scope, "actor_id": _id},
+        optional={"dwell_s": _nonneg, "device_id": _id}
+        | ({"reason": st.sampled_from(reasons)} if reasons else {}),
     )
 
 
@@ -470,11 +596,15 @@ _FIELDS_BY_TYPE: dict[str, st.SearchStrategy[dict[str, Any]]] = {
     "session_end": st.just({}),
     "help_request": st.fixed_dictionaries({"scope": _scope}),
     "transition": _transition(),
-    "approval": _human_input(["ai_requested_help", "planned"]).filter(lambda f: "reason" in f),
+    "approval": st.builds(
+        lambda fields, reason: fields | {"reason": reason},
+        _human_input([]),
+        st.sampled_from(["ai_requested_help", "planned"]),
+    ),
     "hint": _human_input(_REASONS),
-    "task_start": st.fixed_dictionaries({"task_id": _name, "task_definition_id": _name}),
+    "task_start": st.fixed_dictionaries({"task_id": _id, "task_definition_id": _id}),
     "task_end": st.fixed_dictionaries(
-        {"task_id": _name, "outcome": st.sampled_from(["success", "failure", "aborted", "unknown"])}
+        {"task_id": _id, "outcome": st.sampled_from(["success", "failure", "aborted", "unknown"])}
     ),
     "supervision": st.fixed_dictionaries(
         {
@@ -502,23 +632,23 @@ def _type_fields(draw: st.DrawFn) -> dict[str, Any]:
     kind = draw(st.sampled_from(sorted(_FIELDS_BY_TYPE)))
     fields = {"type": kind} | draw(_FIELDS_BY_TYPE[kind])
     if fields.get("reason") == "planned":
-        fields["plan_item_id"] = draw(_name)
+        fields["plan_item_id"] = draw(_id)
     return fields
 
 
 @st.composite
 def _valid_event(draw: st.DrawFn, seq: int = 0) -> dict[str, Any]:
     event = {
-        "robot_id": draw(st.sampled_from(["r01", "r02", "robot é"])),
-        "session_id": draw(st.sampled_from(["s01", "s\n02"])),
-        "task_id": draw(st.none() | _name),
+        "robot_id": draw(st.sampled_from(["r01", "r02", "robot.2"])),
+        "session_id": draw(st.sampled_from(["s01", "s:02"])),
+        "task_id": draw(st.none() | _id),
         "seq": seq,
         "ts": draw(_timestamp()),
     }
     event |= draw(_type_fields())
     optional = {
         "distance_m": _nonneg,
-        "note": st.text(max_size=20),
+        "note": st.text(_i_json_characters, max_size=20),
         "x_note": _json,
         "prev_hash": st.none() | _sha,
     }
@@ -543,6 +673,11 @@ def _strings(value: Any) -> Iterator[str]:
             yield from _strings(item)
 
 
+# Building whole events is slow under coverage tracing; generation speed is not under test.
+_COMPOSITE = settings(suppress_health_check=[HealthCheck.too_slow])
+
+
+@_COMPOSITE
 @given(_valid_events(), st.booleans())
 def test_valid_events_round_trip_unchanged__defs_8(
     events: list[dict[str, Any]], ascii_only: bool
@@ -557,9 +692,10 @@ def test_valid_events_round_trip_unchanged__defs_8(
 
 _SCHEMA = spec.load_schema(SPEC)
 _PYTHON_VALIDATOR = Draft202012Validator(_SCHEMA)
-_RUST_VALIDATOR = jsonschema_rs.Draft202012Validator(_SCHEMA, validate_formats=False)
+_RUST_VALIDATOR = spec.compile_schema(SPEC, _SCHEMA)
 
 
+@_COMPOSITE
 @given(
     _valid_event(),
     st.sampled_from([*_SCHEMA["properties"], "x_ok", "other"]),
@@ -626,3 +762,16 @@ def test_rejected_data_does_not_grow_memory__defs_8(tmp_path: Path) -> None:
     assert result.counts.rejected_lines == 416
     assert path.stat().st_size > 50 * MiB
     assert peak < 2 * MiB, f"peak {peak / MiB:.1f} MiB"
+
+
+def test_many_rejected_lines_do_not_grow_memory__defs_8() -> None:
+    data = b"x\n1\n" * 5_000
+    tracemalloc.start()
+    try:
+        result = _read(data)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert result.counts.errors_by_code == {"invalid_json": 5_000, "not_an_object": 5_000}
+    assert len(result.errors) == 2 * spec.load_rules(SPEC).errors.list_max_per_code
+    assert peak < MiB, f"peak {peak / MiB:.1f} MiB"

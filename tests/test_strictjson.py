@@ -46,12 +46,41 @@ def test_huge_integer_is_rejected_without_conversion__defs_8() -> None:
 
 
 def test_lone_surrogate_escape_is_rejected__defs_8() -> None:
-    assert _code('{"note": "\\ud800"}') == "invalid_utf8"
-    assert _code('["ok", ["\\udfff"]]') == "invalid_utf8"
+    assert _code('{"note": "\\ud800"}') == "invalid_unicode"
+    assert _code('["ok", ["\\udfff"]]') == "invalid_unicode"
+    assert _code('{"\\udc00": 1}') == "invalid_unicode"
     assert strictjson.parse('"\\ud83d\\ude00"') == "\N{GRINNING FACE}"
 
 
-@pytest.mark.parametrize("text", ["", "{", "{'a': 1}", "[1,]", "1 2", "﻿{}"])
+_NONCHARACTERS = ["\ufdd0", "\ufdef", "\ufffe", "\uffff", "\U0001fffe", "\U0010ffff"]
+
+
+@pytest.mark.parametrize("char", _NONCHARACTERS)
+def test_noncharacter_rejected__defs_8(char: str) -> None:
+    escaped = json.dumps(char)
+    assert "\\u" in escaped
+    texts = [f'{{"note": "{char}"}}', f'{{"{char}": 1}}', f'["a", {escaped}]', f"{{{escaped}: 1}}"]
+    for text in texts:
+        with pytest.raises(StrictJsonError, match="noncharacter") as info:
+            strictjson.parse(text)
+        assert info.value.code == "invalid_unicode"
+
+
+@pytest.mark.parametrize("char", ["\ufdcf", "\ufdf0", "\ufffd", "\U0001fffd", "\u00e9"])
+def test_neighbours_of_noncharacters_are_accepted__defs_8(char: str) -> None:
+    assert strictjson.parse(json.dumps({char: char})) == {char: char}
+    assert strictjson.parse(json.dumps({char: char}, ensure_ascii=False)) == {char: char}
+
+
+def test_ascii_text_without_escapes_is_not_scanned(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(value: Any) -> None:
+        raise AssertionError("scanned")
+
+    monkeypatch.setattr(strictjson, "_bad_code_point", fail)
+    assert strictjson.parse('{"note": "plain"}') == {"note": "plain"}
+
+
+@pytest.mark.parametrize("text", ["", "{", "{'a': 1}", "[1,]", "1 2", "\ufeff{}"])
 def test_syntax_errors_are_invalid_json__defs_8(text: str) -> None:
     assert _code(text) == "invalid_json"
 
@@ -79,8 +108,20 @@ def test_any_text_parses_or_is_rejected_with_a_code__defs_8(text: str) -> None:
         "duplicate_key",
         "non_finite_number",
         "integer_out_of_range",
-        "invalid_utf8",
+        "invalid_unicode",
     }
+
+
+def _forbidden(char: str) -> bool:
+    """A surrogate or a noncharacter, which I-JSON strings must not hold."""
+    code = ord(char)
+    return 0xD800 <= code <= 0xDFFF or 0xFDD0 <= code <= 0xFDEF or code & 0xFFFE == 0xFFFE
+
+
+# Code points drawn as integers (cheap, unlike a st.characters() table); forbidden: U+FFFD.
+_i_json_text = st.text(
+    st.integers(0, 0x10FFFF).map(chr).map(lambda c: chr(0xFFFD) if _forbidden(c) else c)
+)
 
 
 _json_values = st.recursive(
@@ -88,15 +129,26 @@ _json_values = st.recursive(
     | st.booleans()
     | st.integers(-MAX_SAFE_INTEGER, MAX_SAFE_INTEGER)
     | st.floats(allow_nan=False, allow_infinity=False)
-    | st.text(),
-    lambda inner: st.lists(inner, max_size=4) | st.dictionaries(st.text(), inner, max_size=4),
+    | _i_json_text,
+    lambda inner: st.lists(inner, max_size=4) | st.dictionaries(_i_json_text, inner, max_size=4),
     max_leaves=20,
 )
 
 
-@given(_json_values)
-def test_i_json_values_round_trip__defs_8(value: Any) -> None:
-    assert strictjson.parse(json.dumps(value)) == value
+@given(_json_values, st.booleans())
+def test_i_json_values_round_trip__defs_8(value: Any, ensure_ascii: bool) -> None:
+    assert strictjson.parse(json.dumps(value, ensure_ascii=ensure_ascii)) == value
+
+
+@given(st.characters(), st.booleans())
+def test_every_code_point_is_accepted_or_invalid_unicode__defs_8(
+    char: str, ensure_ascii: bool
+) -> None:
+    text = json.dumps(char, ensure_ascii=ensure_ascii)
+    if _forbidden(char):
+        assert _code(text) == "invalid_unicode"
+    else:
+        assert strictjson.parse(text) == char
 
 
 @given(_json_values, st.integers(min_value=0, max_value=50))

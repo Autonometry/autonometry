@@ -6,8 +6,9 @@ that fails any step is rejected with an error code from ``rules.toml`` ``[errors
 number. Valid events are grouped by ``(robot_id, session_id)`` and ordered by ``seq``, and each
 session gets the loader flags of :func:`autonometry.checks.check_session`.
 
-Memory grows with the number of valid events kept, never with the size of rejected lines: a line
-longer than the limit is skipped in chunks without being held whole.
+Memory grows with the number of valid events kept, never with the size or number of rejected
+lines: a line longer than the limit is skipped in chunks without being held whole, and only the
+first ``list_max_per_code`` rejected lines of each code are kept, while every count stays exact.
 """
 
 import functools
@@ -24,7 +25,14 @@ import jsonschema_rs
 from autonometry import strictjson
 from autonometry.checks import check_session
 from autonometry.events import Counts, ErrorCode, Event, FlagCode, LineError, LogCheck, Session
-from autonometry.spec import Rules, SpecError, find_inconsistencies, load_rules, load_schema
+from autonometry.spec import (
+    Rules,
+    SpecError,
+    compile_schema,
+    find_inconsistencies,
+    load_rules,
+    load_schema,
+)
 from autonometry.timestamps import ts_to_ns
 
 _BOM = b"\xef\xbb\xbf"
@@ -49,11 +57,7 @@ class _Spec:
     schema: Mapping[str, Any]
     validator: jsonschema_rs.Draft202012Validator
     field_names: frozenset[str]
-
-
-def _no_retrieval(uri: str) -> Any:
-    """Refuse to fetch a schema reference: validation never touches the network."""
-    raise SpecError(f"the event schema refers to {uri}, which is not fetched")
+    integer_fields: tuple[str, ...]
 
 
 @functools.cache
@@ -68,18 +72,24 @@ def _load_spec(version: str) -> _Spec:
         problems.append("its [flags] codes lack ones this reader reports")
     if problems:
         raise SpecError(f"spec {version} cannot be used: " + "; ".join(problems))
-    # Formats are not checked (ts is parsed separately); patterns follow ECMA-262, as JSON Schema
-    # requires, so "$" does not accept a trailing newline.
-    try:
-        validator = jsonschema_rs.Draft202012Validator(
-            schema, validate_formats=False, retriever=_no_retrieval
-        )
-    except ValueError as exc:
-        first_line = (str(exc).splitlines() or [type(exc).__name__])[0]
-        raise SpecError(f"event schema of spec {version} cannot be compiled: {first_line}") from exc
+    # Patterns follow ECMA-262, as JSON Schema requires, so "$" does not accept a trailing newline.
     return _Spec(
-        rules, MappingProxyType(schema), validator, frozenset(schema.get("properties", ()))
+        rules,
+        MappingProxyType(schema),
+        compile_schema(version, schema),
+        frozenset(schema.get("properties", ())),
+        _integer_fields(schema),
     )
+
+
+def _integer_fields(schema: Mapping[str, Any]) -> tuple[str, ...]:
+    """Names of the top-level fields the schema types as ``integer``, directly or via ``$ref``."""
+    names: list[str] = []
+    for name, rule in schema.get("properties", {}).items():
+        target = _schema_value(schema, ["properties", name, "$ref"]) or {}
+        if "integer" in _as_list(rule.get("type")) + _as_list(target.get("type")):
+            names.append(name)
+    return tuple(sorted(names))
 
 
 def iter_lines(stream: IO[bytes], max_line_bytes: int) -> Iterator[bytes | None]:
@@ -133,6 +143,9 @@ def describe_schema_error(
     elif keyword in ("enum", "const"):
         allowed = expected if keyword == "enum" else [expected]
         rule = f"must be one of {', '.join(json.dumps(v) for v in allowed)}"
+    elif isinstance(error.instance, dict) and keyword in _KEY_RULES:
+        # A propertyNames rule: the object is the instance and the failing key is not repeated.
+        rule = f"has a key {_KEY_RULES[keyword]} {expected}"
     elif keyword == "uniqueItems":
         rule = "must not contain the same item twice"
     elif keyword == "pattern":
@@ -143,6 +156,8 @@ def describe_schema_error(
         rule = f"fails the schema rule {keyword}"
     return f"{where}: {rule}"
 
+
+_KEY_RULES = {"pattern": "that does not match the pattern", "minLength": "of length <"}
 
 _BOUNDS = {
     "minimum": ">=",
@@ -197,7 +212,8 @@ class _Reader:
     files: int = 0
     lines: int = 0
     blank_lines: int = 0
-    errors: list[LineError] = field(default_factory=list)
+    errors: dict[ErrorCode, list[LineError]] = field(default_factory=dict)
+    error_counts: Counter[ErrorCode] = field(default_factory=Counter)
     sessions: dict[tuple[str, str], dict[int, Event]] = field(default_factory=dict)
     field_names: dict[str, str] = field(default_factory=dict)
 
@@ -207,16 +223,21 @@ class _Reader:
         for number, content in enumerate(iter_lines(stream, limit), start=1):
             self.lines += 1
             if content is None:
-                self.errors.append(
-                    LineError(name, number, "line_too_long", f"line is longer than {limit} bytes")
-                )
+                self._reject(name, number, "line_too_long", f"line is longer than {limit} bytes")
             elif not content.strip(_JSON_SPACE):
                 self.blank_lines += 1
             else:
                 try:
                     self._keep(self._event(content))
                 except _RejectedLineError as exc:
-                    self.errors.append(LineError(name, number, exc.code, exc.message))
+                    self._reject(name, number, exc.code, exc.message)
+
+    def _reject(self, name: str, number: int, code: ErrorCode, message: str) -> None:
+        """Count a rejected line; keep it only while its code has fewer than the listed maximum."""
+        self.error_counts[code] += 1
+        listed = self.errors.setdefault(code, [])
+        if len(listed) < self.spec.rules.errors.list_max_per_code:
+            listed.append(LineError(name, number, code, message))
 
     def _event(self, content: bytes) -> Event:
         """Return the line as a validated event (definitions.md 8)."""
@@ -236,6 +257,10 @@ class _Reader:
             problem = min(self.spec.validator.iter_errors(value), key=_error_rank)
             message = describe_schema_error(problem, self.spec.schema, self.spec.field_names)
             raise _RejectedLineError("schema_violation", message)
+        for name in self.spec.integer_fields:
+            if isinstance(value.get(name), float):
+                message = f"/{name}: must be written as an integer"
+                raise _RejectedLineError("schema_violation", message)
         try:
             ts_to_ns(value["ts"])
         except ValueError:
@@ -274,15 +299,18 @@ class _Reader:
             (flag for session in sessions for flag in check_session(session, self.spec.rules)),
             key=lambda f: (f.robot_id, f.session_id, f.seq, f.code, f.detail),
         )
-        errors = sorted(self.errors, key=lambda e: (e.file, e.line))
+        errors = sorted(
+            (error for listed in self.errors.values() for error in listed),
+            key=lambda e: (e.file, e.line),
+        )
         counts = Counts(
             files=self.files,
             lines=self.lines,
             blank_lines=self.blank_lines,
             events=sum(len(session.events) for session in sessions),
-            rejected_lines=len(errors),
+            rejected_lines=self.error_counts.total(),
             sessions=len(sessions),
-            errors_by_code=_tally(e.code for e in errors),
+            errors_by_code=MappingProxyType(dict(sorted(self.error_counts.items()))),
             flags_by_code=_tally(f.code for f in flags),
         )
         return LogCheck(self.spec.rules.spec_version, sessions, tuple(errors), tuple(flags), counts)
