@@ -36,9 +36,10 @@ end of your reply.
 
 - Python >= 3.12. uv for environments, lockfile and builds (hatchling backend). ruff for lint and
   format, mypy --strict on `src/`, pytest with hypothesis and pytest-cov.
-- Core dependencies (installed on robots, keep light): typer, pydantic, jsonschema, jsonschema-rs,
-  rfc8785, cryptography, rfc3161-client. jsonschema-rs validates events (fast, ECMA-262 patterns);
-  jsonschema checks the schema itself. Use the standard library for HTTP (`urllib.request`) and TOML (`tomllib`).
+- Core dependencies (installed on robots, keep light): typer, pydantic, jsonschema-rs, rfc8785,
+  cryptography, rfc3161-client. jsonschema-rs checks the schema against the 2020-12 meta-schema and
+  validates events (fast, ECMA-262 patterns). The Python `jsonschema` package is a dev dependency only,
+  the reference in a differential test. Use the standard library for HTTP (`urllib.request`) and TOML (`tomllib`).
 - Extra `report`: numpy, pandas, scipy, statsmodels, jinja2, matplotlib.
 - Extra `lerobot`: pyarrow, watchfiles.
 - Do not add a dependency without explaining why. Prefer a maintained package over custom code when it
@@ -55,8 +56,8 @@ end of your reply.
 - No placeholder code, TODO stubs, commented-out code, dead code or print debugging.
 - Measurement logic is pure functions. Input and output happen only at the edges: CLI, recorder,
   adapters.
-- Validate all external input (files, sockets, CLI arguments, configs) at the boundary with jsonschema
-  or pydantic. Bad input produces a flag or a clear one-line error, never a crash or traceback for the
+- Validate all external input (files, sockets, CLI arguments, configs) at the boundary with
+  jsonschema-rs or pydantic. Bad input produces a flag or a clear one-line error, never a crash or traceback for the
   user. Catch broad exceptions only at process boundaries (recorder loop, CLI entry point), log them,
   then keep running or exit non-zero.
 - Time: UTC everywhere, timezone-aware datetimes, RFC 3339 strings ending in `Z`, durations as float
