@@ -1,0 +1,2 @@
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":0,"ts":"2026-10-30T09:00:00.000Z","type":"heartbeat"}
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":1,"ts":"2026-10-30T09:00:01.000Z","type":"session_end"}

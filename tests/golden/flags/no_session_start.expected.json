@@ -1,0 +1,35 @@
+{
+  "counts": {
+    "blank_lines": 0,
+    "errors_by_code": {},
+    "events": 2,
+    "files": 1,
+    "flags": 1,
+    "flags_by_code": {
+      "no_session_start": 1
+    },
+    "lines": 2,
+    "rejected_lines": 0,
+    "sessions": 1
+  },
+  "errors": [],
+  "flags": [
+    {
+      "code": "no_session_start",
+      "detail": "no session_start event",
+      "robot_id": "r01",
+      "seq": 0,
+      "session_id": "s01"
+    }
+  ],
+  "sessions": [
+    {
+      "events": 2,
+      "first_seq": 0,
+      "last_seq": 1,
+      "robot_id": "r01",
+      "session_id": "s01"
+    }
+  ],
+  "spec_version": "0.2"
+}

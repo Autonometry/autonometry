@@ -1,0 +1,4 @@
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":0,"ts":"2026-10-30T09:00:00.000Z","type":"session_start","scopes":["left_arm"],"initial_states":{"left_arm":"idle","right_arm":"idle"},"heartbeat_interval_s":1.0,"hint_policy":"hint_as_shared","task_registry_hash":"0000000000000000000000000000000000000000000000000000000000000000","plan_hash":"0000000000000000000000000000000000000000000000000000000000000000","scope_weights":{"left_arm":1.0,"gripper":2.0}}
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":1,"ts":"2026-10-30T09:00:01.000Z","type":"transition","scope":"base","state":"ai","reason":null,"actor_id":"ai:nav"}
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":2,"ts":"2026-10-30T09:00:02.000Z","type":"help_request","scope":"left_arm"}
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":3,"ts":"2026-10-30T09:00:03.000Z","type":"session_end"}

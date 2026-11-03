@@ -1,0 +1,52 @@
+{
+  "counts": {
+    "blank_lines": 0,
+    "errors_by_code": {
+      "non_finite_number": 4
+    },
+    "events": 3,
+    "files": 1,
+    "flags": 0,
+    "flags_by_code": {},
+    "lines": 7,
+    "rejected_lines": 4,
+    "sessions": 1
+  },
+  "errors": [
+    {
+      "code": "non_finite_number",
+      "file": "non_finite_number.jsonl",
+      "line": 2,
+      "message": "NaN is not a JSON number"
+    },
+    {
+      "code": "non_finite_number",
+      "file": "non_finite_number.jsonl",
+      "line": 3,
+      "message": "Infinity is not a JSON number"
+    },
+    {
+      "code": "non_finite_number",
+      "file": "non_finite_number.jsonl",
+      "line": 4,
+      "message": "-Infinity is not a JSON number"
+    },
+    {
+      "code": "non_finite_number",
+      "file": "non_finite_number.jsonl",
+      "line": 5,
+      "message": "a number is too large for a 64-bit float"
+    }
+  ],
+  "flags": [],
+  "sessions": [
+    {
+      "events": 3,
+      "first_seq": 0,
+      "last_seq": 2,
+      "robot_id": "r01",
+      "session_id": "s01"
+    }
+  ],
+  "spec_version": "0.2"
+}

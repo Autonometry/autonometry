@@ -1,0 +1,58 @@
+{
+  "counts": {
+    "blank_lines": 0,
+    "errors_by_code": {
+      "invalid_timestamp": 5
+    },
+    "events": 3,
+    "files": 1,
+    "flags": 0,
+    "flags_by_code": {},
+    "lines": 8,
+    "rejected_lines": 5,
+    "sessions": 1
+  },
+  "errors": [
+    {
+      "code": "invalid_timestamp",
+      "file": "invalid_timestamp.jsonl",
+      "line": 2,
+      "message": "ts is not a possible UTC date and time"
+    },
+    {
+      "code": "invalid_timestamp",
+      "file": "invalid_timestamp.jsonl",
+      "line": 3,
+      "message": "ts is not a possible UTC date and time"
+    },
+    {
+      "code": "invalid_timestamp",
+      "file": "invalid_timestamp.jsonl",
+      "line": 4,
+      "message": "ts is not a possible UTC date and time"
+    },
+    {
+      "code": "invalid_timestamp",
+      "file": "invalid_timestamp.jsonl",
+      "line": 5,
+      "message": "ts is not a possible UTC date and time"
+    },
+    {
+      "code": "invalid_timestamp",
+      "file": "invalid_timestamp.jsonl",
+      "line": 6,
+      "message": "ts is not a possible UTC date and time"
+    }
+  ],
+  "flags": [],
+  "sessions": [
+    {
+      "events": 3,
+      "first_seq": 0,
+      "last_seq": 2,
+      "robot_id": "r01",
+      "session_id": "s01"
+    }
+  ],
+  "spec_version": "0.2"
+}
