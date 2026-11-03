@@ -1,0 +1,34 @@
+{
+  "counts": {
+    "blank_lines": 0,
+    "errors_by_code": {
+      "line_too_long": 1
+    },
+    "events": 3,
+    "files": 1,
+    "flags": 0,
+    "flags_by_code": {},
+    "lines": 4,
+    "rejected_lines": 1,
+    "sessions": 1
+  },
+  "errors": [
+    {
+      "code": "line_too_long",
+      "file": "line_too_long.jsonl",
+      "line": 2,
+      "message": "line is longer than 65536 bytes"
+    }
+  ],
+  "flags": [],
+  "sessions": [
+    {
+      "events": 3,
+      "first_seq": 0,
+      "last_seq": 2,
+      "robot_id": "r01",
+      "session_id": "s01"
+    }
+  ],
+  "spec_version": "0.2"
+}

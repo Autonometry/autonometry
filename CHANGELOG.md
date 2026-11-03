@@ -14,8 +14,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - GitHub automation: CI (Python 3.12 and 3.13, x86-64 and arm64, pip-audit), release workflow with PyPI Trusted Publishing, Dependabot.
 - `SECURITY.md`, `RELEASING.md`.
 - CI job that installs the lowest allowed versions of the direct dependencies (`uv --resolution lowest-direct`, Python 3.12) and runs the tests, so the minimum versions in `pyproject.toml` are proven.
+- `autonometry validate PATH... [--json] [--spec VERSION]`: reads JSON Lines event logs safely and reports rejected lines and structural flags. Exit status 0 when nothing was rejected (flags are warnings), 1 when any line was rejected, 2 on bad usage. Event contents are never printed.
+- `autonometry.reader`: streaming reader for one or many log files. Lines are read as bytes with a length limit (a longer line is skipped without being held in memory), decoded as UTF-8 (a BOM only at the start of a file; LF and CRLF), parsed as I-JSON (RFC 7493: no duplicate keys, no NaN or Infinity, integers within ±(2^53−1), no lone surrogates or Unicode noncharacters), validated against the event schema (integer fields must be written as integers, not `5.0`), and their `ts` checked for impossible dates. Valid events are grouped by `(robot_id, session_id)` and ordered by `seq`; a repeated `seq` is rejected. Every rejected line is counted, and the first `list_max_per_code` of each code are kept, so memory grows with the events kept, never with the size or number of rejected lines.
+- `autonometry.checks`: per-session loader flags `no_session_start`, `no_session_end`, `missing_initial_state`, `undeclared_scope`, `seq_gap`, `ts_regression`, `time_gap`, `nested_task`, `task_end_without_start`, `task_not_closed`, `distance_regression`, `ts_reconstructed`, `repeated_session_marker`, `event_outside_session`.
+- `autonometry.events`: immutable, JSON-serialisable results (`LogCheck`, `Session`, `LineError`, `Flag`, `Counts`) and an `Event` TypedDict.
+- `autonometry.strictjson` (I-JSON parsing) and `autonometry.timestamps` (RFC 3339 UTC timestamps as integer nanoseconds).
+- Spec v0.2: `rules.toml` `[errors]` table (error codes for rejected lines, `max_line_bytes = 65536`, `list_max_per_code = 100`) and the **Rejected lines** paragraph in `definitions.md` section 8. `Rules` loads and checks the new table.
+- Spec v0.2, stricter log format: `ts` needs 3 to 9 fraction digits and a leap second is invalid (section 3); identifiers and scope names have a fixed character set and length (`$defs/id`, `$defs/scope`, `propertyNames` on scope maps; section 8, **Identifiers**); the **JSON** paragraph of section 8 (I-JSON, integer fields written as integers); flags `repeated_session_marker` and `event_outside_session` (section 1); error code `invalid_unicode`.
+- Command line option `--verbose` (`-v`): debug output and full tracebacks.
+- Dependency `jsonschema-rs`: compiled Draft 2020-12 validator, about 70 times faster than `jsonschema` on the event schema, with ECMA-262 regular expressions as JSON Schema requires. It also checks the schema itself against the meta-schema, so `jsonschema` is no longer a core dependency; it stays in the dev group as the reference in a differential test, and `types-jsonschema` is dropped.
+- CI: test jobs on Windows and macOS (Python 3.12), and a dependency audit of both the locked and the lowest-version sets.
+- `.gitattributes`: LF line endings in the repository on every OS, so spec file hashes match everywhere.
 
 ### Changed
 
 - Minimum dependency versions lowered to the oldest releases that provide the features we use and carry no known advisory for them (`uv.lock` keeps exact pins). The tooling run by `uv run pytest` now also excludes `research/` from mypy and from `pytest .`.
 - Slow statistical tests run with `uv run pytest -m slow --no-cov`.
+- Logging is configured once by the console entry point: warnings and errors print as one clean line without exception text; an unexpected crash prints only `error: unexpected failure (<type>)` unless `--verbose` is given.
+- `Rules.states` is a read-only mapping, so loaded rules can be shared and cached.
+- Project URLs, `SECURITY.md` and `RELEASING.md` use the exact GitHub owner name `Autonometry` (PyPI Trusted Publishing compares it); release tags are annotated (`git tag -a`).
+
+### Security
+
+- `validate` output cannot carry terminal control codes from a log: robot and session ids, the only event values it prints, must match `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`, so a line with escape codes in them is rejected (`schema_violation`) and never echoed.
+
+### Removed
+
+- The `License :: OSI Approved` classifier: the SPDX `license` field replaces it (PEP 639).

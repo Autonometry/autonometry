@@ -92,8 +92,14 @@ codes = [
   "time_gap", "seq_gap", "ts_regression", "missing_initial_state", "help_reason_recoded",
   "undeclared_scope", "nested_task", "task_end_without_start", "task_not_closed",
   "distance_regression", "no_session_start", "no_session_end", "idle_in_task",
-  "ts_reconstructed", "undeclared_device",
+  "ts_reconstructed", "undeclared_device", "repeated_session_marker",
+  "event_outside_session",
 ]
+
+[errors]
+codes = ["invalid_utf8", "invalid_unicode", "line_too_long", "invalid_json", "not_an_object", "duplicate_key", "non_finite_number", "integer_out_of_range", "schema_violation", "invalid_timestamp", "duplicate_seq"]
+max_line_bytes = 65536
+list_max_per_code = 100
 
 # Trust levels (definitions.md 8; research/methods/trust.md section 7).
 [trust]

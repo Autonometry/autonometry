@@ -18,13 +18,14 @@ Resolves the cases that the SO-101 / LeRobot dossier found uncovered by v0.1, an
 5. `ts` is the recorder's UTC observation time; events rebuilt after the fact from files are marked and capped at trust level L1 (Section 8).
 6. Hashing is fixed: RFC 8785 canonical JSON and a domain-separated genesis hash (Section 8).
 7. Schema: `scripted` added to the state enum; `device_id` and `device_registry_hash` added; `x_` extension fields now validate, as the standard already allowed.
+8. Stricter log format: `ts` needs 3 to 9 fraction digits and rejects leap seconds; identifiers and scope names have a fixed safe character set and length; each line is I-JSON with integer fields written as integers; a repeated `session_start` or `session_end` and events outside the session are flagged; rejected lines are counted and listed up to `list_max_per_code` per code (Sections 1, 3, 8).
 
 ## 1. Scope and units of observation
 
 | Term | Definition |
 |---|---|
 | **Robot** | One physical system with a stable `robot_id`. |
-| **Session** | A contiguous period of logging for one robot, with a stable `session_id`, opened by a `session_start` event and closed by a `session_end` event. The session is the primary clustering unit for uncertainty (interventions and task outcomes within a session are not independent). |
+| **Session** | A contiguous period of logging for one robot, with a stable `session_id`, opened by a `session_start` event and closed by a `session_end` event. The session is the primary clustering unit for uncertainty (interventions and task outcomes within a session are not independent). A session has one `session_start` and one `session_end`. A repeated one is flagged `repeated_session_marker`; events before `session_start` or after `session_end` are flagged `event_outside_session` and are not observed time (Section 2, rule 4). |
 | **Control scope** | The part of the robot that a control state applies to. `whole_robot` by default; otherwise a named channel such as `left_arm`, `right_arm`, `base`, `head`, `gripper_L`. Scopes within one robot MUST be disjoint and are declared at `session_start` (`scopes` attribute). |
 | **Task** | A declared unit of work. A task MUST be declared before the session as a `task_definition_id` in a pre-registered task list (the task registry is an input to the report, not something derived from the log). Each task instance has a `task_id`, a `task_start` and a `task_end` event; `task_end` carries `outcome` in {`success`, `failure`, `aborted`, `unknown`}. Events with `task_id = null` are between-task time. Re-labelling or splitting tasks after the fact changes the task autonomy rate, so the registry is frozen and its hash is written into `session_start.task_registry_hash`. |
 | **Actor** | A human or AI agent that holds control of a scope. `actor_id` is a pseudonymous identifier; automated controllers are named `ai:<controller_id>` and scripts `script:<script_id>`. |
@@ -58,7 +59,7 @@ A transition event records that `scope` entered `state` at `ts`. It applies from
 | Field | Type | Rule |
 |---|---|---|
 | `seq` | integer >= 0 | Strictly increasing within a session, one sequence shared by all scopes. |
-| `ts` | string | RFC 3339 / ISO 8601 date-time in UTC with the `Z` suffix and at least millisecond precision, e.g. `2026-10-30T09:15:02.250Z`. `ts` MUST be non-decreasing with `seq`. |
+| `ts` | string | RFC 3339 date-time in UTC with the `Z` suffix and 3 to 9 fraction digits, e.g. `2026-10-30T09:15:02.250Z`. Second `60` (a leap second) is invalid; recorders use a clock that smears or steps leap seconds. `ts` MUST be non-decreasing with `seq`. |
 | `state` | enum | One of the eight states. |
 | `reason` | enum, nullable | `ai_requested_help`, `human_initiated`, `safety`, `planned`. Required when `state` is `human_local`, `human_remote`, `shared` or `safety_stop`; MAY be null for transitions into `ai`, `scripted`, `idle`, `unknown`. |
 | `actor_id` | string, nullable | Who holds control after the transition. Required when `state` is `human_local`, `human_remote` or `shared`. |
@@ -187,9 +188,15 @@ The log is JSON Lines (one JSON object per line) validated against `event.schema
 
 Common fields on every event: `robot_id`, `session_id`, `task_id` (nullable), `seq`, `ts`, `type`; optional `distance_m` (cumulative metres since `session_start`, non-decreasing), `prev_hash`, `hash`. `hash` is the lower-case hex SHA-256 of the event serialised with the RFC 8785 JSON Canonicalization Scheme (https://www.rfc-editor.org/rfc/rfc8785), without its own `hash` field and including `prev_hash`. `prev_hash` is the previous event's `hash`; for the first event of a session it is the genesis hash SHA-256 of the UTF-8 string `autonometry/chain-v1|<robot_id>|<session_id>` (the prefix names the hashing scheme, not the spec version, so it changes only if the hashing itself changes). `prev_hash` may be null only in unsealed (trust level L1) logs; a verifier asked for L2 or above MUST fail when any event lacks `hash` or `prev_hash`. The trust levels that use these fields are specified by the sibling trust review.
 
+**Identifiers.** `robot_id`, `session_id`, `task_id`, `task_definition_id`, `actor_id`, `device_id` and `plan_item_id` are 1 to 128 ASCII letters, digits, `.`, `_`, `:` or `-`, starting with a letter or digit. Scope names are 1 to 64 ASCII letters, digits, `_`, `.` or `-`. Identifiers are therefore safe to print in terminals and reports.
+
+**JSON.** Each line is one I-JSON object (RFC 7493): no duplicate keys, no lone surrogates or Unicode noncharacters, numbers within the range of an IEEE 754 double, integers within ±(2^53 − 1). Integer fields (`seq`, `related_seq`, `n_supervisors`) are written as JSON integers, without a fraction or exponent (`5`, not `5.0`).
+
 **Time.** `ts` is the time the recorder observed the event, from a UTC clock synchronised by NTP or PTP; the clock status is recorded at every checkpoint (trust review, Section 4.2). A source's own timestamp MAY be kept as `x_src_ts` with `x_src_clock` (`wall`, `monotonic`, `sim`, `frame_index`). Events rebuilt after the fact from files rather than observed live (for example from LeRobot dataset frames, whose `timestamp` is `frame_index / fps`) MUST carry `x_ts_reconstructed: true`; the loader counts them under the flag `ts_reconstructed`, and spans built from them are reported at trust level L1 at most.
 
 **Extensions.** Fields whose names start with `x_` are allowed on every event and ignored by the metrics. Any other field not defined here is a schema error.
+
+**Rejected lines.** A line that cannot be read as one valid event is rejected with an error code from `rules.toml` `[errors]` and reported with its line number. A rejected line leaves a gap in `seq`, so the interval around it becomes `unknown` (Section 2, rule 2). Readers count every rejected line and MAY list only the first `list_max_per_code` (`rules.toml` `[errors]`) of each code.
 
 ## 9. Parameter table (defaults)
 

@@ -1,0 +1,4 @@
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":0,"ts":"2026-10-30T09:00:00.000Z","type":"session_start","scopes":["whole_robot"],"initial_states":{"whole_robot":"idle"},"heartbeat_interval_s":1.0,"hint_policy":"hint_as_shared","task_registry_hash":"0000000000000000000000000000000000000000000000000000000000000000","plan_hash":"0000000000000000000000000000000000000000000000000000000000000000"}
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":1,"ts":"2026-10-30T09:00:02.000Z","type":"heartbeat"}
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":2,"ts":"2026-10-30T09:00:01.250Z","type":"heartbeat"}
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":3,"ts":"2026-10-30T09:00:02.000Z","type":"session_end"}

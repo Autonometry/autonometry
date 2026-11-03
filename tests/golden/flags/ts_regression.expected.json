@@ -1,0 +1,35 @@
+{
+  "counts": {
+    "blank_lines": 0,
+    "errors_by_code": {},
+    "events": 4,
+    "files": 1,
+    "flags": 1,
+    "flags_by_code": {
+      "ts_regression": 1
+    },
+    "lines": 4,
+    "rejected_lines": 0,
+    "sessions": 1
+  },
+  "errors": [],
+  "flags": [
+    {
+      "code": "ts_regression",
+      "detail": "ts is 0.750 s earlier than at seq 1",
+      "robot_id": "r01",
+      "seq": 2,
+      "session_id": "s01"
+    }
+  ],
+  "sessions": [
+    {
+      "events": 4,
+      "first_seq": 0,
+      "last_seq": 3,
+      "robot_id": "r01",
+      "session_id": "s01"
+    }
+  ],
+  "spec_version": "0.2"
+}

@@ -1,0 +1,118 @@
+{
+  "counts": {
+    "blank_lines": 0,
+    "errors_by_code": {
+      "schema_violation": 15
+    },
+    "events": 3,
+    "files": 1,
+    "flags": 0,
+    "flags_by_code": {},
+    "lines": 18,
+    "rejected_lines": 15,
+    "sessions": 1
+  },
+  "errors": [
+    {
+      "code": "schema_violation",
+      "file": "schema_violation.jsonl",
+      "line": 2,
+      "message": "event: missing field type"
+    },
+    {
+      "code": "schema_violation",
+      "file": "schema_violation.jsonl",
+      "line": 3,
+      "message": "event: has a field the schema does not define (extensions start with x_)"
+    },
+    {
+      "code": "schema_violation",
+      "file": "schema_violation.jsonl",
+      "line": 4,
+      "message": "/state: must be one of \"ai\", \"human_local\", \"human_remote\", \"shared\", \"scripted\", \"safety_stop\", \"idle\", \"unknown\""
+    },
+    {
+      "code": "schema_violation",
+      "file": "schema_violation.jsonl",
+      "line": 5,
+      "message": "event: missing field actor_id"
+    },
+    {
+      "code": "schema_violation",
+      "file": "schema_violation.jsonl",
+      "line": 6,
+      "message": "/ts: does not match the pattern ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3,9}Z$"
+    },
+    {
+      "code": "schema_violation",
+      "file": "schema_violation.jsonl",
+      "line": 7,
+      "message": "/ts: does not match the pattern ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3,9}Z$"
+    },
+    {
+      "code": "schema_violation",
+      "file": "schema_violation.jsonl",
+      "line": 8,
+      "message": "/ts: does not match the pattern ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3,9}Z$"
+    },
+    {
+      "code": "schema_violation",
+      "file": "schema_violation.jsonl",
+      "line": 9,
+      "message": "/seq: must be >= 0"
+    },
+    {
+      "code": "schema_violation",
+      "file": "schema_violation.jsonl",
+      "line": 10,
+      "message": "/seq: must be of type integer"
+    },
+    {
+      "code": "schema_violation",
+      "file": "schema_violation.jsonl",
+      "line": 11,
+      "message": "/initial_states/*: must be one of \"ai\", \"human_local\", \"human_remote\", \"shared\", \"scripted\", \"safety_stop\", \"idle\", \"unknown\""
+    },
+    {
+      "code": "schema_violation",
+      "file": "schema_violation.jsonl",
+      "line": 12,
+      "message": "/robot_id: does not match the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    {
+      "code": "schema_violation",
+      "file": "schema_violation.jsonl",
+      "line": 13,
+      "message": "/session_id: does not match the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    {
+      "code": "schema_violation",
+      "file": "schema_violation.jsonl",
+      "line": 14,
+      "message": "/seq: must be written as an integer"
+    },
+    {
+      "code": "schema_violation",
+      "file": "schema_violation.jsonl",
+      "line": 15,
+      "message": "/ts: does not match the pattern ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3,9}Z$"
+    },
+    {
+      "code": "schema_violation",
+      "file": "schema_violation.jsonl",
+      "line": 16,
+      "message": "/initial_states: has a key that does not match the pattern ^[A-Za-z0-9_.-]{1,64}$"
+    }
+  ],
+  "flags": [],
+  "sessions": [
+    {
+      "events": 3,
+      "first_seq": 0,
+      "last_seq": 2,
+      "robot_id": "r01",
+      "session_id": "s01"
+    }
+  ],
+  "spec_version": "0.2"
+}

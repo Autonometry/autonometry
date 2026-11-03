@@ -7,7 +7,7 @@ Releases go to PyPI from GitHub Actions with [Trusted Publishing](https://docs.p
 1. **GitHub environment.** In the repository: *Settings → Environments → New environment*, name it exactly `pypi`. Add required reviewers so that a person approves each publish.
 2. **Pending trusted publisher on PyPI** (the project does not exist on PyPI yet). Sign in at <https://pypi.org>, open *Your account → Publishing* (<https://pypi.org/manage/account/publishing/>), and under *Add a new pending publisher* choose **GitHub** and enter:
    - PyPI project name: `autonometry`
-   - Owner: `autonometry`
+   - Owner: `Autonometry` (exact case: trusted publishing compares it)
    - Repository name: `autonometry`
    - Workflow name: `release.yml`
    - Environment name: `pypi`
@@ -29,7 +29,7 @@ Releases go to PyPI from GitHub Actions with [Trusted Publishing](https://docs.p
 6. Tag the merged commit and push the tag:
    ```
    git checkout main && git pull
-   git tag -s vX.Y.Z -m "autonometry X.Y.Z"
+   git tag -a vX.Y.Z -m "autonometry X.Y.Z"
    git push origin vX.Y.Z
    ```
    The tag must equal `v` plus `__version__`; the workflow fails otherwise.

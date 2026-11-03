@@ -1,0 +1,46 @@
+{
+  "counts": {
+    "blank_lines": 0,
+    "errors_by_code": {
+      "integer_out_of_range": 3
+    },
+    "events": 3,
+    "files": 1,
+    "flags": 0,
+    "flags_by_code": {},
+    "lines": 6,
+    "rejected_lines": 3,
+    "sessions": 1
+  },
+  "errors": [
+    {
+      "code": "integer_out_of_range",
+      "file": "integer_out_of_range.jsonl",
+      "line": 2,
+      "message": "an integer is outside +/-(2^53 - 1)"
+    },
+    {
+      "code": "integer_out_of_range",
+      "file": "integer_out_of_range.jsonl",
+      "line": 3,
+      "message": "an integer is outside +/-(2^53 - 1)"
+    },
+    {
+      "code": "integer_out_of_range",
+      "file": "integer_out_of_range.jsonl",
+      "line": 4,
+      "message": "an integer is outside +/-(2^53 - 1)"
+    }
+  ],
+  "flags": [],
+  "sessions": [
+    {
+      "events": 3,
+      "first_seq": 0,
+      "last_seq": 2,
+      "robot_id": "r01",
+      "session_id": "s01"
+    }
+  ],
+  "spec_version": "0.2"
+}

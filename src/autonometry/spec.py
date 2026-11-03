@@ -10,14 +10,23 @@ import json
 import logging
 import re
 import tomllib
+from collections.abc import Mapping
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
-from typing import Any, Literal
+from types import MappingProxyType
+from typing import Annotated, Any, Literal
 
-from jsonschema import Draft202012Validator
-from jsonschema.exceptions import SchemaError
-from pydantic import BaseModel, ConfigDict, ValidationError
+import jsonschema_rs
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    PositiveInt,
+    SerializerFunctionWrapHandler,
+    ValidationError,
+    WrapSerializer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +121,15 @@ class FlagRules(_Frozen):
     codes: tuple[str, ...]
 
 
+class ErrorRules(_Frozen):
+    """Codes for rejected lines, the line length limit in bytes and how many rejected lines of
+    each code a reader lists (definitions.md 8)."""
+
+    codes: tuple[str, ...]
+    max_line_bytes: PositiveInt
+    list_max_per_code: PositiveInt
+
+
 class TrustRules(_Frozen):
     """Trust thresholds (definitions.md 8)."""
 
@@ -121,12 +139,26 @@ class TrustRules(_Frozen):
     default_tau_s: float
 
 
+def _read_only(value: Mapping[str, StateRule]) -> Mapping[str, StateRule]:
+    return MappingProxyType(dict(value))
+
+
+def _as_dict(value: Mapping[str, StateRule], handler: SerializerFunctionWrapHandler) -> Any:
+    return handler(dict(value))
+
+
+# Cannot be changed after loading, so a loaded Rules object can be shared and cached.
+_StateTable = Annotated[
+    Mapping[str, StateRule], AfterValidator(_read_only), WrapSerializer(_as_dict)
+]
+
+
 class Rules(_Frozen):
-    """Typed, immutable form of ``rules.toml``. Unknown keys are rejected."""
+    """Typed, read-only form of ``rules.toml``. Unknown keys are rejected."""
 
     spec_version: str
     chain_genesis_prefix: str
-    states: dict[str, StateRule]
+    states: _StateTable
     whole_robot: WholeRobotRule
     interventions: InterventionRules
     holds: HoldRules
@@ -135,6 +167,7 @@ class Rules(_Frozen):
     gaps: GapRules
     params: Params
     flags: FlagRules
+    errors: ErrorRules
     trust: TrustRules
 
 
@@ -179,6 +212,16 @@ def _version_dir(version: str) -> Traversable:
     return folder
 
 
+def known_version(version: str) -> str:
+    """Return a shipped spec version in normal form (``"v0.2"`` gives ``"0.2"``).
+
+    Raises:
+        SpecError: the version is malformed or not shipped with this package.
+    """
+    _version_dir(version)
+    return _normalise(version)
+
+
 def _read(version: str, name: str) -> bytes:
     try:
         return (_version_dir(version) / name).read_bytes()
@@ -204,11 +247,32 @@ def load_schema(version: str) -> dict[str, Any]:
         raise SpecError(f"{_SCHEMA_FILE} of spec {version} is not valid JSON: {exc}") from exc
     if not isinstance(schema, dict):
         raise SpecError(f"{_SCHEMA_FILE} of spec {version} is not a JSON object")
-    try:
-        Draft202012Validator.check_schema(schema)
-    except SchemaError as exc:
-        raise SpecError(f"{_SCHEMA_FILE} of spec {version} is invalid: {exc.message}") from exc
+    compile_schema(version, schema)
     return schema
+
+
+def _no_retrieval(uri: str) -> Any:
+    """Refuse to fetch a schema reference: loading and validation never touch the network."""
+    raise SpecError(f"the event schema refers to {uri}, which is not fetched")
+
+
+def compile_schema(version: str, schema: dict[str, Any]) -> jsonschema_rs.Draft202012Validator:
+    """Compile the event schema of a spec version into a validator (definitions.md section 8).
+
+    Compiling checks the schema against the draft 2020-12 meta-schema and compiles every
+    ``pattern`` as ECMA-262, the engine that then validates events. Formats are not checked
+    (``ts`` is parsed separately) and references outside the schema are refused, never fetched.
+
+    Raises:
+        SpecError: the schema is invalid; the message is one line.
+    """
+    try:
+        return jsonschema_rs.Draft202012Validator(
+            schema, validate_formats=False, retriever=_no_retrieval
+        )
+    except ValueError as exc:
+        first_line = (str(exc).splitlines() or [type(exc).__name__])[0]
+        raise SpecError(f"{_SCHEMA_FILE} of spec {version} is invalid: {first_line}") from exc
 
 
 def load_rules(version: str) -> Rules:
@@ -282,19 +346,27 @@ def find_inconsistencies(version: str, schema: dict[str, Any], rules: Rules) -> 
             f"{where} names unknown state {name!r}" for name in names if name not in rule_states
         ]
 
-    codes = rules.flags.codes
+    problems += _duplicates("flag code", rules.flags.codes)
+    problems += _duplicates("error code", rules.errors.codes)
     problems += [
-        f"flag code {code!r} appears more than once"
-        for code in sorted({c for c in codes if codes.count(c) > 1})
+        f"code {code!r} is both a flag and an error code"
+        for code in sorted(set(rules.flags.codes) & set(rules.errors.codes))
     ]
     return problems
+
+
+def _duplicates(kind: str, codes: tuple[str, ...]) -> list[str]:
+    return [
+        f"{kind} {code!r} appears more than once"
+        for code in sorted({c for c in codes if codes.count(c) > 1})
+    ]
 
 
 def check_consistency(version: str) -> None:
     """Check that rules.toml and the schema of a version agree (definitions.md sections 2, 3, 8).
 
     Rule states equal the schema state enum, rule reasons equal the schema reason enum, every state
-    named in the rules exists and flag codes are unique.
+    named in the rules exists, flag and error codes are unique and no code is both.
 
     Raises:
         SpecConsistencyError: all problems, on one line.

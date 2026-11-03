@@ -1,6 +1,7 @@
 import shutil
 import subprocess
 import tarfile
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -47,3 +48,16 @@ def test_sdist_carries_spec_but_not_research(dist: Path) -> None:
         names = archive.getnames()
     assert any(name.endswith("spec/v0.2/rules.toml") for name in names)
     assert not any("/research/" in name for name in names)
+
+
+def test_metadata_uses_spdx_licence_and_exact_owner() -> None:
+    project = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    assert project["license"] == "Apache-2.0"
+    assert not any(c.startswith("License ::") for c in project["classifiers"])
+    assert all(
+        url.startswith("https://github.com/Autonometry/autonometry")
+        for url in project["urls"].values()
+    )
+    for doc in ("SECURITY.md", "RELEASING.md"):
+        assert "github.com/autonometry/" not in (REPO / doc).read_text(encoding="utf-8")
+    assert "git tag -a" in (REPO / "RELEASING.md").read_text(encoding="utf-8")

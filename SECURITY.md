@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please report security problems privately through GitHub private vulnerability reporting:
-<https://github.com/autonometry/autonometry/security/advisories/new>
+<https://github.com/Autonometry/autonometry/security/advisories/new>
 (repository **Security** tab, then **Report a vulnerability**).
 
 Do not open a public issue or pull request for a vulnerability, and do not include real robot logs, keys or personal data in a report.

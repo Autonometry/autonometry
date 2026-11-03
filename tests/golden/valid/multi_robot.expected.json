@@ -1,0 +1,39 @@
+{
+  "counts": {
+    "blank_lines": 0,
+    "errors_by_code": {},
+    "events": 28,
+    "files": 1,
+    "flags": 0,
+    "flags_by_code": {},
+    "lines": 28,
+    "rejected_lines": 0,
+    "sessions": 3
+  },
+  "errors": [],
+  "flags": [],
+  "sessions": [
+    {
+      "events": 16,
+      "first_seq": 0,
+      "last_seq": 15,
+      "robot_id": "r01",
+      "session_id": "s01"
+    },
+    {
+      "events": 8,
+      "first_seq": 0,
+      "last_seq": 7,
+      "robot_id": "r01",
+      "session_id": "s02"
+    },
+    {
+      "events": 4,
+      "first_seq": 10,
+      "last_seq": 13,
+      "robot_id": "r02",
+      "session_id": "s01"
+    }
+  ],
+  "spec_version": "0.2"
+}

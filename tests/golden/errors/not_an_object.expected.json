@@ -1,0 +1,58 @@
+{
+  "counts": {
+    "blank_lines": 0,
+    "errors_by_code": {
+      "not_an_object": 5
+    },
+    "events": 3,
+    "files": 1,
+    "flags": 0,
+    "flags_by_code": {},
+    "lines": 8,
+    "rejected_lines": 5,
+    "sessions": 1
+  },
+  "errors": [
+    {
+      "code": "not_an_object",
+      "file": "not_an_object.jsonl",
+      "line": 2,
+      "message": "line is an array, not a JSON object"
+    },
+    {
+      "code": "not_an_object",
+      "file": "not_an_object.jsonl",
+      "line": 3,
+      "message": "line is a string, not a JSON object"
+    },
+    {
+      "code": "not_an_object",
+      "file": "not_an_object.jsonl",
+      "line": 4,
+      "message": "line is a number, not a JSON object"
+    },
+    {
+      "code": "not_an_object",
+      "file": "not_an_object.jsonl",
+      "line": 5,
+      "message": "line is null, not a JSON object"
+    },
+    {
+      "code": "not_an_object",
+      "file": "not_an_object.jsonl",
+      "line": 6,
+      "message": "line is a boolean, not a JSON object"
+    }
+  ],
+  "flags": [],
+  "sessions": [
+    {
+      "events": 3,
+      "first_seq": 0,
+      "last_seq": 2,
+      "robot_id": "r01",
+      "session_id": "s01"
+    }
+  ],
+  "spec_version": "0.2"
+}
