@@ -1,0 +1,18 @@
+# Text files are stored and checked out with LF on every OS, so spec file hashes match everywhere.
+* text=auto eol=lf
+
+# Binary files: never converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.gz binary
+*.zip binary
+*.whl binary
+*.parquet binary
+*.arrow binary
+
+# Golden input logs are byte-exact fixtures (CRLF, BOM and invalid UTF-8 cases): never converted.
+tests/golden/**/*.jsonl -text
