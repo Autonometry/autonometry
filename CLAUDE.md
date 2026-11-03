@@ -36,8 +36,9 @@ end of your reply.
 
 - Python >= 3.12. uv for environments, lockfile and builds (hatchling backend). ruff for lint and
   format, mypy --strict on `src/`, pytest with hypothesis and pytest-cov.
-- Core dependencies (installed on robots, keep light): typer, pydantic, jsonschema, rfc8785,
-  cryptography, rfc3161-client. Use the standard library for HTTP (`urllib.request`) and TOML (`tomllib`).
+- Core dependencies (installed on robots, keep light): typer, pydantic, jsonschema, jsonschema-rs,
+  rfc8785, cryptography, rfc3161-client. jsonschema-rs validates events (fast, ECMA-262 patterns);
+  jsonschema checks the schema itself. Use the standard library for HTTP (`urllib.request`) and TOML (`tomllib`).
 - Extra `report`: numpy, pandas, scipy, statsmodels, jinja2, matplotlib.
 - Extra `lerobot`: pyarrow, watchfiles.
 - Do not add a dependency without explaining why. Prefer a maintained package over custom code when it
