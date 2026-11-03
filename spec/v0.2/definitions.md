@@ -191,6 +191,8 @@ Common fields on every event: `robot_id`, `session_id`, `task_id` (nullable), `s
 
 **Extensions.** Fields whose names start with `x_` are allowed on every event and ignored by the metrics. Any other field not defined here is a schema error.
 
+**Rejected lines.** A line that cannot be read as one valid event is rejected with an error code from `rules.toml` `[errors]` and reported with its line number. A rejected line leaves a gap in `seq`, so the interval around it becomes `unknown` (Section 2, rule 2).
+
 ## 9. Parameter table (defaults)
 
 | Parameter | Default | Section |

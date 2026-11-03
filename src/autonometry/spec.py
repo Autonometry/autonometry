@@ -10,14 +10,24 @@ import json
 import logging
 import re
 import tomllib
+from collections.abc import Mapping
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
-from typing import Any, Literal
+from types import MappingProxyType
+from typing import Annotated, Any, Literal
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    PositiveInt,
+    SerializerFunctionWrapHandler,
+    ValidationError,
+    WrapSerializer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +122,13 @@ class FlagRules(_Frozen):
     codes: tuple[str, ...]
 
 
+class ErrorRules(_Frozen):
+    """Codes for rejected lines and the line length limit in bytes (definitions.md 8)."""
+
+    codes: tuple[str, ...]
+    max_line_bytes: PositiveInt
+
+
 class TrustRules(_Frozen):
     """Trust thresholds (definitions.md 8)."""
 
@@ -121,12 +138,26 @@ class TrustRules(_Frozen):
     default_tau_s: float
 
 
+def _read_only(value: Mapping[str, StateRule]) -> Mapping[str, StateRule]:
+    return MappingProxyType(dict(value))
+
+
+def _as_dict(value: Mapping[str, StateRule], handler: SerializerFunctionWrapHandler) -> Any:
+    return handler(dict(value))
+
+
+# Cannot be changed after loading, so a loaded Rules object can be shared and cached.
+_StateTable = Annotated[
+    Mapping[str, StateRule], AfterValidator(_read_only), WrapSerializer(_as_dict)
+]
+
+
 class Rules(_Frozen):
-    """Typed, immutable form of ``rules.toml``. Unknown keys are rejected."""
+    """Typed, read-only form of ``rules.toml``. Unknown keys are rejected."""
 
     spec_version: str
     chain_genesis_prefix: str
-    states: dict[str, StateRule]
+    states: _StateTable
     whole_robot: WholeRobotRule
     interventions: InterventionRules
     holds: HoldRules
@@ -135,6 +166,7 @@ class Rules(_Frozen):
     gaps: GapRules
     params: Params
     flags: FlagRules
+    errors: ErrorRules
     trust: TrustRules
 
 
@@ -177,6 +209,16 @@ def _version_dir(version: str) -> Traversable:
         known = ", ".join(available_versions()) or "none"
         raise SpecError(f"unknown spec version {version!r}; available: {known}")
     return folder
+
+
+def known_version(version: str) -> str:
+    """Return a shipped spec version in normal form (``"v0.2"`` gives ``"0.2"``).
+
+    Raises:
+        SpecError: the version is malformed or not shipped with this package.
+    """
+    _version_dir(version)
+    return _normalise(version)
 
 
 def _read(version: str, name: str) -> bytes:
@@ -282,19 +324,27 @@ def find_inconsistencies(version: str, schema: dict[str, Any], rules: Rules) -> 
             f"{where} names unknown state {name!r}" for name in names if name not in rule_states
         ]
 
-    codes = rules.flags.codes
+    problems += _duplicates("flag code", rules.flags.codes)
+    problems += _duplicates("error code", rules.errors.codes)
     problems += [
-        f"flag code {code!r} appears more than once"
-        for code in sorted({c for c in codes if codes.count(c) > 1})
+        f"code {code!r} is both a flag and an error code"
+        for code in sorted(set(rules.flags.codes) & set(rules.errors.codes))
     ]
     return problems
+
+
+def _duplicates(kind: str, codes: tuple[str, ...]) -> list[str]:
+    return [
+        f"{kind} {code!r} appears more than once"
+        for code in sorted({c for c in codes if codes.count(c) > 1})
+    ]
 
 
 def check_consistency(version: str) -> None:
     """Check that rules.toml and the schema of a version agree (definitions.md sections 2, 3, 8).
 
     Rule states equal the schema state enum, rule reasons equal the schema reason enum, every state
-    named in the rules exists and flag codes are unique.
+    named in the rules exists, flag and error codes are unique and no code is both.
 
     Raises:
         SpecConsistencyError: all problems, on one line.

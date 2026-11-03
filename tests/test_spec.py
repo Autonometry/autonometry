@@ -195,3 +195,51 @@ def test_unknown_version_is_rejected() -> None:
 def test_any_version_text_gives_hashes_or_spec_error(text: str) -> None:
     with contextlib.suppress(spec.SpecError):
         spec.spec_file_hashes(text)
+
+
+def test_spec_files_have_no_carriage_return__defs_8() -> None:
+    """Spec hashes must match on every OS, so no file under spec/ may contain CR."""
+    files = [path for path in REPO_SPEC.rglob("*") if path.is_file()]
+    assert files
+    for path in files:
+        assert b"\r" not in path.read_bytes(), path
+
+
+def test_rules_state_table_is_read_only__defs_2() -> None:
+    rules = spec.load_rules("0.2")
+    with pytest.raises(TypeError):
+        rules.states["ai"] = rules.states["idle"]  # type: ignore[index]
+    with pytest.raises(AttributeError):
+        rules.states.clear()  # type: ignore[attr-defined]
+    assert spec.Rules.model_validate(rules.model_dump()) == rules
+
+
+def test_rules_error_table__defs_8() -> None:
+    errors = spec.load_rules("0.2").errors
+    assert errors.max_line_bytes == 65536
+    assert errors.codes[0] == "invalid_utf8"
+    assert len(errors.codes) == 10
+
+
+def test_non_positive_line_limit_is_a_spec_error__defs_8(spec_copy: Path) -> None:
+    _edit_rules(spec_copy, "max_line_bytes = 65536", "max_line_bytes = 0")
+    with pytest.raises(spec.SpecError, match=r"errors\.max_line_bytes"):
+        spec.load_rules("0.2")
+
+
+def test_duplicate_error_code_fails_consistency__defs_8(spec_copy: Path) -> None:
+    _edit_rules(spec_copy, '"invalid_utf8", "line_too_long"', '"invalid_utf8", "invalid_utf8"')
+    with pytest.raises(spec.SpecConsistencyError, match="error code 'invalid_utf8' appears more"):
+        spec.check_consistency("0.2")
+
+
+def test_code_in_flags_and_errors_fails_consistency__defs_8(spec_copy: Path) -> None:
+    _edit_rules(spec_copy, '"duplicate_seq"]', '"duplicate_seq", "seq_gap"]')
+    with pytest.raises(spec.SpecConsistencyError, match="'seq_gap' is both a flag and an error"):
+        spec.check_consistency("0.2")
+
+
+def test_known_version_normalises() -> None:
+    assert spec.known_version("v0.2") == "0.2"
+    with pytest.raises(spec.SpecError, match="unknown spec version"):
+        spec.known_version("9.9")

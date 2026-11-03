@@ -95,6 +95,10 @@ codes = [
   "ts_reconstructed", "undeclared_device",
 ]
 
+[errors]
+codes = ["invalid_utf8", "line_too_long", "invalid_json", "not_an_object", "duplicate_key", "non_finite_number", "integer_out_of_range", "schema_violation", "invalid_timestamp", "duplicate_seq"]
+max_line_bytes = 65536
+
 # Trust levels (definitions.md 8; research/methods/trust.md section 7).
 [trust]
 reconstructed_events_max_level = 1
