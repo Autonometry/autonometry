@@ -1,0 +1,697 @@
+{
+ "alpha": 0.05,
+ "n_boot": 1000,
+ "seed": 0,
+ "params": {
+  "idle_threshold_s": 30.0,
+  "gap_tolerance_s": 30.0,
+  "heartbeat_interval_s": 1.0,
+  "help_latency_max_s": 120.0,
+  "approval_min_dwell_s": 0.0,
+  "approval_sensitivity_dwell_s": 5.0,
+  "approval_wait_max_s": 10.0,
+  "hint_ttl_s": 60.0,
+  "hint_min_dwell_s": 0.0,
+  "takeover_window_s": 60.0,
+  "simultaneity_window_s": 0.5,
+  "unknown_share_max": 0.05,
+  "shared_as_ai": false
+ },
+ "n_sessions": 6,
+ "n_robots": 2,
+ "time_autonomy_share": {
+  "definition": "ai_s / active_s (any-human whole-robot timeline)",
+  "active_hours": 1.256635,
+  "n_sessions": 6,
+  "n_robots": 2,
+  "cluster_level": "session",
+  "default": {
+   "estimate": 0.7824653406385572,
+   "ci": [
+    0.6926391183907559,
+    0.8722915628863586
+   ],
+   "interval_method": "ratio_linearised_t(session)",
+   "ci_linearised": [
+    0.6926391183907559,
+    0.8722915628863586
+   ],
+   "ci_bootstrap": [
+    0.706271881068965,
+    0.8338144250805207
+   ],
+   "ci_wilson_effective_n": [
+    0.6985994610462858,
+    0.8480702701364091
+   ],
+   "n_eff_segments": 115,
+   "n_clusters": 6
+  },
+  "lower": {
+   "estimate": 0.7780049417317864,
+   "ci": [
+    0.6829113458782775,
+    0.8730985375852952
+   ],
+   "interval_method": "ratio_linearised_t(session)",
+   "ci_linearised": [
+    0.6829113458782775,
+    0.8730985375852952
+   ],
+   "ci_bootstrap": [
+    0.695795557848705,
+    0.8326002880588471
+   ],
+   "ci_wilson_effective_n": [
+    0.6937619073395529,
+    0.8442753839628376
+   ],
+   "n_eff_segments": 115,
+   "n_clusters": 6
+  },
+  "upper": {
+   "estimate": 0.7837053845183395,
+   "ci": [
+    0.6959134207291571,
+    0.8714973483075219
+   ],
+   "interval_method": "ratio_linearised_t(session)",
+   "ci_linearised": [
+    0.6959134207291571,
+    0.8714973483075219
+   ],
+   "ci_bootstrap": [
+    0.710555327548953,
+    0.834056411849889
+   ],
+   "ci_wilson_effective_n": [
+    0.6999464879313617,
+    0.8491231640801429
+   ],
+   "n_eff_segments": 115,
+   "n_clusters": 6
+  },
+  "with_approvals": {
+   "estimate": 0.7796580196760042,
+   "ci": [
+    0.689755017346458,
+    0.8695610220055504
+   ],
+   "interval_method": "ratio_linearised_t(session)",
+   "ci_linearised": [
+    0.689755017346458,
+    0.8695610220055504
+   ],
+   "ci_bootstrap": [
+    0.7040078955060158,
+    0.8307442903416744
+   ],
+   "ci_wilson_effective_n": [
+    0.6955533742442339,
+    0.8456832039984472
+   ],
+   "n_eff_segments": 115,
+   "n_clusters": 6
+  },
+  "shared_as_ai": {
+   "estimate": 0.7868863185323415,
+   "ci": [
+    0.6939869514676542,
+    0.8797856855970287
+   ],
+   "interval_method": "ratio_linearised_t(session)",
+   "ci_linearised": [
+    0.6939869514676542,
+    0.8797856855970287
+   ],
+   "ci_bootstrap": [
+    0.7085388649148435,
+    0.839225906877407
+   ],
+   "ci_wilson_effective_n": [
+    0.7034061489561999,
+    0.8518197285887216
+   ],
+   "n_eff_segments": 115,
+   "n_clusters": 6
+  },
+  "scope_weighted": {
+   "estimate": 0.7886570307032494,
+   "ci": [
+    0.6919365469821748,
+    0.8853775144243241
+   ],
+   "interval_method": "ratio_linearised_t(session)",
+   "ci_linearised": [
+    0.6919365469821748,
+    0.8853775144243241
+   ],
+   "ci_bootstrap": [
+    0.7076627638825199,
+    0.843966439226422
+   ],
+   "ci_wilson_effective_n": [
+    0.7053347241810257,
+    0.8533181038856266
+   ],
+   "n_eff_segments": 115,
+   "n_clusters": 6
+  },
+  "estimate": 0.7824653406385572,
+  "ci": [
+   0.6926391183907559,
+   0.8722915628863586
+  ],
+  "interval_method": "ratio_linearised_t(session)",
+  "outer_interval": [
+   0.6829113458782775,
+   0.8714973483075219
+  ],
+  "safety_stop_share": 0.00238975960048507,
+  "human_share_by_state": {
+   "human_local": 0.17601703491202034,
+   "human_remote": 0.033093230023921914,
+   "shared": 0.004420977893784238
+  },
+  "idle_share_of_observed": 0.13842541937599867,
+  "reset_human_share_of_active": 0.16150296448672669
+ },
+ "task_autonomy_rate": {
+  "definition": "tasks with zero human events (takeover/approval/hint) / tasks",
+  "n_tasks": 37,
+  "n_tasks_with_unknown": 4,
+  "point": {
+   "k": 21,
+   "n": 37,
+   "estimate": 0.5675675675675675,
+   "ci": [
+    0.4091418109016808,
+    0.7132828072284269
+   ],
+   "interval_method": "wilson",
+   "ci_wilson": [
+    0.4091418109016808,
+    0.7132828072284269
+   ],
+   "ci_clopper_pearson": [
+    0.39488442141776015,
+    0.7290206268187072
+   ],
+   "ci_cluster_robust": [
+    0.4452987777274526,
+    0.6898363574076826
+   ],
+   "cluster_robust_method": "cluster_glm_identity",
+   "n_clusters": 6
+  },
+  "lower": {
+   "k": 21,
+   "n": 37,
+   "estimate": 0.5675675675675675,
+   "ci": [
+    0.4091418109016808,
+    0.7132828072284269
+   ],
+   "interval_method": "wilson",
+   "ci_wilson": [
+    0.4091418109016808,
+    0.7132828072284269
+   ],
+   "ci_clopper_pearson": [
+    0.39488442141776015,
+    0.7290206268187072
+   ],
+   "ci_cluster_robust": [
+    0.4452987777274526,
+    0.6898363574076826
+   ],
+   "cluster_robust_method": "cluster_glm_identity",
+   "n_clusters": 6
+  },
+  "upper": {
+   "k": 21,
+   "n": 37,
+   "estimate": 0.5675675675675675,
+   "ci": [
+    0.4091418109016808,
+    0.7132828072284269
+   ],
+   "interval_method": "wilson",
+   "ci_wilson": [
+    0.4091418109016808,
+    0.7132828072284269
+   ],
+   "ci_clopper_pearson": [
+    0.39488442141776015,
+    0.7290206268187072
+   ],
+   "ci_cluster_robust": [
+    0.4452987777274526,
+    0.6898363574076826
+   ],
+   "cluster_robust_method": "cluster_glm_identity",
+   "n_clusters": 6
+  },
+  "autonomous_success": {
+   "k": 15,
+   "n": 37,
+   "estimate": 0.40540540540540543,
+   "ci": [
+    0.2634651819201428,
+    0.5651403526977062
+   ],
+   "interval_method": "wilson",
+   "ci_wilson": [
+    0.2634651819201428,
+    0.5651403526977062
+   ],
+   "ci_clopper_pearson": [
+    0.2475423764766737,
+    0.5790027506268804
+   ],
+   "ci_cluster_robust": [
+    0.3551701116362608,
+    0.4556406991745504
+   ],
+   "cluster_robust_method": "cluster_glm_identity",
+   "n_clusters": 6
+  },
+  "success_rate_all_tasks": {
+   "k": 26,
+   "n": 37,
+   "estimate": 0.7027027027027027,
+   "ci": [
+    0.5421686408886435,
+    0.8251052135016799
+   ],
+   "interval_method": "wilson",
+   "ci_wilson": [
+    0.5421686408886435,
+    0.8251052135016799
+   ],
+   "ci_clopper_pearson": [
+    0.530200465005933,
+    0.8412745636203713
+   ],
+   "ci_cluster_robust": [
+    0.6024526875216735,
+    0.8029527178837322
+   ],
+   "cluster_robust_method": "cluster_glm_identity",
+   "n_clusters": 6
+  },
+  "estimate": 0.5675675675675675,
+  "ci": [
+   0.4091418109016808,
+   0.7132828072284269
+  ],
+  "interval_method": "wilson"
+ },
+ "interventions_per_active_hour": {
+  "definition": "interventions (takeover + approval + hint) / active hours",
+  "count": 24,
+  "active_hours": 1.256635,
+  "estimate": 19.098624501147906,
+  "ci_poisson_exact": [
+   12.236849088785895,
+   28.417239368434917
+  ],
+  "ci_negative_binomial": [
+   12.236849088785895,
+   28.417239368434917
+  ],
+  "nb_alpha": 0.0,
+  "nb_method": "poisson_exact_fallback(alpha_at_zero_boundary)",
+  "ci_cluster_bootstrap": [
+   13.144505971237745,
+   28.643598789708495
+  ],
+  "bootstrap_method": "cluster_bootstrap_percentile",
+  "dispersion_index": 1.1468785527304397,
+  "ci": [
+   12.236849088785895,
+   28.417239368434917
+  ],
+  "interval_method": "poisson_exact_fallback(alpha_at_zero_boundary)",
+  "n_sessions": 6,
+  "safety_stops": {
+   "count": 1,
+   "rate_per_hour": 0.7957760208811628,
+   "ci_poisson_exact": [
+    0.02014730449517153,
+    4.4337802074101855
+   ]
+  },
+  "approvals": {
+   "count": 4,
+   "rate_per_hour": 3.1831040835246514,
+   "ci_poisson_exact": [
+    0.8672887303205186,
+    8.150010683614331
+   ]
+  },
+  "hints": {
+   "count": 1,
+   "rate_per_hour": 0.7957760208811628,
+   "ci_poisson_exact": [
+    0.02014730449517153,
+    4.4337802074101855
+   ]
+  },
+  "takeovers": {
+   "count": 19,
+   "rate_per_hour": 15.119744396742094,
+   "ci_poisson_exact": [
+    9.103073815679757,
+    23.61135379134402
+   ]
+  },
+  "whole_robot_count": 24
+ },
+ "gaps_between_interventions_time": {
+  "definition": "gap between consecutive interventions (active hours), right-censored at session end",
+  "unit": "active_hours",
+  "n_gaps": 30,
+  "n_events": 24,
+  "n_censored": 6,
+  "naive_mean_gap_including_censored": 0.05235979166666666,
+  "km": {
+   "median": 0.02837111111111111,
+   "median_ci": [
+    0.013881388888888874,
+    0.06363027777777777
+   ],
+   "survival_at": {
+    "0.5": 0.0,
+    "1.0": 0.0,
+    "2.0": 0.0,
+    "4.0": 0.0
+   },
+   "survival_ci_at": {
+    "0.5": [
+     0.0,
+     0.0
+    ],
+    "1.0": [
+     0.0,
+     0.0
+    ],
+    "2.0": [
+     0.0,
+     0.0
+    ],
+    "4.0": [
+     0.0,
+     0.0
+    ]
+   },
+   "interval_method": "exponential_greenwood (lifelines)"
+  },
+  "exponential": {
+   "mean_gap": 0.05235979166666605,
+   "rate_per_unit": 19.09862450114813,
+   "mean_gap_ci": [
+    0.035095151574141115,
+    0.07811756497432269
+   ],
+   "rate_ci": [
+    12.801218270547741,
+    28.493964412361226
+   ],
+   "interval_method": "wald_log_scale_from_summary_se"
+  },
+  "weibull": {
+   "lambda_scale": 0.05260844664829472,
+   "rho_shape": 1.0363023021664959,
+   "rho_ci": [
+    0.6972491047852658,
+    1.375355499547726
+   ],
+   "median": 0.03693660040128683,
+   "note": "rho < 1: decreasing hazard (bursty); rho = 1: exponential"
+  },
+  "estimate": 0.02837111111111111
+ },
+ "human_minutes_per_task": {
+  "definition": "mean over tasks of human minutes (human_s_incl_reset)",
+  "n_tasks": 37,
+  "estimate": 0.15418603603603603,
+  "median": 0.0,
+  "share_tasks_zero_human": 0.5675675675675675,
+  "ci_cluster_bootstrap_percentile": [
+   0.09994674796747967,
+   0.22535784313725493
+  ],
+  "ci_cluster_bootstrap_t": [
+   0.07414912125165343,
+   0.32635532414498514
+  ],
+  "ci": [
+   0.07414912125165343,
+   0.32635532414498514
+  ],
+  "interval_method": "cluster_bootstrap_bootstrap_t"
+ },
+ "breakdowns": {
+  "active_hours": 1.256635,
+  "by_reason": {
+   "ai_requested_help": {
+    "count": 16,
+    "rate_per_hour": 12.732416334098605,
+    "ci_poisson_exact": [
+     7.277676058395257,
+     20.676646438751856
+    ]
+   },
+   "human_initiated": {
+    "count": 7,
+    "rate_per_hour": 5.57043214616814,
+    "ci_poisson_exact": [
+     2.2396026304534455,
+     11.477219209796303
+    ]
+   },
+   "safety": {
+    "count": 1,
+    "rate_per_hour": 0.7957760208811628,
+    "ci_poisson_exact": [
+     0.02014730449517153,
+     4.4337802074101855
+    ]
+   }
+  },
+  "by_kind": {
+   "approval": {
+    "count": 4,
+    "rate_per_hour": 3.1831040835246514,
+    "ci_poisson_exact": [
+     0.8672887303205186,
+     8.150010683614331
+    ]
+   },
+   "hint": {
+    "count": 1,
+    "rate_per_hour": 0.7957760208811628,
+    "ci_poisson_exact": [
+     0.02014730449517153,
+     4.4337802074101855
+    ]
+   },
+   "takeover": {
+    "count": 19,
+    "rate_per_hour": 15.119744396742094,
+    "ci_poisson_exact": [
+     9.103073815679757,
+     23.61135379134402
+    ]
+   }
+  },
+  "by_task_type": {
+   "drawer_open_v1": {
+    "n_tasks": 13,
+    "task_autonomy_rate": 0.6923076923076923,
+    "ci_wilson": [
+     0.42369343180549024,
+     0.8731929634428949
+    ],
+    "success_rate": 0.6923076923076923,
+    "autonomous_success_rate": 0.5384615384615384,
+    "mean_human_minutes": 0.12920128205128203,
+    "interventions_per_task": 0.46153846153846156,
+    "mean_task_minutes": 1.8952974358974357
+   },
+   "pick_place_v1": {
+    "n_tasks": 24,
+    "task_autonomy_rate": 0.5,
+    "ci_wilson": [
+     0.3142742581957335,
+     0.6857257418042665
+    ],
+    "success_rate": 0.7083333333333334,
+    "autonomous_success_rate": 0.3333333333333333,
+    "mean_human_minutes": 0.16771944444444442,
+    "interventions_per_task": 0.75,
+    "mean_task_minutes": 1.6947861111111109
+   }
+  },
+  "narrow_takeovers_human_initiated_or_safety": {
+   "count": 8,
+   "rate_per_hour": 6.366208167049303,
+   "ci_poisson_exact": [
+    2.7484768264042474,
+    12.543967994042275
+   ]
+  }
+ },
+ "drift": {
+  "freq": "D",
+  "n_bins": 3,
+  "bins": [
+   {
+    "bin": "2026-10-01 00:00:00+00:00",
+    "active_hours": 0.44199138888888884,
+    "count": 10,
+    "rate": 22.624875170393594
+   },
+   {
+    "bin": "2026-10-02 00:00:00+00:00",
+    "active_hours": 0.30128888888888883,
+    "count": 8,
+    "rate": 26.552588877415552
+   },
+   {
+    "bin": "2026-10-03 00:00:00+00:00",
+    "active_hours": 0.5133547222222221,
+    "count": 6,
+    "rate": 11.68782469561604
+   }
+  ],
+  "trend": {
+   "family": "poisson",
+   "slope_log_rate_per_bin": -0.29650588342056744,
+   "se": 0.23787304955613225,
+   "rate_ratio_per_bin": 0.7434112534501793,
+   "rate_ratio_ci": [
+    0.4663921414605987,
+    1.1849691335398627
+   ],
+   "p_value": 0.21258532035546118,
+   "dispersion_index": 1.3202370376561867
+  },
+  "cusum": {
+   "k": 0.5,
+   "h": 4.0,
+   "overdispersion_phi": 1.3202370376561867,
+   "upper": [
+    0.0,
+    0.3148015933556749,
+    0.0
+   ],
+   "lower": [
+    0.0,
+    0.0,
+    0.5574183944531814
+   ],
+   "first_signal": null
+  }
+ },
+ "unmeasured": {
+  "observed_hours": 1.466895,
+  "unknown_hours": 0.007204444444444444,
+  "unknown_share": 0.004911356603195486,
+  "unknown_share_max": 0.05,
+  "conformance": "complete",
+  "idle_hours": 0.20305555555555554,
+  "active_hours": 1.256635,
+  "flag_counts": {
+   "time_gap": 4
+  },
+  "n_flags": 4,
+  "supervision_ratio": 0.9943461398782578,
+  "supervisor_hours_per_robot_hour": 0.9943461398782578,
+  "n_human_actors_total": 12,
+  "human_actor_hours": 0.2960038888888889
+ },
+ "gaps_between_interventions_distance": {
+  "definition": "gap between consecutive interventions (metres), right-censored at session end",
+  "unit": "metres",
+  "n_gaps": 24,
+  "n_events": 19,
+  "n_censored": 5,
+  "naive_mean_gap_including_censored": 6.63157894736842,
+  "km": {
+   "median": 5.2,
+   "median_ci": [
+    1.6,
+    8.8
+   ],
+   "survival_at": {
+    "0.5": 0.9583333333333331,
+    "1.0": 0.8333333333333331,
+    "2.0": 0.7083333333333333,
+    "4.0": 0.5803571428571429
+   },
+   "survival_ci_at": {
+    "0.5": [
+     0.730918430321176,
+     0.9901385492903454
+    ],
+    "1.0": [
+     0.5923293722892033,
+     0.9207318357589317
+    ],
+    "2.0": [
+     0.4633193256797448,
+     0.8330835803009684
+    ],
+    "4.0": [
+     0.36036476482571145,
+     0.748210591400575
+    ]
+   },
+   "interval_method": "exponential_greenwood (lifelines)"
+  },
+  "exponential": {
+   "mean_gap": 6.631578946985183,
+   "rate_per_unit": 0.15079365080236515,
+   "mean_gap_ci": [
+    4.229976137884024,
+    10.396710973432654
+   ],
+   "rate_ci": [
+    0.09618426467325682,
+    0.23640795300094378
+   ],
+   "interval_method": "wald_log_scale_from_summary_se"
+  },
+  "weibull": {
+   "lambda_scale": 6.688996291642811,
+   "rho_shape": 1.1178397936884514,
+   "rho_ci": [
+    0.7012764719840678,
+    1.534403115392835
+   ],
+   "median": 4.8191027526298615,
+   "note": "rho < 1: decreasing hazard (bursty); rho = 1: exponential"
+  },
+  "estimate": 5.2
+ },
+ "input": {
+  "path": "example_log.jsonl",
+  "n_events": 594,
+  "schema_errors": 0,
+  "chain_ok": true,
+  "chain_problems": []
+ },
+ "planning_examples": {
+  "hours_zero_interventions_for_rate_below_0.1_per_h_95": 29.957322735539908,
+  "same_with_nb_alpha_0.5": 69.44271909999159,
+  "tasks_zero_failures_for_p_below_0.05_95": 59,
+  "hours_to_show_rate_below_0.1_if_true_0.05": {
+   "hours": 106.5184342546938,
+   "expected_events": 5,
+   "upper_limit_at_T": 0.09869685920846392
+  },
+  "power_halving_rate_100h_each": 0.14089287630096076
+ }
+}

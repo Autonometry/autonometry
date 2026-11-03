@@ -1,0 +1,525 @@
+platform: SO-101 arm on Hugging Face LeRobot
+software_version: lerobot v0.6.1 (7e241bd630a3)
+hardware_repo_commit: TheRobotStudio/SO-ARM100 a758567c3978dfeefe282ede0500085a48fe8f78
+access_date: '2026-10-30'
+meaning_vocabulary:
+- ai
+- human_local
+- human_remote
+- shared
+- safety_stop
+- idle
+- 'replay (added: needed for lerobot-replay)'
+signals:
+- id: S1
+  name: intervention (dataset feature)
+  source: LeRobotDataset v3.0 parquet column, created only by lerobot-rollout --strategy.type=dagger
+  message_type: bool, shape [1], names null
+  rate: every recorded frame at dataset fps (divided by interpolation_multiplier)
+  meaning:
+    'true': human_local
+    'false': ai
+    absent_frame: paused or unrecorded autonomous time (idle/unknown)
+  reliability: high within recorded frames; PAUSED frames never recorded; with default record_autonomous=false autonomous
+    frames are not recorded at all
+  observe_passively: read data/chunk-*/file-*.parquet after save_episode(); or watch the dataset root for new parquet files
+  how_it_could_be_faked: rewrite with lerobot_edit_dataset / dataset_tools.add_features or remove_feature; delete episodes
+    with delete_episodes; record teleop with lerobot-record under a rollout_ name
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/rollout/context.py#L422
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/rollout/strategies/dagger.py#L401
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/rollout/strategies/dagger.py#L429
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/rollout/strategies/dagger.py#L593
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED
+  taxonomy:
+    asserted: human_local (human_remote if a networked teleop is declared at session_start)
+    cleared: ai
+    reason: human_initiated
+    actor_id: operator pseudonym / ai:<policy.path>
+    scope: whole_robot
+    event: transition on value change between consecutive frames of one episode; task_start/task_end per episode
+    flags:
+    - PAUSED frames absent -> unknown share unbounded
+    - record_autonomous=false drops autonomous frames
+- id: S2
+  name: 'DAggerPhase / ''Phase transition: <old> -> <new>'' log line'
+  source: in-process enum in rollout/strategies/dagger.py, emitted via Python logging at INFO
+  message_type: 'text log line ''LEVEL YYYY-MM-DD HH:MM:SS <loc> Phase transition: autonomous -> paused'' (local wall clock,
+    1 s resolution)'
+  rate: on each transition
+  meaning:
+    autonomous: ai
+    paused: idle
+    correcting: human_local
+  reliability: exact; only visible if stdout/log_file is captured; 1 s timestamp granularity
+  observe_passively: tail the process stdout or the init_logging(log_file=...) file
+  how_it_could_be_faked: silence logging, raise console level, or run a patched script
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/rollout/strategies/dagger.py#L659
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/rollout/strategies/dagger.py#L83
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/utils/utils.py#L70
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED
+  taxonomy:
+    asserted: '-> correcting: human_local; -> paused: shared; -> autonomous: ai'
+    cleared: n/a
+    reason: human_initiated for paused/correcting; null for autonomous
+    actor_id: operator / ai:<policy>
+    scope: whole_robot
+    event: transition
+    flags:
+    - ai->shared->human_local is ONE intervention (flag 3)
+    - 1 s local-time log stamp only
+- id: S3
+  name: Leader-bus Present_Position sync-read polling
+  source: physical half-duplex TTL bus of the leader arm (Feetech protocol 0, 1 Mbps); instruction packets addressed to IDs
+    1-6, register 56 (2 bytes)
+  message_type: serial packets
+  rate: loop fps (60 Hz teleoperate default, 30 Hz rollout default) while a human is driving; zero in AUTONOMOUS and PAUSED
+  meaning:
+    polling_present: human_local
+    polling_absent: ai or idle
+  reliability: high; emitted only by teleop.get_action(); cannot be produced by the policy path
+  observe_passively: non-transmitting UART receiver on the leader bus data line (logic-level sniffer); do NOT open the same
+    /dev/tty* from a second process
+  how_it_could_be_faked: a decoy process polling the leader while another drives the follower (would corrupt the real controller's
+    bus unless the leader is on a separate adapter); unplugging the leader
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/teleoperators/so_leader/so_leader.py#L146
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/motors/feetech/tables.py#L83
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/motors/feetech/feetech.py#L44
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED (code) / UNKNOWN (tap not tested)
+  taxonomy:
+    asserted: human_local (human_remote if leader is at a remote site - declare)
+    cleared: not evidence alone; combine with S6
+    reason: human_initiated (planned for pre-registered demo/reset blocks)
+    actor_id: operator
+    scope: whole_robot
+    event: transition on first poll / last poll (debounce 2 loop periods)
+    flags: []
+- id: S4
+  name: Leader-bus Torque_Enable / Lock writes
+  source: leader TTL bus; register Torque_Enable addr 40 (1 byte) and Lock addr 55
+  message_type: serial write packets
+  rate: event (DAgger hand-overs, connect, calibrate)
+  meaning:
+    torque_enable=1: idle (PAUSED hold / handover)
+    torque_enable=0: human_local release (CORRECTING) or resume ai
+  reliability: high for DAgger; also occurs at connect/configure/calibrate
+  observe_passively: same UART tap as S3
+  how_it_could_be_faked: decoy writes; smooth_handover=false removes the Goal_Position burst but not the torque writes
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/rollout/strategies/dagger.py#L693
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/rollout/strategies/dagger.py#L689
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/motors/feetech/feetech.py#L302
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/motors/feetech/tables.py#L76
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED
+  taxonomy:
+    asserted: 'Torque_Enable=1 on leader: shared (PAUSED hold)'
+    cleared: '=0 after 1: human_local (release) or ai (resume) - disambiguate with S3'
+    reason: human_initiated
+    actor_id: operator
+    scope: whole_robot
+    event: transition
+    flags: []
+- id: S5
+  name: Leader-bus Goal_Position sync-write (send_feedback smooth handover)
+  source: leader TTL bus; register 42
+  message_type: serial sync-write burst (interpolated positions)
+  rate: burst at AUTONOMOUS->PAUSED (actuated teleops)
+  meaning:
+    burst: transition ai -> idle (operator about to take over)
+  reliability: high when smooth_handover=true (default)
+  observe_passively: UART tap on leader bus
+  how_it_could_be_faked: --strategy.smooth_handover=false
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/teleoperators/so_leader/so_leader.py#L155
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/rollout/strategies/dagger.py#L671
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED
+  taxonomy:
+    asserted: marks ai -> shared transition
+    cleared: n/a
+    reason: n/a
+    actor_id: n/a
+    scope: whole_robot
+    event: note on the shared transition
+    flags: []
+- id: S6
+  name: Follower-bus Goal_Position sync-write
+  source: follower TTL bus; register 42, IDs 1-6
+  message_type: serial sync-write packets
+  rate: loop fps
+  meaning:
+    present_and_varying: someone in control (ai, human_local, human_remote or replay - source-agnostic)
+    present_constant: idle (PAUSED hold of last_action)
+    absent: idle or safety_stop
+  reliability: high that a command exists; cannot identify the source alone
+  observe_passively: UART tap on follower bus
+  how_it_could_be_faked: replay of a dataset; hidden teleop; identical values from a frozen policy
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/robots/so_follower/so_follower.py#L205
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/rollout/strategies/dagger.py#L406
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/motors/feetech/tables.py#L78
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED
+  taxonomy:
+    asserted: 'varying: keep current active state; constant >1 s with torque on: hold (keep state); absent >= idle_threshold_s:
+      idle'
+    cleared: n/a
+    reason: n/a
+    actor_id: n/a
+    scope: whole_robot
+    event: heartbeat carrier; transition idle
+    flags:
+    - source-agnostic; replay indistinguishable (flag 1)
+- id: S7
+  name: Follower Torque_Enable register state
+  source: follower servos, register 40; written 0 at disconnect (disable_torque_on_disconnect=true) and calibration
+  message_type: 1 byte per servo
+  rate: event / pollable
+  meaning:
+    '0': safety_stop or idle (arm free-moving)
+    '1': actuated (any controller)
+  reliability: high
+  observe_passively: UART tap (observe writes) ; never read it yourself over the shared port
+  how_it_could_be_faked: power loss gives torque-off without a write
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/motors/feetech/tables.py#L76
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/robots/so_follower/config_so_follower.py#L31
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/motors/feetech/feetech.py#L291
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED
+  taxonomy:
+    asserted: '=0: idle (voluntary) or safety_stop if Status byte (addr 65) != 0 preceded it'
+    cleared: '=1: previous state'
+    reason: safety only for firmware fault
+    actor_id: n/a
+    scope: whole_robot (or per-joint scope if declared)
+    event: transition
+    flags:
+    - per-joint cut-outs not expressible in single scope (flag 5)
+- id: S8
+  name: /action/state and /observation/state (Foxglove) or action.* / observation.* (Rerun)
+  source: in-process Foxglove WebSocket server (default ws://127.0.0.1:8765) or Rerun gRPC, enabled only with --display_data=true
+  message_type: Foxglove JSON {scalars:[{label,value}]} per topic; images on /observation/images/<cam>; log_time = time.time_ns()
+  rate: loop fps
+  meaning:
+    stream: command and state streams; mode NOT labelled
+  reliability: medium; off by default; source must be inferred statistically (unvalidated)
+  observe_passively: Foxglove WebSocket client subscribing to the three topic families; harmless if the client dies
+  how_it_could_be_faked: operator leaves display_data=false; replay is indistinguishable
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/utils/foxglove_visualization.py#L135
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/utils/foxglove_visualization.py#L133
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/utils/foxglove_visualization.py#L215
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/utils/rerun_visualization.py#L150
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED (topics) / UNKNOWN (source fingerprinting)
+  taxonomy:
+    asserted: no state by itself
+    cleared: n/a
+    reason: n/a
+    actor_id: n/a
+    scope: whole_robot
+    event: heartbeat
+    flags: []
+- id: S9
+  name: is_intervention (TeleopEvents.IS_INTERVENTION)
+  source: 'HIL-SERL: teleop.get_teleop_events() -> transition info -> complementary_info in gRPC Transition to learner; InterventionActionProcessorStep
+    overrides the policy action'
+  message_type: bool in dict / protobuf bytes
+  rate: per env step (cfg.env.fps, e.g. 10 Hz)
+  meaning:
+    'true': human_local (gamepad RB held or keyboard movement key held)
+    'false': ai
+  reliability: high in-process; NEVER written to the recorded dataset (only action, next.reward, next.done, complementary_info.discrete_penalty)
+  observe_passively: pcap of actor->learner gRPC SendTransitions; or W&B 'Intervention rate' per episode
+  how_it_could_be_faked: button macro; records can only be post-hoc aggregated
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/teleoperators/utils.py#L32
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/processor/hil_processor.py#L495
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/rl/learner.py#L980
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/rl/gym_manipulator.py#L648
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/rl/actor.py#L402
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED
+  taxonomy:
+    asserted: human_local
+    cleared: ai
+    reason: human_initiated
+    actor_id: operator / ai:sac_<run>
+    scope: whole_robot
+    event: transition on rising/falling edge
+    flags:
+    - never persisted to dataset
+- id: S10
+  name: Gamepad RB button
+  source: pygame joystick button 5, or HID report byte 6 in {2,6,10,14}
+  message_type: device input
+  rate: polled each step
+  meaning:
+    held: human_local
+  reliability: device-level
+  observe_passively: evdev/HID tap on the controller device node
+  how_it_could_be_faked: macro / hardware button jam
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/teleoperators/gamepad/gamepad_utils.py#L294
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/teleoperators/gamepad/gamepad_utils.py#L443
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/teleoperators/gamepad/teleop_gamepad.py#L159
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED
+  taxonomy:
+    asserted: human_local
+    cleared: ai
+    reason: human_initiated
+    actor_id: operator
+    scope: whole_robot
+    event: transition
+    flags: []
+- id: S11
+  name: keyboard_ee movement keys
+  source: pynput global listener (or TTY backend); any movement key pressed => is_intervention
+  message_type: key events
+  rate: polled
+  meaning:
+    held: human_local
+  reliability: device-level
+  observe_passively: evdev tap on the keyboard device
+  how_it_could_be_faked: scripted key injection
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/teleoperators/keyboard/teleop_keyboard.py#L259
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED
+  taxonomy:
+    asserted: human_local
+    cleared: ai
+    reason: human_initiated
+    actor_id: operator
+    scope: whole_robot
+    event: transition
+    flags: []
+- id: S12
+  name: phone.enabled
+  source: phone teleoperator action dict (iOS HEBI Mobile I/O B1 held / Android WebXR Move held)
+  message_type: bool key in action dict
+  rate: loop fps
+  meaning:
+    'true': human_remote (phone over LAN)
+    'false': idle
+  reliability: in-process only unless the pipeline persists it
+  observe_passively: LAN capture of phone<->host traffic; Rerun/Foxglove action keys if displayed
+  how_it_could_be_faked: phone could be in the same room (remote vs local is a network fact, not a software one)
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/teleoperators/phone/teleop_phone.py#L222
+  - https://huggingface.co/docs/lerobot/phone_teleop
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED
+  taxonomy:
+    asserted: human_remote
+    cleared: previous state
+    reason: human_initiated
+    actor_id: operator
+    scope: whole_robot
+    event: transition
+    flags:
+    - remote vs local is a network fact; phone may be in the room (flag 4)
+- id: S13
+  name: Async-inference gRPC flows
+  source: lerobot.async_inference RobotClient <-> PolicyServer; service AsyncInference (SendObservations, GetActions, SendPolicyInstructions,
+    Ready); TCP 8080 default; grpc.insecure_channel
+  message_type: protobuf over plaintext HTTP/2
+  rate: observations at fps; actions per chunk
+  meaning:
+    traffic_present: ai (remote policy)
+  reliability: high via pcap; absent when the policy runs locally
+  observe_passively: network tap / pcap on port 8080
+  how_it_could_be_faked: run the policy locally; tunnel
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/transport/services.proto#L38
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/async_inference/robot_client.py#L110
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/async_inference/configs.py#L55
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/async_inference/policy_server.py#L198
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED
+  taxonomy:
+    asserted: ai (actor_id ai:<server_address>)
+    cleared: n/a
+    reason: 'null'
+    actor_id: ai:<server>
+    scope: whole_robot
+    event: heartbeat / transition ai
+    flags:
+    - human-driven server would be mislabelled ai
+- id: S14
+  name: Record/episodic keyboard events exit_early (right arrow), rerecord_episode (left arrow), stop_recording (Esc)
+  source: in-process events dict from init_keyboard_listener()
+  message_type: dict flags
+  rate: event
+  meaning:
+    rerecord_episode: episode discarded (clear_episode_buffer) - survivorship
+    exit_early: episode/reset boundary
+  reliability: in-process only; discarded episodes leave no dataset trace
+  observe_passively: evdev tap on keyboard; or log lines 'Left arrow key pressed...'
+  how_it_could_be_faked: —
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/utils/keyboard_input.py#L421
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/utils/keyboard_input.py#L164
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/utils/keyboard_input.py#L168
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED
+  taxonomy:
+    asserted: n/a
+    cleared: n/a
+    reason: n/a
+    actor_id: n/a
+    scope: n/a
+    event: 'right arrow: task_end(outcome=unknown); left arrow: task_end(outcome=aborted); Esc: session_end'
+    flags:
+    - discarded episodes leave no dataset trace
+- id: S15
+  name: '''Intervention rate'' / ''Episode intervention'' InteractionMessage'
+  source: HIL-SERL actor -> learner (gRPC SendInteractions) and W&B logging
+  message_type: float, int per episode
+  rate: per episode
+  meaning:
+    value: fraction of steps human_local within the episode
+  reliability: aggregate only
+  observe_passively: pcap of SendInteractions; W&B dashboard
+  how_it_could_be_faked: not persisted locally by default
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/rl/actor.py#L411
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED
+  taxonomy:
+    asserted: n/a (aggregate)
+    cleared: n/a
+    reason: n/a
+    actor_id: n/a
+    scope: whole_robot
+    event: note on task_end
+    flags: []
+- id: S16
+  name: Dataset naming and robot_type metadata
+  source: 'meta/info.json robot_type (''so_follower'' for both SO-100 and SO-101); repo_id prefixes: ''rollout_'' enforced
+    by lerobot-rollout, ''eval_'' rejected by lerobot-record'
+  message_type: strings
+  rate: per dataset
+  meaning:
+    rollout_ prefix: weak hint of policy run
+    no intervention column: mode unknown
+  reliability: low; lerobot-record does not forbid 'rollout_' names
+  observe_passively: read meta/info.json
+  how_it_could_be_faked: rename
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/rollout/context.py#L431
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/scripts/lerobot_record.py#L435
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/robots/so_follower/so_follower.py#L44
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED
+  taxonomy:
+    asserted: n/a
+    cleared: n/a
+    reason: n/a
+    actor_id: n/a
+    scope: n/a
+    event: session_start note
+    flags:
+    - robot_type cannot distinguish SO-100/SO-101
+- id: S17
+  name: Follower Present_Load / Present_Current with constant or absent Goal_Position
+  source: follower servos registers 60 and 69
+  message_type: 2 bytes per servo
+  rate: pollable (not polled by LeRobot by default)
+  meaning:
+    load_without_command_change: human_local physical guidance (kinesthetic)
+  reliability: unknown sensitivity
+  observe_passively: UART tap only sees them if some process reads them; otherwise unobservable passively
+  how_it_could_be_faked: —
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/motors/feetech/tables.py#L85
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/motors/feetech/tables.py#L90
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED (registers) / UNKNOWN (utility)
+  taxonomy:
+    asserted: human_local (kinesthetic guidance) - low confidence
+    cleared: n/a
+    reason: human_initiated
+    actor_id: unknown human
+    scope: whole_robot or joint scope
+    event: transition
+    flags:
+    - sensitivity unknown
+- id: S18
+  name: Replay (lerobot-replay) command stream
+  source: scripts/lerobot_replay.py re-sends the stored action column at dataset fps through send_action
+  message_type: serial sync-writes identical to S6
+  rate: dataset fps
+  meaning:
+    stream: neither ai nor human at run time (recorded human or ai actions replayed) - must be classified as 'replay'
+  reliability: indistinguishable from ai on the follower bus; distinguishable by absence of inference process and non-reactivity
+  observe_passively: compare follower-bus commands against known dataset action columns; check for a policy process
+  how_it_could_be_faked: this IS the faking technique
+  source_url:
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/scripts/lerobot_replay.py#L130
+  version: lerobot v0.6.1 (7e241bd630a3)
+  tag: VERIFIED
+  taxonomy:
+    asserted: NOT COVERED by taxonomy v0.1; proposed ai with actor_id replay:<repo_id>/<episode> and separate reporting
+    cleared: n/a
+    reason: 'null'
+    actor_id: replay:<repo_id>
+    scope: whole_robot
+    event: transition ai + note
+    flags:
+    - flag 1
+taxonomy:
+  definitions: definitions.md (artifact 2168860d-f130-48a2-a36a-2e52c2e5c3a7)
+  schema: event.schema.json (artifact efd8879d-429a-495f-81c9-4d3404f57a9b)
+  states:
+  - ai
+  - human_local
+  - human_remote
+  - shared
+  - safety_stop
+  - idle
+  - unknown
+  reasons:
+  - ai_requested_help
+  - human_initiated
+  - safety
+  - planned
+  default_scope: whole_robot
+  note: meaning_vocabulary below is the pre-taxonomy label; 'taxonomy' per signal is the normative mapping
+defaults_affecting_observability:
+  push_to_hub: 'True'
+  private: None (Hub default)
+  strategy.type: base (no recording)
+  dagger.record_autonomous: 'False'
+  display_data: 'False'
+  display_mode: rerun
+  init_logging.log_file: None
+  init_logging.console_level: INFO
+  max_relative_target: None (no clipping)
+  disable_torque_on_disconnect: 'True'
+  policy_server.port: 8080 (insecure gRPC)
+  foxglove: 127.0.0.1:8765
+clocks:
+  dataset.timestamp: synthetic frame_index/fps, float32, 1/fps, no sync
+  repo_id_suffix: local wall clock %Y%m%d_%H%M%S
+  log_lines: local wall clock 1 s
+  foxglove.log_time: time.time_ns() wall
+  async_inference.TimedData.timestamp: time.time() wall, client and server unsynchronised
+  control_loops: time.perf_counter() monotonic, not persisted
+  observer_rule: observer stamps RFC 3339 UTC ts itself
+uncovered_cases:
+- replay (lerobot-replay)
+- hold with no controller inside a task (DAgger PAUSED, HIL-SERL record between interventions, torch warm-up)
+- multi-step hand-over ai->shared->human_local must count once
+- local vs remote undeterminable from software
+- per-joint firmware safety cut-outs in a single-scope robot
+- unrecorded human time by design -> unknown share unbounded in dataset-only reports
+- no help_request/approval/hint pathway exists

@@ -1,0 +1,489 @@
+{
+ "S1_honest": {
+  "headline": {
+   "time_share": 0.9438415291954365,
+   "time_share_ci": [
+    0.9329931735985566,
+    0.9546898847923164
+   ],
+   "time_share_method": "ratio_linearised_t(robot)",
+   "time_share_bounds": [
+    0.9438415291954365,
+    0.9438415291954365
+   ],
+   "time_share_outer": [
+    0.9329931735985566,
+    0.9546898847923164
+   ],
+   "task_rate": 0.902970297029703,
+   "task_rate_ci": [
+    0.8789335247790155,
+    0.9270070692803918
+   ],
+   "task_rate_method": "cluster_robust_glm",
+   "n_tasks": 1515,
+   "per_hour": 2.052886278907284,
+   "per_hour_ci": [
+    1.5916677654679237,
+    2.64558665924615
+   ],
+   "per_hour_method": "nb2_wald",
+   "dispersion_index": 2.5258490918866143,
+   "interventions": 153,
+   "human_min_per_task": 0.07046368536853687,
+   "human_min_ci": [
+    0.052692578818344424,
+    0.08873638153961934
+   ],
+   "unknown_share": 0.0,
+   "conformance": "complete",
+   "flags": {},
+   "active_h": 74.5292136111111,
+   "reset_share_of_active": 0.031858979951295684,
+   "safety_stop_share": 0.0004268646795992216,
+   "by_reason": {
+    "ai_requested_help": 114,
+    "human_initiated": 39
+   },
+   "per_robot_rate": {
+    "r1": 1.51,
+    "r2": 1.45,
+    "r3": 2.2,
+    "r4": 3.05
+   },
+   "per_robot_share": {
+    "r1": 0.9487,
+    "r2": 0.9486,
+    "r3": 0.9447,
+    "r4": 0.9347
+   },
+   "ai_s": 253323.961,
+   "active_s": 268305.169,
+   "human_s": 14866.678,
+   "reset_s": 8547.929,
+   "n_sessions": 40,
+   "n_robots": 4
+  },
+  "session_level_ci": [
+   0.9379189743206496,
+   0.9497640840702232
+  ],
+  "robot_level_ci": [
+   0.9329931735985566,
+   0.9546898847923164
+  ],
+  "reconcile": {
+   "tau_s": 1.0,
+   "clock_offset_s": 0.356,
+   "offset_spread_s": 0.03,
+   "active_s": 268306.80000000005,
+   "station_only_s": 0.0,
+   "robot_only_s": 0.0,
+   "disputed_s": 0.0,
+   "station_only_share": 0.0,
+   "disputed_share": 0.0,
+   "station_during_unknown_s": 0.0,
+   "unmatched_station_episodes": 0,
+   "L3_pass": true,
+   "by_robot": {
+    "r1": {
+     "active_s": 66725.7,
+     "station_only_s": 0.0,
+     "robot_only_s": 0.0,
+     "station_during_unknown_s": 0.0,
+     "unmatched_station_episodes": 0,
+     "station_only_share": 0.0
+    },
+    "r2": {
+     "active_s": 67221.5,
+     "station_only_s": 0.0,
+     "robot_only_s": 0.0,
+     "station_during_unknown_s": 0.0,
+     "unmatched_station_episodes": 0,
+     "station_only_share": 0.0
+    },
+    "r3": {
+     "active_s": 66985.4,
+     "station_only_s": 0.0,
+     "robot_only_s": 0.0,
+     "station_during_unknown_s": 0.0,
+     "unmatched_station_episodes": 0,
+     "station_only_share": 0.0
+    },
+    "r4": {
+     "active_s": 67374.2,
+     "station_only_s": 0.0,
+     "robot_only_s": 0.0,
+     "station_during_unknown_s": 0.0,
+     "unmatched_station_episodes": 0,
+     "station_only_share": 0.0
+    }
+   }
+  },
+  "truth": {
+   "ai_share": 0.9441635290521674,
+   "active_h": 74.52921888111129,
+   "human_h": 4.129635105175864
+  },
+  "schema_errors": 0,
+  "suggestions": [
+   "For this pilot the time share is 94.4% [93.8%, 95.0%] (40 sessions). For a claim about the robot model only 4 robots back it: [93.3%, 95.5%]. Add robots, not hours, to tighten it.",
+   "r4 needs help 2.0x as often as the other robots (3.0/h vs 1.5/h). Check it first.",
+   "Planned bin refills are 57.5% of all human time. Automating them would lift time autonomy from 94.4% to about 97.6%.",
+   "Only 90.3% of tasks finished with zero human help, although 94.4% of time was AI. Buyers paying per task should use the task rate."
+  ]
+ },
+ "S2_hidden_operator": {
+  "headline": {
+   "time_share": 0.9440517897602693,
+   "time_share_ci": [
+    0.93383055200236,
+    0.9542730275181786
+   ],
+   "time_share_method": "ratio_linearised_t(robot)",
+   "time_share_bounds": [
+    0.9440517897602693,
+    0.9440517897602693
+   ],
+   "time_share_outer": [
+    0.93383055200236,
+    0.9542730275181786
+   ],
+   "task_rate": 0.900727994705493,
+   "task_rate_ci": [
+    0.8768602894720717,
+    0.9245956999389161
+   ],
+   "task_rate_method": "cluster_robust_glm",
+   "n_tasks": 1511,
+   "per_hour": 2.108507952697348,
+   "per_hour_ci": [
+    1.6395769032334462,
+    2.7059073624825705
+   ],
+   "per_hour_method": "nb2_wald",
+   "dispersion_index": 2.5381991674454056,
+   "interventions": 157,
+   "human_min_per_task": 0.07208175601147143,
+   "human_min_ci": [
+    0.054783099423858825,
+    0.09143059343320976
+   ],
+   "unknown_share": 0.0,
+   "conformance": "complete",
+   "flags": {},
+   "active_h": 74.46023611111112,
+   "reset_share_of_active": 0.031188540789015458,
+   "safety_stop_share": 0.0003807662441754426,
+   "by_reason": {
+    "ai_requested_help": 112,
+    "human_initiated": 45
+   },
+   "per_robot_rate": {
+    "r1": 1.51,
+    "r2": 1.45,
+    "r3": 2.2,
+    "r4": 3.27
+   },
+   "per_robot_share": {
+    "r1": 0.9487,
+    "r2": 0.9486,
+    "r3": 0.9447,
+    "r4": 0.9354
+   },
+   "ai_s": 253139.219,
+   "active_s": 268056.85,
+   "human_s": 14815.563999999998,
+   "reset_s": 8360.302,
+   "n_sessions": 40,
+   "n_robots": 4
+  },
+  "reconcile": {
+   "tau_s": 1.0,
+   "clock_offset_s": 0.356,
+   "offset_spread_s": 0.029,
+   "active_s": 268058.50000000006,
+   "station_only_s": 2760.4,
+   "robot_only_s": 0.0,
+   "disputed_s": 2760.4,
+   "station_only_share": 0.010297752169768911,
+   "disputed_share": 0.010297752169768911,
+   "station_during_unknown_s": 0.0,
+   "unmatched_station_episodes": 45,
+   "L3_pass": false,
+   "by_robot": {
+    "r1": {
+     "active_s": 66725.7,
+     "station_only_s": 0.0,
+     "robot_only_s": 0.0,
+     "station_during_unknown_s": 0.0,
+     "unmatched_station_episodes": 0,
+     "station_only_share": 0.0
+    },
+    "r2": {
+     "active_s": 67221.5,
+     "station_only_s": 0.0,
+     "robot_only_s": 0.0,
+     "station_during_unknown_s": 0.0,
+     "unmatched_station_episodes": 0,
+     "station_only_share": 0.0
+    },
+    "r3": {
+     "active_s": 66985.4,
+     "station_only_s": 0.0,
+     "robot_only_s": 0.0,
+     "station_during_unknown_s": 0.0,
+     "unmatched_station_episodes": 0,
+     "station_only_share": 0.0
+    },
+    "r4": {
+     "active_s": 67125.9,
+     "station_only_s": 2760.4,
+     "robot_only_s": 0.0,
+     "station_during_unknown_s": 0.0,
+     "unmatched_station_episodes": 45,
+     "station_only_share": 0.0411
+    }
+   }
+  },
+  "truth": {
+   "ai_share": 0.9340684393877713,
+   "active_h": 74.46024161625384,
+   "human_h": 4.880928395641539
+  },
+  "suggestions": [
+   "Teleop station logged 46 min of remote control that the robots logged as AI (1.0% of active time, mostly on r4). Report downgraded from L3 to L2; witness-adjusted time autonomy is about 93.4%, not 94.4%.",
+   "r4 needs help 2.2x as often as the other robots (3.3/h vs 1.5/h). Check it first.",
+   "Planned bin refills are 56.4% of all human time. Automating them would lift time autonomy from 94.4% to about 97.6%.",
+   "Only 90.1% of tasks finished with zero human help, although 94.4% of time was AI. Buyers paying per task should use the task rate."
+  ],
+  "truth_r4": {
+   "ai_share": 0.8943181086344192,
+   "active_h": 18.645975592096164,
+   "human_h": 1.9588742875911123
+  }
+ },
+ "S3_logger_crash": {
+  "headline": {
+   "time_share": 0.9440539916824335,
+   "time_share_ci": [
+    0.9324929860207467,
+    0.9556149973441204
+   ],
+   "time_share_method": "ratio_linearised_t(robot)",
+   "time_share_bounds": [
+    0.9126075117994125,
+    0.9459175556741056
+   ],
+   "time_share_outer": [
+    0.8178774176539816,
+    0.9610143777202919
+   ],
+   "task_rate": 0.9008885850991114,
+   "task_rate_ci": [
+    0.8763023009268899,
+    0.9254748692713345
+   ],
+   "task_rate_method": "cluster_robust_glm",
+   "n_tasks": 1463,
+   "per_hour": 2.0952214312568604,
+   "per_hour_ci": [
+    1.6223521335644018,
+    2.692019612883849
+   ],
+   "per_hour_method": "nb2_wald",
+   "dispersion_index": 2.4243567842052833,
+   "interventions": 151,
+   "human_min_per_task": 0.07076557302346777,
+   "human_min_ci": [
+    0.05318280119047129,
+    0.08965186366147067
+   ],
+   "unknown_share": 0.031041666666666665,
+   "conformance": "complete",
+   "flags": {
+    "time_gap": 2,
+    "task_not_closed": 1,
+    "task_end_without_start": 1
+   },
+   "active_h": 72.06875500000001,
+   "reset_share_of_active": 0.031562148148975545,
+   "safety_stop_share": 0.00044143802524254633,
+   "by_reason": {
+    "ai_requested_help": 113,
+    "human_initiated": 38
+   },
+   "per_robot_rate": {
+    "r1": 1.51,
+    "r2": 1.54,
+    "r3": 2.2,
+    "r4": 3.05
+   },
+   "per_robot_share": {
+    "r1": 0.9487,
+    "r2": 0.9503,
+    "r3": 0.9447,
+    "r4": 0.9347
+   },
+   "ai_s": 245018.865,
+   "active_s": 259447.51799999998,
+   "human_s": 14314.123,
+   "reset_s": 8188.721,
+   "n_sessions": 40,
+   "n_robots": 4
+  },
+  "headline_r2": {
+   "time_share": 0.9502447051653834,
+   "time_share_ci": [
+    0.9415960025790184,
+    0.9588934077517484
+   ],
+   "time_share_method": "ratio_linearised_t(session)",
+   "time_share_bounds": [
+    0.824022244022046,
+    0.9568537772652322
+   ],
+   "time_share_outer": [
+    0.6323334858401406,
+    0.9715973466986935
+   ],
+   "task_rate": 0.9283582089552239,
+   "task_rate_ci": [
+    0.895616384986464,
+    0.9513874055144875
+   ],
+   "task_rate_method": "wilson",
+   "n_tasks": 335,
+   "per_hour": 1.5420650677439465,
+   "per_hour_ci": [
+    0.9979432047872275,
+    2.2763922399295153
+   ],
+   "per_hour_method": "poisson_exact_fallback(alpha_at_zero_boundary)",
+   "dispersion_index": 0.8297172882492366,
+   "interventions": 25,
+   "human_min_per_task": 0.054772139303482584,
+   "human_min_ci": [
+    0.018258905237432434,
+    0.08217484028270645
+   ],
+   "unknown_share": 0.12416666666666666,
+   "conformance": "incomplete",
+   "flags": {
+    "time_gap": 2,
+    "task_not_closed": 1,
+    "task_end_without_start": 1
+   },
+   "active_h": 16.212026666666667,
+   "reset_share_of_active": 0.030649005840931262,
+   "safety_stop_share": 0.00024306372278906248,
+   "by_reason": {
+    "ai_requested_help": 21,
+    "human_initiated": 4
+   },
+   "per_robot_rate": {
+    "r2": 1.54
+   },
+   "per_robot_share": {
+    "r2": 0.9503
+   },
+   "ai_s": 55463.833,
+   "active_s": 58363.296,
+   "human_s": 2885.277,
+   "reset_s": 1788.777,
+   "n_sessions": 10,
+   "n_robots": 1
+  },
+  "truth": {
+   "ai_share": 0.937665877853307,
+   "active_h": 74.52921888111129,
+   "human_h": 4.613899973588842
+  },
+  "truth_r2": {
+   "ai_share": 0.9227119884527587,
+   "active_h": 18.672486596237285,
+   "human_h": 1.439218891667727
+  },
+  "suggestions": [
+   "The meter could not see 3.1% of the time. True time autonomy is somewhere between 91.3% (all gaps human) and 94.6% (all gaps AI); quote the outer interval [81.8%, 96.1%].",
+   "r4 needs help 2.0x as often as the other robots (3.0/h vs 1.5/h). Check it first.",
+   "Planned bin refills are 57.2% of all human time. Automating them would lift time autonomy from 94.4% to about 97.6%.",
+   "Only 90.1% of tasks finished with zero human help, although 94.4% of time was AI. Buyers paying per task should use the task rate.",
+   "Robot r2 alone: The meter could not see 12.4% of the time on r2. True time autonomy is somewhere between 82.4% (all gaps human) and 95.7% (all gaps AI); quote the outer interval [63.2%, 97.2%].",
+   "Robot r2 alone: Above the 5 % unknown limit: the report is INCOMPLETE. Fix the logger before publishing any autonomy number."
+  ]
+ },
+ "S4_tamper": {
+  "session": "r1-s002",
+  "events": 412,
+  "checkpoints": 5,
+  "untouched_log_verifies": true,
+  "attacks": {
+   "Change one remote takeover to 'ai'": {
+    "plain_hash_chain (research package)": "caught",
+    "signed checkpoints, no outside copy": "caught",
+    "signed + anchored checkpoints": "caught",
+    "why": [
+     "seq 197: content does not match its hash"
+    ]
+   },
+   "Same edit, then recompute every hash and re-sign": {
+    "plain_hash_chain (research package)": "passed",
+    "signed checkpoints, no outside copy": "passed",
+    "signed + anchored checkpoints": "caught",
+    "why": [
+     "history differs from anchored checkpoint at size 200 (rewritten)"
+    ]
+   },
+   "Delete the last 20 min, add a new session_end, re-sign": {
+    "plain_hash_chain (research package)": "passed",
+    "signed checkpoints, no outside copy": "passed",
+    "signed + anchored checkpoints": "caught",
+    "why": [
+     "log has 350 events but an anchored checkpoint covers 400 (cut off)"
+    ]
+   },
+   "Strip all hashes": {
+    "plain_hash_chain (research package)": "passed",
+    "signed checkpoints, no outside copy": "caught",
+    "signed + anchored checkpoints": "caught",
+    "why": [
+     "unsealed events present (fail closed)"
+    ]
+   }
+  }
+ },
+ "S5_zero_takeovers": {
+  "full_report_crash": "ValueError: The first guess on the deviance function returned a nan.  This could be a boundary  proble",
+  "active_hours": 7.4224925,
+  "interventions": 0,
+  "meter_ci_per_hour": [
+   0.0,
+   0.4969866192675756
+  ],
+  "method": "poisson_exact_fallback(<2 clusters or zero count)",
+  "honest_upper_independent": 0.4036019266511877,
+  "honest_upper_one_robot_frailty_a0.5": 0.9355714283307338,
+  "hours_needed_rate_below_0.1_independent": 29.957322735539908,
+  "hours_needed_rate_below_0.1_one_robot": 69.44271909999159
+ },
+ "S6_dagger_mapping": {
+  "PAUSED as idle (dossier mapping)": {
+   "time_share": 0.8078470808788448,
+   "interventions": 0,
+   "per_hour": 0.0,
+   "task_rate": 0.36,
+   "active_h": 0.6916655555555555,
+   "flags": {}
+  },
+  "PAUSED as shared (standard's rules)": {
+   "time_share": 0.7363683686849717,
+   "interventions": 16,
+   "per_hour": 21.08578620330651,
+   "task_rate": 0.36,
+   "active_h": 0.7588050000000001,
+   "flags": {}
+  },
+  "true_correction_cycles": 16
+ }
+}
