@@ -83,6 +83,9 @@ known-first-party = ["autonometry"]
 [tool.mypy]
 strict = true
 python_version = "3.12"
+# CI and most robots run Linux; this makes `if sys.platform != "win32":` guards (keys.py) check
+# consistently regardless of the OS running mypy itself.
+platform = "linux"
 files = ["src"]
 # research/ is reference-only design material: never type-checked.
 exclude = ["^research/"]
