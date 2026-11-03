@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autonometry.github.io/spec/v0.2/event.schema.json",
+  "title": "Autonometry event (v0.2)",
+  "description": "One event of a robot control-state log. One JSON object per line (JSON Lines). See definitions.md (v0.2) for the normative taxonomy. Fields starting with x_ are extensions and are ignored by the metrics.",
+  "type": "object",
+  "$defs": {
+    "state": {
+      "type": "string",
+      "enum": ["ai", "human_local", "human_remote", "shared", "scripted", "safety_stop", "idle", "unknown"],
+      "description": "Control state of one scope. Mutually exclusive per scope."
+    },
+    "reason": {
+      "type": "string",
+      "enum": ["ai_requested_help", "human_initiated", "safety", "planned"],
+      "description": "Why a transition, approval or hint happened."
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.-]+$",
+      "description": "Control scope: 'whole_robot' or a declared body-part / channel name."
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{3,9})?Z$",
+      "description": "RFC 3339 date-time in UTC with Z suffix and at least millisecond precision."
+    },
+    "sha256hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nonneg": { "type": "number", "minimum": 0 }
+  },
+  "properties": {
+    "robot_id":   { "type": "string", "minLength": 1 },
+    "session_id": { "type": "string", "minLength": 1 },
+    "task_id":    { "type": ["string", "null"], "description": "Null between tasks." },
+    "seq":        { "type": "integer", "minimum": 0, "description": "Strictly increasing within a session, shared by all scopes." },
+    "ts":         { "$ref": "#/$defs/ts" },
+    "type": {
+      "type": "string",
+      "enum": ["session_start", "session_end", "transition", "approval", "hint", "help_request",
+               "task_start", "task_end", "supervision", "heartbeat"]
+    },
+    "scope":      { "$ref": "#/$defs/scope" },
+    "state":      { "$ref": "#/$defs/state" },
+    "reason":     { "oneOf": [ { "$ref": "#/$defs/reason" }, { "type": "null" } ] },
+    "actor_id":   { "type": ["string", "null"], "description": "Pseudonymous actor; automated controllers are 'ai:<controller_id>', scripts 'script:<script_id>'." },
+    "device_id":  { "type": ["string", "null"], "description": "Declared human input device from the device registry (definitions.md 6.10)." },
+    "plan_item_id": { "type": ["string", "null"], "description": "Required when reason is 'planned'." },
+    "related_seq": { "type": ["integer", "null"], "minimum": 0, "description": "Links a takeover to the safety_stop it follows." },
+    "dwell_s":    { "$ref": "#/$defs/nonneg", "description": "Measured human decision time for approval/hint events." },
+    "ttl_s":      { "$ref": "#/$defs/nonneg", "description": "Hint time-to-live (hint_as_event policy)." },
+    "distance_m": { "$ref": "#/$defs/nonneg", "description": "Cumulative metres since session_start; non-decreasing." },
+    "task_definition_id": { "type": "string", "minLength": 1 },
+    "outcome":    { "type": "string", "enum": ["success", "failure", "aborted", "unknown"] },
+    "level":      { "type": "string", "enum": ["none", "remote_monitoring", "local_monitoring", "ready_to_takeover"] },
+    "n_supervisors": { "type": "integer", "minimum": 0 },
+    "scopes":     { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/scope" } },
+    "initial_states": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/state" },
+      "description": "Map scope -> state at session_start."
+    },
+    "scope_weights": {
+      "type": "object",
+      "additionalProperties": { "type": "number", "exclusiveMinimum": 0 },
+      "description": "Optional map scope -> weight for the scope-weighted aggregation; default equal weights."
+    },
+    "heartbeat_interval_s": { "type": "number", "exclusiveMinimum": 0 },
+    "hint_policy": { "type": "string", "enum": ["hint_as_shared", "hint_as_event"] },
+    "task_registry_hash": { "$ref": "#/$defs/sha256hex" },
+    "plan_hash":   { "$ref": "#/$defs/sha256hex" },
+    "device_registry_hash": { "$ref": "#/$defs/sha256hex", "description": "Hash of the declared device registry (definitions.md 6.10)." },
+    "prev_hash":   {
+      "oneOf": [ { "$ref": "#/$defs/sha256hex" }, { "type": "null" } ],
+      "description": "Previous event's hash; for the first event the genesis SHA-256('autonometry/chain-v1|<robot_id>|<session_id>'). Null only in unsealed (L1) logs."
+    },
+    "hash":        { "$ref": "#/$defs/sha256hex", "description": "SHA-256 of this event in RFC 8785 canonical JSON, without 'hash' and including 'prev_hash'." },
+    "note":        { "type": "string", "maxLength": 2000 }
+  },
+  "required": ["robot_id", "session_id", "task_id", "seq", "ts", "type"],
+  "patternProperties": { "^x_[a-z0-9_]+$": {} },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "session_start" } } },
+      "then": { "required": ["scopes", "initial_states", "heartbeat_interval_s", "hint_policy", "task_registry_hash", "plan_hash"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "transition" } } },
+      "then": { "required": ["scope", "state"] }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "transition" }, "state": { "enum": ["human_local", "human_remote", "shared"] } },
+        "required": ["state"]
+      },
+      "then": {
+        "required": ["reason", "actor_id"],
+        "properties": { "reason": { "$ref": "#/$defs/reason" }, "actor_id": { "type": "string", "minLength": 1 } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "transition" }, "state": { "const": "safety_stop" } },
+        "required": ["state"]
+      },
+      "then": { "required": ["reason"], "properties": { "reason": { "const": "safety" } } }
+    },
+    {
+      "if": { "properties": { "reason": { "const": "planned" } }, "required": ["reason"] },
+      "then": { "required": ["plan_item_id"], "properties": { "plan_item_id": { "type": "string", "minLength": 1 } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "approval" } } },
+      "then": {
+        "required": ["scope", "actor_id", "reason"],
+        "properties": { "reason": { "enum": ["ai_requested_help", "planned"] }, "actor_id": { "type": "string", "minLength": 1 } }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "hint" } } },
+      "then": { "required": ["scope", "actor_id"], "properties": { "actor_id": { "type": "string", "minLength": 1 } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "help_request" } } },
+      "then": { "required": ["scope"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "task_start" } } },
+      "then": { "required": ["task_definition_id"], "properties": { "task_id": { "type": "string", "minLength": 1 } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "task_end" } } },
+      "then": { "required": ["outcome"], "properties": { "task_id": { "type": "string", "minLength": 1 } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "supervision" } } },
+      "then": { "required": ["level", "n_supervisors"] }
+    }
+  ],
+  "examples": [
+    {
+      "robot_id": "r01", "session_id": "s001", "task_id": null, "seq": 0, "ts": "2026-10-30T09:00:00.000Z",
+      "type": "session_start", "scopes": ["whole_robot"], "initial_states": {"whole_robot": "idle"},
+      "heartbeat_interval_s": 1.0, "hint_policy": "hint_as_shared",
+      "task_registry_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "plan_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "robot_id": "r01", "session_id": "s001", "task_id": "t1", "seq": 1, "ts": "2026-10-30T09:00:10.000Z",
+      "type": "task_start", "task_definition_id": "pick_place_v1"
+    },
+    {
+      "robot_id": "r01", "session_id": "s001", "task_id": "t1", "seq": 2, "ts": "2026-10-30T09:00:10.000Z",
+      "type": "transition", "scope": "whole_robot", "state": "ai", "reason": null, "actor_id": "ai:policy_v3"
+    },
+    {
+      "robot_id": "r01", "session_id": "s001", "task_id": "t1", "seq": 3, "ts": "2026-10-30T09:01:00.000Z",
+      "type": "help_request", "scope": "whole_robot"
+    },
+    {
+      "robot_id": "r01", "session_id": "s001", "task_id": "t1", "seq": 4, "ts": "2026-10-30T09:01:04.500Z",
+      "type": "transition", "scope": "whole_robot", "state": "human_remote", "reason": "ai_requested_help", "actor_id": "op_17", "device_id": "vr_station_2"
+    },
+    {
+      "robot_id": "r01", "session_id": "s001", "task_id": "t1", "seq": 5, "ts": "2026-10-30T09:01:30.000Z",
+      "type": "transition", "scope": "whole_robot", "state": "ai", "reason": null, "actor_id": "ai:policy_v3"
+    },
+    {
+      "robot_id": "r01", "session_id": "s001", "task_id": "t1", "seq": 6, "ts": "2026-10-30T09:02:00.000Z",
+      "type": "approval", "scope": "whole_robot", "actor_id": "op_17", "reason": "ai_requested_help", "dwell_s": 3.2
+    },
+    {
+      "robot_id": "r01", "session_id": "s001", "task_id": "t1", "seq": 7, "ts": "2026-10-30T09:03:00.000Z",
+      "type": "task_end", "outcome": "success"
+    },
+    {
+      "robot_id": "r01", "session_id": "s001", "task_id": null, "seq": 8, "ts": "2026-10-30T09:03:00.000Z",
+      "type": "transition", "scope": "whole_robot", "state": "human_local", "reason": "planned", "actor_id": "tech_02", "plan_item_id": "reset_scene"
+    },
+    {
+      "robot_id": "r01", "session_id": "s001", "task_id": null, "seq": 9, "ts": "2026-10-30T09:03:40.000Z",
+      "type": "transition", "scope": "whole_robot", "state": "idle", "reason": null, "actor_id": null
+    },
+    {
+      "robot_id": "r01", "session_id": "s001", "task_id": null, "seq": 10, "ts": "2026-10-30T09:05:00.000Z",
+      "type": "session_end"
+    },
+    {
+      "robot_id": "r01", "session_id": "s002", "task_id": "t9", "seq": 5, "ts": "2026-10-31T10:12:03.000Z",
+      "type": "transition", "scope": "whole_robot", "state": "scripted", "reason": null, "actor_id": "script:replay_ep12",
+      "x_src_ts": 412.5, "x_src_clock": "frame_index", "x_ts_reconstructed": true
+    }
+  ]
+}

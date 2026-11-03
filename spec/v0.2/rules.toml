@@ -1,0 +1,103 @@
+# Autonometry rule tables, v0.2. Machine-readable companion to definitions.md.
+# definitions.md is normative: if this file disagrees with it, this file is the bug.
+
+spec_version = "0.2"
+# Genesis hash of every session chain: SHA-256("autonometry/chain-v1|<robot_id>|<session_id>")
+chain_genesis_prefix = "autonometry/chain-v1"
+
+# How each control state counts (definitions.md sections 2 and 4).
+# category: ai | human | neutral | inactive | unmeasured
+[states.ai]
+category = "ai"
+active = true
+
+[states.human_local]
+category = "human"
+active = true
+
+[states.human_remote]
+category = "human"
+active = true
+
+[states.shared]
+category = "human"  # conservative default; the shared_as_ai variant is a reported sensitivity
+active = true
+
+[states.scripted]
+category = "neutral"
+active = true
+
+[states.safety_stop]
+category = "neutral"
+active = true
+
+[states.idle]
+category = "inactive"
+active = false
+
+[states.unknown]
+category = "unmeasured"
+active = false
+
+# Whole-robot state from several scopes (definitions.md 6.6).
+# First state in `precedence` held by any scope wins; `idle` needs every scope idle; else `fallback`.
+[whole_robot]
+precedence = ["human_remote", "human_local", "shared", "safety_stop", "scripted", "ai"]
+idle_requires_all_scopes = true
+fallback = "unknown"
+
+# Interventions (definitions.md 3, 6.1, 6.2, 6.7).
+[interventions]
+from_states = ["ai", "scripted"]
+into_states = ["human_local", "human_remote", "shared"]
+episode_ends_when_scope_returns_to = ["ai", "scripted"]  # or when the task or session ends
+discrete_event_types = ["approval", "hint"]
+
+# Holds (definitions.md 6.8) and device location (6.10).
+[holds]
+idle_in_open_task_becomes = "unknown"  # and is flagged idle_in_task
+
+[device_location]
+undeclared_device_state = "human_remote"  # and is flagged undeclared_device
+
+# Reasons (definitions.md 3).
+[reasons]
+values = ["ai_requested_help", "human_initiated", "safety", "planned"]
+required_for_states = ["human_local", "human_remote", "shared", "safety_stop"]
+safety_stop_reason = "safety"
+
+# Gaps (definitions.md 2, rule 2): silence longer than heartbeat_interval_s + gap_tolerance_s
+# is unknown time for the part beyond the tolerance; any gap in seq makes the whole interval unknown.
+[gaps]
+rule = "heartbeat_plus_tolerance"
+
+# Parameter defaults (definitions.md 9). Every value is printed in every report.
+[params]
+idle_threshold_s = 30.0
+gap_tolerance_s = 2.0
+heartbeat_interval_s = 1.0
+help_latency_max_s = 120.0
+approval_min_dwell_s = 0.0
+approval_dwell_sensitivity_s = 5.0
+approval_wait_max_s = 10.0
+hint_ttl_s = 60.0
+hint_min_dwell_s = 0.0
+takeover_window_s = 60.0
+simultaneity_window_s = 0.5
+unknown_share_max = 0.05
+
+# Loader flag codes (definitions.md 6.8, 6.10, 8).
+[flags]
+codes = [
+  "time_gap", "seq_gap", "ts_regression", "missing_initial_state", "help_reason_recoded",
+  "undeclared_scope", "nested_task", "task_end_without_start", "task_not_closed",
+  "distance_regression", "no_session_start", "no_session_end", "idle_in_task",
+  "ts_reconstructed", "undeclared_device",
+]
+
+# Trust levels (definitions.md 8; research/methods/trust.md section 7).
+[trust]
+reconstructed_events_max_level = 1
+l3_station_only_max_share = 0.005
+l3_disputed_max_share = 0.02
+default_tau_s = 1.0
