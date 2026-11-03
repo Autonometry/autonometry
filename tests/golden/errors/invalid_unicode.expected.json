@@ -1,0 +1,70 @@
+{
+  "counts": {
+    "blank_lines": 0,
+    "errors_by_code": {
+      "invalid_unicode": 7
+    },
+    "events": 3,
+    "files": 1,
+    "flags": 0,
+    "flags_by_code": {},
+    "lines": 10,
+    "rejected_lines": 7,
+    "sessions": 1
+  },
+  "errors": [
+    {
+      "code": "invalid_unicode",
+      "file": "invalid_unicode.jsonl",
+      "line": 2,
+      "message": "a string holds a lone UTF-16 surrogate"
+    },
+    {
+      "code": "invalid_unicode",
+      "file": "invalid_unicode.jsonl",
+      "line": 3,
+      "message": "a string holds a lone UTF-16 surrogate"
+    },
+    {
+      "code": "invalid_unicode",
+      "file": "invalid_unicode.jsonl",
+      "line": 4,
+      "message": "a string holds a Unicode noncharacter"
+    },
+    {
+      "code": "invalid_unicode",
+      "file": "invalid_unicode.jsonl",
+      "line": 5,
+      "message": "a string holds a Unicode noncharacter"
+    },
+    {
+      "code": "invalid_unicode",
+      "file": "invalid_unicode.jsonl",
+      "line": 6,
+      "message": "a string holds a Unicode noncharacter"
+    },
+    {
+      "code": "invalid_unicode",
+      "file": "invalid_unicode.jsonl",
+      "line": 7,
+      "message": "a string holds a Unicode noncharacter"
+    },
+    {
+      "code": "invalid_unicode",
+      "file": "invalid_unicode.jsonl",
+      "line": 8,
+      "message": "a string holds a Unicode noncharacter"
+    }
+  ],
+  "flags": [],
+  "sessions": [
+    {
+      "events": 3,
+      "first_seq": 0,
+      "last_seq": 2,
+      "robot_id": "r01",
+      "session_id": "s01"
+    }
+  ],
+  "spec_version": "0.2"
+}

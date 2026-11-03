@@ -2,6 +2,5 @@
 {"robot_id":"r01","session_id":"s01","task_id":null,"seq":9,"ts":"2026-10-30T09:00:01.500Z","type":"heartbeat","note":"ÿ"}
 {"note":"À¯"}
 {"note":"í €"}
-{"robot_id":"r01","session_id":"s01","task_id":null,"seq":9,"ts":"2026-10-30T09:00:01.500Z","type":"heartbeat","note":"\ud800"}
 {"robot_id":"r01","session_id":"s01","task_id":null,"seq":1,"ts":"2026-10-30T09:00:01.000Z","type":"heartbeat"}
 {"robot_id":"r01","session_id":"s01","task_id":null,"seq":2,"ts":"2026-10-30T09:00:02.000Z","type":"session_end"}

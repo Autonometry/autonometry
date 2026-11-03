@@ -2,14 +2,14 @@
   "counts": {
     "blank_lines": 0,
     "errors_by_code": {
-      "invalid_utf8": 4
+      "invalid_utf8": 3
     },
     "events": 3,
     "files": 1,
     "flags": 0,
     "flags_by_code": {},
-    "lines": 7,
-    "rejected_lines": 4,
+    "lines": 6,
+    "rejected_lines": 3,
     "sessions": 1
   },
   "errors": [
@@ -30,12 +30,6 @@
       "file": "invalid_utf8.jsonl",
       "line": 4,
       "message": "byte 10 is not valid UTF-8"
-    },
-    {
-      "code": "invalid_utf8",
-      "file": "invalid_utf8.jsonl",
-      "line": 5,
-      "message": "a \\u escape is a lone UTF-16 surrogate"
     }
   ],
   "flags": [],
