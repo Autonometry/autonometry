@@ -139,7 +139,9 @@ def test_iter_lines_matches_reference_splitter__defs_8(data: bytes, limit: int) 
 
 # --- golden fixtures ---------------------------------------------------------------------------
 
-FIXTURES = sorted(GOLDEN.glob("*/*.jsonl"))
+FIXTURES = sorted(
+    p for p in GOLDEN.glob("*/*.jsonl") if p.parent.name != "sealed"
+)  # tests/golden/sealed/ is a raw input for M2 sealing tests, not a validate fixture
 
 
 @pytest.mark.parametrize("path", FIXTURES, ids=lambda p: f"{p.parent.name}/{p.stem}")
