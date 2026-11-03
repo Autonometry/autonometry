@@ -19,6 +19,7 @@ Resolves the cases that the SO-101 / LeRobot dossier found uncovered by v0.1, an
 6. Hashing is fixed: RFC 8785 canonical JSON and a domain-separated genesis hash (Section 8).
 7. Schema: `scripted` added to the state enum; `device_id` and `device_registry_hash` added; `x_` extension fields now validate, as the standard already allowed.
 8. Stricter log format: `ts` needs 3 to 9 fraction digits and rejects leap seconds; identifiers and scope names have a fixed safe character set and length; each line is I-JSON with integer fields written as integers; a repeated `session_start` or `session_end` and events outside the session are flagged; rejected lines are counted and listed up to `list_max_per_code` per code (Sections 1, 3, 8).
+9. Sealing and verification (hash chain, signed Merkle checkpoints, RFC 3161 timestamp anchors) for trust levels L1 and L2 (Section 10).
 
 ## 1. Scope and units of observation
 
@@ -186,13 +187,13 @@ The log is JSON Lines (one JSON object per line) validated against `event.schema
 | `supervision` | `level`, `n_supervisors` | Supervision level change (6.4). |
 | `heartbeat` | optional `distance_m` | Liveness; cumulative odometry for distance-based metrics. |
 
-Common fields on every event: `robot_id`, `session_id`, `task_id` (nullable), `seq`, `ts`, `type`; optional `distance_m` (cumulative metres since `session_start`, non-decreasing), `prev_hash`, `hash`. `hash` is the lower-case hex SHA-256 of the event serialised with the RFC 8785 JSON Canonicalization Scheme (https://www.rfc-editor.org/rfc/rfc8785), without its own `hash` field and including `prev_hash`. `prev_hash` is the previous event's `hash`; for the first event of a session it is the genesis hash SHA-256 of the UTF-8 string `autonometry/chain-v1|<robot_id>|<session_id>` (the prefix names the hashing scheme, not the spec version, so it changes only if the hashing itself changes). `prev_hash` may be null only in unsealed (trust level L1) logs; a verifier asked for L2 or above MUST fail when any event lacks `hash` or `prev_hash`. The trust levels that use these fields are specified by the sibling trust review.
+Common fields on every event: `robot_id`, `session_id`, `task_id` (nullable), `seq`, `ts`, `type`; optional `distance_m` (cumulative metres since `session_start`, non-decreasing), `prev_hash`, `hash`. `hash` is the lower-case hex SHA-256 of the event serialised with the RFC 8785 JSON Canonicalization Scheme (https://www.rfc-editor.org/rfc/rfc8785), without its own `hash` field and including `prev_hash`. `prev_hash` is the previous event's `hash`; for the first event of a session it is the genesis hash SHA-256 of the UTF-8 string `autonometry/chain-v1|<robot_id>|<session_id>` (the prefix names the hashing scheme, not the spec version, so it changes only if the hashing itself changes). `prev_hash` may be null only in unsealed (trust level L1) logs; a verifier asked for L2 or above MUST fail when any event lacks `hash` or `prev_hash`. Section 10 specifies sealing and trust levels L1 and L2; L3 and L4 follow in later versions.
 
 **Identifiers.** `robot_id`, `session_id`, `task_id`, `task_definition_id`, `actor_id`, `device_id` and `plan_item_id` are 1 to 128 ASCII letters, digits, `.`, `_`, `:` or `-`, starting with a letter or digit. Scope names are 1 to 64 ASCII letters, digits, `_`, `.` or `-`. Identifiers are therefore safe to print in terminals and reports.
 
 **JSON.** Each line is one I-JSON object (RFC 7493): no duplicate keys, no lone surrogates or Unicode noncharacters, numbers within the range of an IEEE 754 double, integers within ±(2^53 − 1). Integer fields (`seq`, `related_seq`, `n_supervisors`) are written as JSON integers, without a fraction or exponent (`5`, not `5.0`).
 
-**Time.** `ts` is the time the recorder observed the event, from a UTC clock synchronised by NTP or PTP; the clock status is recorded at every checkpoint (trust review, Section 4.2). A source's own timestamp MAY be kept as `x_src_ts` with `x_src_clock` (`wall`, `monotonic`, `sim`, `frame_index`). Events rebuilt after the fact from files rather than observed live (for example from LeRobot dataset frames, whose `timestamp` is `frame_index / fps`) MUST carry `x_ts_reconstructed: true`; the loader counts them under the flag `ts_reconstructed`, and spans built from them are reported at trust level L1 at most.
+**Time.** `ts` is the time the recorder observed the event, from a UTC clock synchronised by NTP or PTP; the recorder logs its clock status as events (defined with the recorder). A source's own timestamp MAY be kept as `x_src_ts` with `x_src_clock` (`wall`, `monotonic`, `sim`, `frame_index`). Events rebuilt after the fact from files rather than observed live (for example from LeRobot dataset frames, whose `timestamp` is `frame_index / fps`) MUST carry `x_ts_reconstructed: true`; the loader counts them under the flag `ts_reconstructed`, and spans built from them are reported at trust level L1 at most.
 
 **Extensions.** Fields whose names start with `x_` are allowed on every event and ignored by the metrics. Any other field not defined here is a schema error.
 
@@ -213,5 +214,45 @@ Common fields on every event: `robot_id`, `session_id`, `task_id` (nullable), `s
 | `takeover_window_s` | 60 | 6.7 |
 | `simultaneity_window_s` | 0.5 | 6.6 |
 | `unknown_share_max` | 0.05 | 7 |
+| `checkpoint_every_events` | 1000 | 10.3 |
+| `checkpoint_every_s` | 600 | 10.3 |
+| `max_commit_delay_s` | 3600 | 10.5 |
+| `clock_tolerance_s` | 1 | 10.5 |
 
 All parameters MUST be printed in the report; changing a default is allowed but is itself a reported fact.
+
+## 10. Sealing and verification
+
+**10.1 Sealed session.** A session is sealed when every event has `hash` and `prev_hash` (Section 8) and `seq` rises by exactly 1 from each event to the next. Event *i* is the *i*-th event in `seq` order, counting from 0.
+
+**10.2 Merkle tree.** The events of a session are, in order, the leaves of the Merkle tree of RFC 9162 Section 2.1.1 (identical to RFC 6962 Section 2.1). A leaf's data is the 32 bytes of the event's `hash`: leaf hash = SHA-256(0x00 || hash); interior node = SHA-256(0x01 || left || right).
+
+**10.3 Checkpoints.** A checkpoint commits to the first `size` events of a session. It is a C2SP checkpoint (https://c2sp.org/tlog-checkpoint) in signed-note format (https://c2sp.org/signed-note): three lines of note text (the origin `autonometry/<robot_id>/<session_id>`, the tree size in ASCII decimal, the base64 root hash) and no extension lines, then a blank line and one or more signature lines. The recorder signs with an Ed25519 key (signature type 0x01). The key name is fixed when the key is made (1 to 256 ASCII letters, digits, `.`, `_`, `:`, `/` or `-`, for example `autonometry/<robot_id>`) and need not equal the origin, so one key serves every session of a robot. Auditors obtain the verifier key (vkey) outside the log. The recorder writes a checkpoint after the first event of a session, after every further `checkpoint_every_events` events, after any event whose `ts` is at least `checkpoint_every_s` later than that of the last event of the previous checkpoint, and after the last event.
+
+**10.4 Checkpoint file.** The checkpoints of a log `<name>.jsonl` are appended in order to `<name>.checkpoints.jsonl`, one record per line, under the line rules of Section 8 and `checkpoint.schema.json`: `{"type": "checkpoint", "note": "<signed note>"}` and, later, `{"type": "timestamp", "note_sha256": "<hex SHA-256 of the signed note's UTF-8 bytes>", "tsr": "<base64 of the DER RFC 3161 TimeStampResp>"}`. An anchor file has the same format.
+
+**10.5 Anchors.** A checkpoint is anchored when either (a) a timestamp record for it holds a granted RFC 3161 response for the signed note that verifies against a TSA root certificate the verifier trusts, with a time at most `max_commit_delay_s` after and at most `clock_tolerance_s` before the `ts` of the last event the checkpoint covers; or (b) the verifier holds the same checkpoint (origin, size, root, valid signature) in an anchor file: a copy kept outside the log, such as the customer's or a witness's.
+
+**10.6 Verification.** A verifier recomputes every event hash from the event and every root from the events; it never trusts a stored value. A span of events is trust level L2 when every event in it is sealed and it is covered by a checkpoint with a valid signature from a trusted key, a matching root and an anchor. Everything else is L1, and so are sessions holding events with `x_ts_reconstructed: true` (Section 8). Each session gets one status:
+- `verified`: L2 up to the last event;
+- `partial`: L2 up to `sealed_through_seq`, L1 after it;
+- `unverified`: no L2 span, and nothing contradicts the log;
+- `failed`: the log contradicts its own seals (tampering or corruption), and no span is L2.
+
+Evidence codes; any one makes the status `failed`:
+- `hash_mismatch`: a stored `hash` differs from the recomputed one.
+- `chain_break`: a `prev_hash` or `seq` does not follow, or only some events are sealed.
+- `bad_signature`: a signature line with a trusted key's name and key ID does not verify.
+- `root_mismatch`: a checkpoint or anchor root differs from the events.
+- `missing_events`: a checkpoint or anchor covers more events than the log holds (including a session absent from the log).
+- `bad_timestamp_token`: a timestamp record that cannot be decoded, whose message imprint is not its `note_sha256`, or whose `note_sha256` matches no checkpoint.
+
+Gap codes; they never raise the level:
+- `unsealed`: no event is sealed.
+- `no_checkpoint`: events after the last valid checkpoint.
+- `untrusted_checkpoint`: no signature from a trusted key; the note is ignored.
+- `not_anchored`: a valid checkpoint without an anchor, including when its token does not verify against the trusted TSA roots or no TSA root is trusted.
+- `late_anchor`, `clock_skew`: a verified token outside the window of 10.5.
+- `reconstructed`: events carry `x_ts_reconstructed: true`.
+
+A verifier MUST NOT report L2 for a span it did not prove, and MUST report a log with rejected lines as not verified.
