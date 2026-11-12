@@ -2,7 +2,7 @@
 
 The spec lives once in the repository (``spec/``). The wheel carries it as ``autonometry/spec/``;
 from a source checkout the repository folder is used. Spec versions are named without the leading
-``v`` (``"0.2"`` is the folder ``spec/v0.2``); a leading ``v`` is accepted on input.
+``v`` (``"0.3"`` is the folder ``spec/v0.3``); a leading ``v`` is accepted on input.
 """
 
 import hashlib
@@ -204,7 +204,7 @@ def spec_root() -> Traversable:
 
 
 def available_versions() -> list[str]:
-    """Return the spec versions present, oldest first, without the ``v``, such as ``["0.2"]``."""
+    """Return the spec versions present, oldest first, without the ``v``, such as ``["0.3"]``."""
     found: list[tuple[int, int]] = []
     for entry in spec_root().iterdir():
         match = _FOLDER_RE.fullmatch(entry.name)
@@ -216,7 +216,7 @@ def available_versions() -> list[str]:
 def _normalise(version: str) -> str:
     match = _VERSION_RE.fullmatch(version)
     if match is None:
-        raise SpecError(f"invalid spec version {version!r}; expected a form like '0.2'")
+        raise SpecError(f"invalid spec version {version!r}; expected a form like '0.3'")
     return f"{int(match.group(1))}.{int(match.group(2))}"
 
 
@@ -230,7 +230,7 @@ def _version_dir(version: str) -> Traversable:
 
 
 def known_version(version: str) -> str:
-    """Return a shipped spec version in normal form (``"v0.2"`` gives ``"0.2"``).
+    """Return a shipped spec version in normal form (``"v0.3"`` gives ``"0.3"``).
 
     Raises:
         SpecError: the version is malformed or not shipped with this package.

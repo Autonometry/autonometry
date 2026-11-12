@@ -1,4 +1,4 @@
-"""Hash-chain sealing of event logs (definitions.md v0.2 section 8 ``hash``/``prev_hash``;
+"""Hash-chain sealing of event logs (definitions.md v0.3 section 8 ``hash``/``prev_hash``;
 section 10, sealing and verification).
 
 Pure functions plus an incremental, crash-rebuildable builder: no file or network I/O happens

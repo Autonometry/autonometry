@@ -1,4 +1,4 @@
-"""Merkle tree hashing (definitions.md v0.2 section 10.2; RFC 9162 section 2.1.1 / RFC 6962
+"""Merkle tree hashing (definitions.md v0.3 section 10.2; RFC 9162 section 2.1.1 / RFC 6962
 section 2.1): a leaf's data is hashed with a ``0x00`` prefix and an interior node with a ``0x01``
 prefix, the tree splitting at the largest power of two below the leaf count.
 

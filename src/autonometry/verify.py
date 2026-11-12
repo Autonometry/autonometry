@@ -1,4 +1,4 @@
-"""Verifying sealed logs (definitions.md v0.2 section 10.6).
+"""Verifying sealed logs (definitions.md v0.3 section 10.6).
 
 A pure function over already-read data: :func:`verify_log` never opens a file or makes a network
 call, and it never trusts a stored value. Every event's hash is recomputed from its content,

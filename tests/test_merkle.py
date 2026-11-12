@@ -1,4 +1,4 @@
-"""Tests for autonometry.merkle (definitions.md v0.2 section 10.2; RFC 9162 / RFC 6962)."""
+"""Tests for autonometry.merkle (definitions.md v0.3 section 10.2; RFC 9162 / RFC 6962)."""
 
 import pytest
 

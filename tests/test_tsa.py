@@ -1,4 +1,4 @@
-"""Tests for autonometry.tsa (definitions.md v0.2 section 10.5; research/methods/trust.md 2.5).
+"""Tests for autonometry.tsa (definitions.md v0.3 section 10.5; research/methods/trust.md 2.5).
 
 The HTTP client is tested against a local ``http.server``; token verification is tested against
 a real response recorded once from FreeTSA (``tests/fixtures/tsa/``). No test here uses the
@@ -219,7 +219,7 @@ def golden_tsr() -> bytes:
 
 @pytest.fixture(scope="module")
 def golden_note() -> bytes:
-    log_check = read_logs([GOLDEN_LOG], "0.2")
+    log_check = read_logs([GOLDEN_LOG], "0.3")
     _, notes = seal_sessions(log_check.sessions, key=SEED_KEY, key_name=KEY_NAME)
     note = next(n for n in notes if n.startswith("autonometry/r1/s2\n3\n"))
     assert hashlib.sha256(note.encode("utf-8")).hexdigest() == GOLDEN_NOTE_SHA256, (

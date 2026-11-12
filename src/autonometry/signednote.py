@@ -1,4 +1,4 @@
-"""C2SP signed notes and checkpoints (definitions.md v0.2 section 10.3;
+"""C2SP signed notes and checkpoints (definitions.md v0.3 section 10.3;
 https://c2sp.org/signed-note, https://c2sp.org/tlog-checkpoint).
 
 Pure functions: building, signing and verifying a checkpoint's text never touches a file or the

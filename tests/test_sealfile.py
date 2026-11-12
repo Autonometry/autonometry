@@ -1,4 +1,4 @@
-"""Tests for autonometry.sealfile (definitions.md v0.2 section 10.4)."""
+"""Tests for autonometry.sealfile (definitions.md v0.3 section 10.4)."""
 
 import io
 from pathlib import Path
@@ -13,7 +13,7 @@ from autonometry.sealfile import (
     read_seal_file,
 )
 
-SPEC = "0.2"
+SPEC = "0.3"
 MAX_LINE = 65536
 LIST_MAX = 100
 

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://autonometry.github.io/spec/v0.2/checkpoint.schema.json",
-  "title": "Autonometry checkpoint or timestamp record (v0.2)",
-  "description": "One line of a <name>.checkpoints.jsonl or anchor file (definitions.md v0.2 section 10.4). One JSON object per line (JSON Lines).",
+  "$id": "https://autonometry.github.io/spec/v0.3/checkpoint.schema.json",
+  "title": "Autonometry checkpoint or timestamp record (v0.3)",
+  "description": "One line of a <name>.checkpoints.jsonl or anchor file (definitions.md v0.3 section 10.4). One JSON object per line (JSON Lines).",
   "type": "object",
   "oneOf": [
     {

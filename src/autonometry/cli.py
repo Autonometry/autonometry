@@ -117,7 +117,7 @@ def spec_list() -> None:
 
 @spec_app.command("show")
 def spec_show(
-    version: Annotated[str, typer.Argument(help="Spec version, for example 0.2.")],
+    version: Annotated[str, typer.Argument(help="Spec version, for example 0.3.")],
 ) -> None:
     """Show the files of one spec version with their SHA-256 hashes."""
     try:
@@ -156,7 +156,7 @@ def validate(
     spec: Annotated[
         str | None,
         typer.Option(
-            "--spec", help="Spec version, for example 0.2. Default: the newest one shipped."
+            "--spec", help="Spec version, for example 0.3. Default: the newest one shipped."
         ),
     ] = None,
 ) -> None:
@@ -303,7 +303,7 @@ def seal(
     ],
     out: Annotated[Path, typer.Option("--out", help="Output sealed log.")],
     spec: Annotated[
-        str | None, typer.Option("--spec", help="Spec version, for example 0.2.")
+        str | None, typer.Option("--spec", help="Spec version, for example 0.3.")
     ] = None,
 ) -> None:
     """Seal an event log: hash chain, Merkle checkpoints, Ed25519 signatures (definitions.md 10).
@@ -383,7 +383,7 @@ def timestamp(
         Path, typer.Option("--tsa-root", help="Trusted TSA root certificate(s) (PEM).")
     ],
     spec: Annotated[
-        str | None, typer.Option("--spec", help="Spec version, for example 0.2.")
+        str | None, typer.Option("--spec", help="Spec version, for example 0.3.")
     ] = None,
 ) -> None:
     """Append a verified RFC 3161 timestamp record for each checkpoint that lacks one."""
@@ -534,7 +534,7 @@ def verify_cmd(  # noqa: PLR0913, PLR0917 -- matches the verify CLI's documented
         bool, typer.Option("--json", help="Print the result as JSON instead of a summary.")
     ] = False,
     spec: Annotated[
-        str | None, typer.Option("--spec", help="Spec version, for example 0.2.")
+        str | None, typer.Option("--spec", help="Spec version, for example 0.3.")
     ] = None,
 ) -> None:
     """Verify sealed logs (definitions.md section 10.6): recompute, never trust a stored value.

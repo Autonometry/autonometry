@@ -13,7 +13,7 @@ Retrieved: 2026-11-03.
 
 The golden log's own event timestamps (`tests/golden/sealed/log.jsonl`, session `s2`, last event
 at `2026-11-03T15:02:40.000Z`) were chosen a few minutes before this token was requested, so the
-token falls inside the definitions.md v0.2 section 10.5 window (`max_commit_delay_s` = 3600,
+token falls inside the definitions.md v0.3 section 10.5 window (`max_commit_delay_s` = 3600,
 `clock_tolerance_s` = 1) relative to that fixed timestamp, forever -- this does not depend on
 when the tests are run.
 

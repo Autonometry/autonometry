@@ -19,7 +19,7 @@ from autonometry.strictjson import MAX_SAFE_INTEGER
 
 GOLDEN = Path(__file__).parent / "golden"
 REPO_SPEC = Path(__file__).resolve().parents[1] / "spec"
-SPEC = "0.2"
+SPEC = "0.3"
 ZERO_HASH = "0" * 64
 BOM = b"\xef\xbb\xbf"
 LIMIT = spec.load_rules(SPEC).errors.max_line_bytes
@@ -93,7 +93,7 @@ def spec_copy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fresh_spec_cache:
     copy = tmp_path / "spec"
     shutil.copytree(REPO_SPEC, copy)
     monkeypatch.setattr(spec, "spec_root", lambda: copy)
-    return copy / "v0.2"
+    return copy / "v0.3"
 
 
 # --- lines -------------------------------------------------------------------------------------
@@ -296,7 +296,7 @@ def test_counts_add_up_and_are_read_only__defs_8() -> None:
 
 
 def test_spec_version_is_normalised() -> None:
-    assert read_streams([], "v0.2").spec_version == "0.2"
+    assert read_streams([], "v0.3").spec_version == "0.3"
 
 
 def test_unreadable_path_is_a_log_read_error(tmp_path: Path) -> None:
@@ -328,7 +328,7 @@ def test_spec_without_a_reader_flag_code_is_refused__defs_8(spec_copy: Path) -> 
 def test_inconsistent_spec_is_refused(spec_copy: Path) -> None:
     text = (spec_copy / "rules.toml").read_text(encoding="utf-8")
     (spec_copy / "rules.toml").write_text(
-        text.replace('spec_version = "0.2"', 'spec_version = "0.3"'), "utf-8"
+        text.replace('spec_version = "0.3"', 'spec_version = "0.4"'), "utf-8"
     )
     with pytest.raises(spec.SpecError, match="differs from folder"):
         read_streams([], SPEC)

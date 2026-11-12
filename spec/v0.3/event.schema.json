@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://autonometry.github.io/spec/v0.2/event.schema.json",
-  "title": "Autonometry event (v0.2)",
-  "description": "One event of a robot control-state log. One JSON object per line (JSON Lines). See definitions.md (v0.2) for the normative taxonomy. Fields starting with x_ are extensions and are ignored by the metrics.",
+  "$id": "https://autonometry.github.io/spec/v0.3/event.schema.json",
+  "title": "Autonometry event (v0.3)",
+  "description": "One event of a robot control-state log. One JSON object per line (JSON Lines). See definitions.md (v0.3) for the normative taxonomy. Fields starting with x_ are extensions and are ignored by the metrics.",
   "type": "object",
   "$defs": {
     "state": {

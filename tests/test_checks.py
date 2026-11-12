@@ -4,7 +4,7 @@ from autonometry.checks import check_session
 from autonometry.events import Event, Session
 from autonometry.spec import load_rules
 
-RULES = load_rules("0.2")
+RULES = load_rules("0.3")
 ZERO_HASH = "0" * 64
 
 

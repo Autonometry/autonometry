@@ -1,7 +1,7 @@
-# Autonometry rule tables, v0.2. Machine-readable companion to definitions.md.
+# Autonometry rule tables, v0.3. Machine-readable companion to definitions.md.
 # definitions.md is normative: if this file disagrees with it, this file is the bug.
 
-spec_version = "0.2"
+spec_version = "0.3"
 # Genesis hash of every session chain: SHA-256("autonometry/chain-v1|<robot_id>|<session_id>")
 chain_genesis_prefix = "autonometry/chain-v1"
 

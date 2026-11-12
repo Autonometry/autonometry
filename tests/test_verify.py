@@ -1,4 +1,4 @@
-"""Tests for autonometry.verify (definitions.md v0.2 section 10.6) on the golden sealed log, its
+"""Tests for autonometry.verify (definitions.md v0.3 section 10.6) on the golden sealed log, its
 attacks (research/demo-prototypes/seal.py) and every evidence, gap and file code."""
 
 import copy
@@ -25,9 +25,9 @@ from sealing_helpers import KEY_NAME, SEED_KEY, log_check_of, note_sha256, seal_
 
 GOLDEN_LOG = Path(__file__).parent / "golden" / "sealed" / "log.jsonl"
 TSA_FIXTURES = Path(__file__).parent / "fixtures" / "tsa"
-RULES = load_rules("0.2")
+RULES = load_rules("0.3")
 TRUSTED_KEYS = [parse_vkey(format_vkey(KEY_NAME, SEED_KEY.public_key().public_bytes_raw()))]
-GOLDEN = read_logs([GOLDEN_LOG], "0.2")
+GOLDEN = read_logs([GOLDEN_LOG], "0.3")
 SEALED, NOTES = seal_sessions(GOLDEN.sessions)
 S2_FINAL = next(n for n in NOTES if n.startswith("autonometry/r1/s2\n3\n"))
 S1_FINAL = next(n for n in NOTES if n.startswith("autonometry/r1/s1\n4\n"))
