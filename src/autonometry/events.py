@@ -62,7 +62,11 @@ GapCode = Literal[
     "reconstructed",
 ]
 
+# Codes of rules.toml [sealing] file_codes: records that cannot be tied to one session.
+FileCode = Literal["malformed_checkpoint", "orphan_timestamp"]
+
 TrustStatus = Literal["verified", "partial", "unverified", "failed"]
+TrustLevel = Literal["L1", "L2"]
 
 
 class Event(TypedDict, total=False):
@@ -245,16 +249,81 @@ class SessionVerdict:
 
 
 @dataclass(frozen=True, slots=True)
+class FileProblem:
+    """A checkpoint or timestamp record that cannot be tied to one session, reported for its file
+    (definitions.md section 10.6, File problems). ``line`` is 1-based."""
+
+    file: str
+    line: int
+    code: FileCode
+    detail: str
+
+
+def meets_level(status: TrustStatus, require: TrustLevel) -> bool:
+    """True when a session with ``status`` meets trust level ``require``: L1 for any status but
+    ``failed``, L2 only when the session is ``verified`` up to its last event (definitions.md
+    10.6)."""
+    return status != "failed" if require == "L1" else status == "verified"
+
+
+@dataclass(frozen=True, slots=True)
 class VerifyResult:
-    """Result of verifying one or more logs: one verdict per session, sorted by
-    ``(robot_id, session_id)`` (definitions.md section 10.6).
+    """Result of verifying one or more logs (definitions.md section 10.6).
+
+    ``sessions`` are sorted by ``(robot_id, session_id)``. ``rejected_lines`` holds the listed
+    rejected lines of every file read (logs, checkpoint and anchor files), sorted by
+    ``(file, line)``, and ``file_problems`` the listed file problems; both list at most
+    ``list_max_per_code`` per code, while the ``*_by_code`` totals are exact.
     """
 
-    log_check: LogCheck
+    spec_version: str
     sessions: tuple[SessionVerdict, ...]
+    rejected_lines: tuple[LineError, ...]
+    rejected_by_code: Mapping[str, int]
+    file_problems: tuple[FileProblem, ...]
+    file_problems_by_code: Mapping[str, int]
 
-    def to_json(self) -> dict[str, Any]:
+    def reasons(self, require: TrustLevel) -> list[str]:
+        """Why the result is not verified at level ``require``; empty when it is. Rejected lines
+        and file problems count whatever the sessions' statuses."""
+        reasons: list[str] = []
+        if rejected := sum(self.rejected_by_code.values()):
+            reasons.append(f"{rejected} rejected line(s)")
+        if problems := sum(self.file_problems_by_code.values()):
+            reasons.append(f"{problems} file problem(s)")
+        if not self.sessions:
+            reasons.append("no session to verify")
+        for verdict in self.sessions:
+            if not meets_level(verdict.status, require):
+                below = "" if verdict.status == "failed" else f", below {require}"
+                reasons.append(f"{verdict.robot_id}/{verdict.session_id} {verdict.status}{below}")
+        return reasons
+
+    def verified(self, require: TrustLevel) -> bool:
+        """True when every session meets ``require`` and nothing was rejected or malformed."""
+        return not self.reasons(require)
+
+    def to_json(self, require: TrustLevel) -> dict[str, Any]:
+        """Return a JSON-serialisable summary in stable order. Event contents are left out."""
         return {
-            "log": self.log_check.to_json(),
+            "spec_version": self.spec_version,
+            "require": require,
+            "verified": self.verified(require),
+            "reasons": self.reasons(require),
+            "counts": {
+                "sessions": len(self.sessions),
+                "rejected_lines": sum(self.rejected_by_code.values()),
+                "rejected_lines_by_code": dict(self.rejected_by_code),
+                "file_problems": sum(self.file_problems_by_code.values()),
+                "file_problems_by_code": dict(self.file_problems_by_code),
+            },
+            "rejected_lines": [
+                {"file": e.file, "line": e.line, "code": e.code, "message": e.message}
+                for e in self.rejected_lines
+            ],
+            "file_problems": [
+                {"file": p.file, "line": p.line, "code": p.code, "detail": p.detail}
+                for p in self.file_problems
+            ],
             "sessions": [session.to_json() for session in self.sessions],
         }

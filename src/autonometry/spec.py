@@ -29,6 +29,8 @@ from pydantic import (
     WrapSerializer,
 )
 
+from autonometry.events import EvidenceCode, FileCode, GapCode
+
 logger = logging.getLogger(__name__)
 
 _VERSION_RE = re.compile(r"v?([0-9]{1,4})\.([0-9]{1,4})")
@@ -148,29 +150,9 @@ class SealingRules(_Frozen):
     checkpoint_every_s: float
     max_commit_delay_s: float
     clock_tolerance_s: float
-    evidence_codes: tuple[
-        Literal[
-            "hash_mismatch",
-            "chain_break",
-            "bad_signature",
-            "root_mismatch",
-            "missing_events",
-            "bad_timestamp_token",
-        ],
-        ...,
-    ]
-    gap_codes: tuple[
-        Literal[
-            "unsealed",
-            "no_checkpoint",
-            "untrusted_checkpoint",
-            "not_anchored",
-            "late_anchor",
-            "clock_skew",
-            "reconstructed",
-        ],
-        ...,
-    ]
+    evidence_codes: tuple[EvidenceCode, ...]
+    gap_codes: tuple[GapCode, ...]
+    file_codes: tuple[FileCode, ...]
 
 
 def _read_only(value: Mapping[str, StateRule]) -> Mapping[str, StateRule]:
@@ -402,6 +384,7 @@ def find_inconsistencies(version: str, schema: dict[str, Any], rules: Rules) -> 
         "error": rules.errors.codes,
         "evidence": rules.sealing.evidence_codes,
         "gap": rules.sealing.gap_codes,
+        "file": rules.sealing.file_codes,
     }
     for kind, codes in code_tables.items():
         problems += _duplicates(f"{kind} code", codes)
@@ -429,8 +412,8 @@ def check_consistency(version: str) -> None:
     """Check that rules.toml and the schema of a version agree (definitions.md sections 2, 3, 8).
 
     Rule states equal the schema state enum, rule reasons equal the schema reason enum, every state
-    named in the rules exists, and flag, error, evidence and gap codes are each unique and never
-    shared across those four tables.
+    named in the rules exists, and flag, error, evidence, gap and file codes are each unique and
+    never shared across those five tables.
 
     Raises:
         SpecConsistencyError: all problems, on one line.

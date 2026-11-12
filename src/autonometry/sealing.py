@@ -77,7 +77,8 @@ class Sealer:
         self._checkpoint_every_events = checkpoint_every_events
         self._checkpoint_every_s_ns = seconds_to_ns(checkpoint_every_s)
         self._last_checkpoint_size = 0
-        self._last_checkpoint_ts_ns: int | None = None
+        # Set by the first checkpoint, which the first event always gets (definitions.md 10.3).
+        self._last_checkpoint_ts_ns = 0
         self._last_event: Event | None = None
 
     @property
@@ -98,8 +99,6 @@ class Sealer:
         size = self._tree.size
         if size == 1 or size - self._last_checkpoint_size >= self._checkpoint_every_events:
             return True
-        if self._last_checkpoint_ts_ns is None:
-            return False
         return ts_to_ns(sealed["ts"]) - self._last_checkpoint_ts_ns >= self._checkpoint_every_s_ns
 
     def _checkpoint(self) -> Checkpoint:

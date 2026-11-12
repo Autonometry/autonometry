@@ -12,8 +12,11 @@ import base64
 import binascii
 import functools
 import json
+from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import IO, Any, cast
 
 import jsonschema_rs
@@ -41,21 +44,36 @@ def _validator(spec_version: str) -> jsonschema_rs.Draft202012Validator:
 
 @dataclass(frozen=True, slots=True)
 class CheckpointLine:
-    """A ``{"type": "checkpoint", ...}`` line: one signed C2SP checkpoint (definitions.md 10.4)."""
+    """A ``{"type": "checkpoint", ...}`` line: one signed C2SP checkpoint (definitions.md 10.4).
+    ``line`` is its 1-based line number in its file."""
 
+    line: int
     note: str
 
 
 @dataclass(frozen=True, slots=True)
 class TimestampLine:
     """A ``{"type": "timestamp", ...}`` line: one RFC 3161 token over a checkpoint's note
-    (definitions.md 10.4). ``tsr`` is the decoded DER ``TimeStampResp``."""
+    (definitions.md 10.4). ``tsr`` is the decoded DER ``TimeStampResp``; ``line`` is its 1-based
+    line number in its file."""
 
+    line: int
     note_sha256: str
     tsr: bytes
 
 
 SealRecord = CheckpointLine | TimestampLine
+
+
+@dataclass(frozen=True, slots=True)
+class SealFile:
+    """One checkpoint or anchor file as read: its name as given, its valid records in file order,
+    the first ``list_max_per_code`` rejected lines of each code and the exact count per code."""
+
+    name: str
+    records: tuple[SealRecord, ...]
+    errors: tuple[LineError, ...]
+    errors_by_code: Mapping[str, int]
 
 
 def encode_checkpoint_line(note: str) -> bytes:
@@ -93,12 +111,12 @@ def _describe(error: jsonschema_rs.ValidationError) -> str:
 
 def _record(value: dict[str, Any], name: str, number: int) -> SealRecord | LineError:
     if value.get("type") == "checkpoint":
-        return CheckpointLine(cast(str, value["note"]))
+        return CheckpointLine(number, cast(str, value["note"]))
     try:
         tsr = base64.b64decode(cast(str, value["tsr"]), validate=True)
     except (ValueError, binascii.Error):
         return LineError(name, number, "schema_violation", "/tsr: is not valid base64")
-    return TimestampLine(cast(str, value["note_sha256"]), tsr)
+    return TimestampLine(number, cast(str, value["note_sha256"]), tsr)
 
 
 def _read_one(name: str, number: int, content: bytes, spec_version: str) -> SealRecord | LineError:
@@ -120,25 +138,31 @@ def _read_one(name: str, number: int, content: bytes, spec_version: str) -> Seal
 
 
 def read_seal_file(
-    name: str, stream: IO[bytes], max_line_bytes: int, spec_version: str
-) -> tuple[list[SealRecord], list[LineError]]:
-    """Read one checkpoint or anchor file. Blank lines are skipped; a malformed line is rejected,
-    never raised."""
+    name: str, stream: IO[bytes], max_line_bytes: int, list_max_per_code: int, spec_version: str
+) -> SealFile:
+    """Read one checkpoint or anchor file under the line rules of definitions.md section 8.
+
+    Blank lines are skipped; a malformed line is rejected, never raised. Every rejected line is
+    counted, but only the first ``list_max_per_code`` of each code are kept.
+    """
     records: list[SealRecord] = []
     errors: list[LineError] = []
+    counts: Counter[str] = Counter()
     for number, content in enumerate(iter_lines(stream, max_line_bytes), start=1):
         if content is None:
-            errors.append(
-                LineError(
-                    name, number, "line_too_long", f"line is longer than {max_line_bytes} bytes"
-                )
+            parsed: SealRecord | LineError = LineError(
+                name, number, "line_too_long", f"line is longer than {max_line_bytes} bytes"
             )
+        elif not content.strip(_JSON_SPACE):
             continue
-        if not content.strip(_JSON_SPACE):
-            continue
-        parsed = _read_one(name, number, content, spec_version)
+        else:
+            parsed = _read_one(name, number, content, spec_version)
         if isinstance(parsed, LineError):
-            errors.append(parsed)
+            counts[parsed.code] += 1
+            if counts[parsed.code] <= list_max_per_code:
+                errors.append(parsed)
         else:
             records.append(parsed)
-    return records, errors
+    return SealFile(
+        name, tuple(records), tuple(errors), MappingProxyType(dict(sorted(counts.items())))
+    )

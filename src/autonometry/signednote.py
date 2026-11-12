@@ -29,7 +29,9 @@ _KEY_NAME_RE = re.compile(r"^[A-Za-z0-9._:/-]{1,256}$")
 _KEY_ID_RE = re.compile(r"^[0-9a-f]{8}$")
 # ASCII control characters other than the newline (U+000A) that terminates each line.
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x09\x0b-\x1f\x7f]")
-_ORIGIN_RE = re.compile(r"^autonometry/(?P<robot_id>[^/\n]+)/(?P<session_id>[^/\n]+)$")
+# Identifiers as definitions.md section 8 defines them, so an origin is safe to print.
+_ID = r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}"
+_ORIGIN_RE = re.compile(rf"^autonometry/(?P<robot_id>{_ID})/(?P<session_id>{_ID})$", re.ASCII)
 
 
 class SignedNoteError(ValueError):
@@ -106,10 +108,7 @@ def parse_vkey(text: str) -> VerifierKey:
     body = _canonical_b64decode(body_b64, "vkey public key material")
     if len(body) != _ED25519_VKEY_BODY_LEN or body[0] != ED25519_SIGNATURE_TYPE:
         raise SignedNoteError("vkey is not an Ed25519 (type 0x01) key of 32 bytes")
-    try:
-        public_key = Ed25519PublicKey.from_public_bytes(body[1:])
-    except ValueError as exc:
-        raise SignedNoteError(f"vkey public key is invalid: {exc}") from None
+    public_key = Ed25519PublicKey.from_public_bytes(body[1:])  # 32 bytes: checked just above
     return VerifierKey(name, bytes.fromhex(id_hex), public_key)
 
 
@@ -146,21 +145,40 @@ def sign_note(note_text: str, key_name: str, private_key: Ed25519PrivateKey) -> 
     return f"{note_text}\n{_EM_DASH_SPACE}{key_name} {body}\n"
 
 
-def _split_signatures(text: str) -> tuple[str, list[str]]:
-    """Split a signed note into its note text (with trailing newline) and raw signature lines."""
+@dataclass(frozen=True, slots=True)
+class SignedNote:
+    """A signed note split into the text its signatures cover and its signature lines."""
+
+    text: str
+    signatures: tuple[SignatureLine, ...]
+
+
+def parse_note(text: str) -> SignedNote:
+    """Parse a signed note (c2sp.org/signed-note, 'Format'). The signed text is everything before
+    the last blank line, including its final newline; every line after it is a signature line.
+
+    Raises:
+        SignedNoteError: no final newline, a control character other than newline, no blank line
+            or empty signed text, no or more than 16 signature lines, or a malformed signature
+            line (including non-canonical base64).
+    """
     if not text.endswith("\n"):
         raise SignedNoteError("note does not end with a newline")
+    _no_control_chars(text, "note")
     lines = text.split("\n")[:-1]
     blanks = [i for i, line in enumerate(lines) if line == ""]
     if not blanks:
         raise SignedNoteError("no blank line between the note text and its signatures")
     sep = blanks[-1]
+    if sep == 0:
+        raise SignedNoteError("the signed note text is empty")
     sig_lines = lines[sep + 1 :]
     if not sig_lines:
         raise SignedNoteError("no signature lines")
     if len(sig_lines) > _MAX_SIGNATURES:
         raise SignedNoteError(f"more than {_MAX_SIGNATURES} signature lines")
-    return "\n".join(lines[:sep]) + "\n", sig_lines
+    signatures = tuple(_parse_signature_line(line) for line in sig_lines)
+    return SignedNote("\n".join(lines[:sep]) + "\n", signatures)
 
 
 def _parse_signature_line(line: str) -> SignatureLine:
@@ -195,24 +213,32 @@ def verify_note(text: str, trusted_keys: Sequence[VerifierKey]) -> VerifiedNote:
         SignedNoteError: the note is malformed.
         BadSignatureError: a signature from a trusted key's name and key ID does not verify.
     """
-    note_text, sig_lines = _split_signatures(text)
-    _no_control_chars(note_text, "note text")
+    note = parse_note(text)
+    return VerifiedNote(note.text, trusted_signers(note, trusted_keys))
+
+
+def trusted_signers(note: SignedNote, trusted_keys: Sequence[VerifierKey]) -> tuple[str, ...]:
+    """Return the names of the trusted keys whose signatures on ``note`` verify; empty when no
+    signature line has a trusted key's name and key ID (c2sp.org/signed-note, 'Signatures').
+
+    Raises:
+        BadSignatureError: a signature from a trusted key's name and key ID does not verify.
+    """
     by_name_id = {(key.name, key.key_id): key for key in trusted_keys}
+    message = note.text.encode("utf-8")
     verified: list[str] = []
-    for raw_line in sig_lines:
-        _no_control_chars(raw_line, "signature line")
-        sig = _parse_signature_line(raw_line)
+    for sig in note.signatures:
         key = by_name_id.get((sig.key_name, sig.key_id))
         if key is None:
             continue
         try:
-            key.public_key.verify(sig.signature, note_text.encode("utf-8"))
+            key.public_key.verify(sig.signature, message)
         except InvalidSignature:
             raise BadSignatureError(
                 f"signature from trusted key {sig.key_name!r} does not verify"
             ) from None
         verified.append(sig.key_name)
-    return VerifiedNote(note_text, tuple(verified))
+    return tuple(verified)
 
 
 def checkpoint_origin(robot_id: str, session_id: str) -> str:
@@ -268,3 +294,14 @@ def parse_checkpoint_body(note_text: str) -> CheckpointBody:
     if len(root) != _SHA256_LEN:
         raise SignedNoteError("checkpoint root hash is not 32 bytes")
     return CheckpointBody(match.group("robot_id"), match.group("session_id"), int(size_text), root)
+
+
+def parse_signed_checkpoint(text: str) -> tuple[CheckpointBody, SignedNote]:
+    """Parse a signed checkpoint: the body is read from exactly the text the signatures cover,
+    which must be the three checkpoint lines and nothing else (definitions.md 10.3).
+
+    Raises:
+        SignedNoteError: the note or its checkpoint body is not well formed.
+    """
+    note = parse_note(text)
+    return parse_checkpoint_body(note.text), note
