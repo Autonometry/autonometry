@@ -14,7 +14,14 @@ from jsonschema import Draft202012Validator  # reference implementation, tests o
 
 from autonometry import reader, spec
 from autonometry.events import Event, LogCheck
-from autonometry.reader import LogReadError, iter_lines, read_logs, read_streams
+from autonometry.reader import (
+    LogReadError,
+    RejectedEventError,
+    check_event,
+    iter_lines,
+    read_logs,
+    read_streams,
+)
 from autonometry.strictjson import MAX_SAFE_INTEGER
 
 GOLDEN = Path(__file__).parent / "golden"
@@ -794,3 +801,24 @@ def test_many_rejected_lines_do_not_grow_memory__defs_8() -> None:
     assert result.counts.errors_by_code == {"invalid_json": 5_000, "not_an_object": 5_000}
     assert len(result.errors) == 2 * spec.load_rules(SPEC).errors.list_max_per_code
     assert peak < MiB, f"peak {peak / MiB:.1f} MiB"
+
+
+def test_check_event_applies_the_line_checks_to_a_parsed_value__defs_8() -> None:
+    event = {
+        "robot_id": "r1",
+        "session_id": "s1",
+        "task_id": None,
+        "seq": 0,
+        "ts": "2026-11-12T08:00:00.000Z",
+        "type": "heartbeat",
+    }
+    assert check_event(event, "0.3") == event
+    for value, code in [
+        ([event], "not_an_object"),
+        ({**event, "seq": 1.0}, "schema_violation"),
+        ({**event, "type": "nope"}, "schema_violation"),
+        ({**event, "ts": "2026-02-30T08:00:00.000Z"}, "invalid_timestamp"),
+    ]:
+        with pytest.raises(RejectedEventError) as caught:
+            check_event(value, "0.3")
+        assert caught.value.code == code

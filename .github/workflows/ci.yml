@@ -27,7 +27,7 @@ jobs:
       matrix:
         python-version: ["3.12", "3.13"]
         os: [ubuntu-24.04, ubuntu-24.04-arm]
-        # The verifier and report must work on laptops; only the future recorder is Linux-only.
+        # The verifier and report must work on laptops; only the recorder needs Linux or macOS.
         include:
           - { os: windows-latest, python-version: "3.12" }
           - { os: macos-latest, python-version: "3.12" }
@@ -42,7 +42,20 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy src
+      - run: uv run mypy --strict clients/python
       - run: uv run pytest
+
+  client:
+    name: Recorder client on Python 3.8
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      # Standard library only, outside the project (which needs 3.12): what a connector copies in.
+      - run: uv run --no-project --python 3.8 python -W error -m unittest discover -s tests/client -v
 
   slow:
     name: Slow checks (Python 3.12)

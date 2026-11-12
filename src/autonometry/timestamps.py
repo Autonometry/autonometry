@@ -45,3 +45,11 @@ def datetime_to_ns(instant: datetime) -> int:
     Exact: ``datetime`` has microsecond resolution, so the conversion never rounds.
     """
     return ((instant.astimezone(UTC) - _EPOCH) // timedelta(microseconds=1)) * 1000
+
+
+def ns_to_ts(ns: int) -> str:
+    """Return integer nanoseconds since the Unix epoch as an RFC 3339 UTC timestamp with nine
+    fraction digits, the form a recorder writes in ``ts`` (definitions.md section 3)."""
+    seconds, fraction = divmod(ns, _NS_PER_S)
+    instant = _EPOCH + timedelta(seconds=seconds)
+    return f"{instant:%Y-%m-%dT%H:%M:%S}.{fraction:09d}Z"

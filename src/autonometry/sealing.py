@@ -86,6 +86,10 @@ class Sealer:
         """Number of events sealed so far."""
         return self._tree.size
 
+    def root(self) -> bytes:
+        """The Merkle root (32 raw bytes) of every event sealed so far (definitions.md 10.2)."""
+        return self._tree.root()
+
     def add(self, event: Mapping[str, Any]) -> tuple[dict[str, Any], Checkpoint | None]:
         """Seal one more event; return it and a checkpoint when the policy of 10.3 fires."""
         sealed = seal_event(event, self._prev_hash)
@@ -107,9 +111,15 @@ class Sealer:
         self._last_checkpoint_ts_ns = ts_to_ns(last_event["ts"])
         return Checkpoint(self._tree.size, self._tree.root(), last_event)
 
-    def finish(self) -> Checkpoint | None:
-        """Return the final checkpoint after the session's last event (definitions.md 10.3),
-        unless one already covers it, or no event was ever added."""
+    def checkpoint_now(self) -> Checkpoint | None:
+        """Return a checkpoint of every event sealed so far, unless one already covers them or
+        no event was ever added. A recorder calls it after crash recovery, so the recovered log is
+        committed at once, before any new event."""
         if self._last_event is None or self._last_checkpoint_size == self._tree.size:
             return None
         return self._checkpoint()
+
+    def finish(self) -> Checkpoint | None:
+        """Return the final checkpoint after the session's last event (definitions.md 10.3),
+        unless one already covers it, or no event was ever added."""
+        return self.checkpoint_now()

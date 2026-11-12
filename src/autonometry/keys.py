@@ -15,32 +15,16 @@ from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from autonometry.fileio import PRIVATE_FILE_MODE, PUBLIC_FILE_MODE, atomic_write, fsync_directory
-from autonometry.signednote import format_vkey
+from autonometry.fileio import PRIVATE_FILE_MODE, PUBLIC_FILE_MODE, atomic_write, make_private_dirs
+from autonometry.signednote import SignedNoteError, format_vkey, parse_vkey
 
 logger = logging.getLogger(__name__)
 
-_PRIVATE_DIR_MODE = 0o700
 _WINDOWS = sys.platform == "win32"
 
 
 class SigningKeyError(Exception):
     """A signing key file is missing, unreadable, insecurely stored or already exists."""
-
-
-def _make_missing_folders(folder: Path) -> None:
-    """Create ``folder`` and any missing parents, each 0700; existing folders are left as they
-    are (changing, say, /tmp to 0700 would lock other users out)."""
-    missing: list[Path] = []
-    current = folder
-    while not current.exists():
-        missing.append(current)
-        current = current.parent
-    for path in reversed(missing):
-        os.mkdir(path, _PRIVATE_DIR_MODE)
-        if not _WINDOWS:
-            os.chmod(path, _PRIVATE_DIR_MODE)  # mkdir's mode is subject to umask.
-            fsync_directory(path.parent)
 
 
 def generate(key_name: str, out_path: Path) -> Path:
@@ -55,8 +39,8 @@ def generate(key_name: str, out_path: Path) -> Path:
         SignedNoteError: ``key_name`` is not a safe key name.
         SigningKeyError: ``out_path`` or its vkey already exists.
     """
-    vkey_path = out_path.with_name(f"{out_path.name}.vkey")
-    if out_path.exists() or vkey_path.exists():
+    vkey_file = vkey_path(out_path)
+    if out_path.exists() or vkey_file.exists():
         raise SigningKeyError(f"refusing to overwrite an existing key at {out_path}")
     if _WINDOWS:
         logger.warning("key file permissions are not checked on Windows: %s", out_path)
@@ -67,10 +51,10 @@ def generate(key_name: str, out_path: Path) -> Path:
         encryption_algorithm=serialization.NoEncryption(),
     )
     vkey = format_vkey(key_name, private_key.public_key().public_bytes_raw())
-    _make_missing_folders(out_path.parent)
+    make_private_dirs(out_path.parent)
     atomic_write(out_path, pem, PRIVATE_FILE_MODE)
-    atomic_write(vkey_path, (vkey + "\n").encode("ascii"), PUBLIC_FILE_MODE)
-    return vkey_path
+    atomic_write(vkey_file, (vkey + "\n").encode("ascii"), PUBLIC_FILE_MODE)
+    return vkey_file
 
 
 def load(path: Path) -> Ed25519PrivateKey:
@@ -118,3 +102,26 @@ def load_vkeys(path: Path) -> list[str]:
         for line in text.splitlines()
         if (stripped := line.strip()) and not stripped.startswith("#")
     ]
+
+
+def vkey_path(key_path: Path) -> Path:
+    """Return the vkey file written beside a private key: ``<key>.vkey``."""
+    return key_path.with_name(f"{key_path.name}.vkey")
+
+
+def load_key_name(key_path: Path) -> str:
+    """Return the key name (definitions.md section 10.3) from the first vkey line of
+    ``<key_path>.vkey``.
+
+    Raises:
+        SigningKeyError: the vkey file cannot be read, has no vkey line, or its first line is not
+            a well-formed Ed25519 vkey.
+    """
+    path = vkey_path(key_path)
+    lines = load_vkeys(path)
+    if not lines:
+        raise SigningKeyError(f"{path} has no vkey line")
+    try:
+        return parse_vkey(lines[0]).name
+    except SignedNoteError as exc:
+        raise SigningKeyError(f"{path}: {exc}") from None
