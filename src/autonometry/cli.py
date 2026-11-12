@@ -3,21 +3,22 @@
 import hashlib
 import json
 import logging
-import os
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Annotated, NoReturn
+from typing import Annotated, NoReturn, cast
 
 import rfc8785
 import typer
 from cryptography import x509
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from autonometry import __version__, keys, sealfile, sealing, signednote, tsa
 from autonometry import verify as verify_
-from autonometry.events import LineError, LogCheck, Session, VerifyResult
+from autonometry.events import LogCheck, Session, TrustLevel, VerifyResult
+from autonometry.fileio import append_durably, atomic_write
 from autonometry.reader import LogReadError, read_logs
-from autonometry.sealfile import SealRecord
+from autonometry.sealfile import SealFile
 from autonometry.signednote import SignedNoteError, VerifierKey
 from autonometry.spec import (
     Rules,
@@ -255,16 +256,6 @@ def keys_generate(
     typer.echo(vkey_path.read_text(encoding="utf-8").strip())
 
 
-def _atomic_write_bytes(path: Path, data: bytes) -> None:
-    tmp = path.with_name(f"{path.name}.tmp-{os.getpid()}")
-    try:
-        tmp.write_bytes(data)
-        os.replace(tmp, path)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
-
-
 def _key_name(key_path: Path) -> str:
     vkey_path = key_path.with_name(f"{key_path.name}.vkey")
     try:
@@ -280,12 +271,15 @@ def _key_name(key_path: Path) -> str:
 
 
 def _sign_checkpoint(
-    checkpoint: sealing.Checkpoint, session: Session, key_name: str, private_key: object
+    checkpoint: sealing.Checkpoint,
+    session: Session,
+    key_name: str,
+    private_key: Ed25519PrivateKey,
 ) -> bytes:
     body = signednote.checkpoint_body(
         session.robot_id, session.session_id, checkpoint.size, checkpoint.root
     )
-    signed = signednote.sign_note(body, key_name, private_key)  # type: ignore[arg-type]
+    signed = signednote.sign_note(body, key_name, private_key)
     return sealfile.encode_checkpoint_line(signed)
 
 
@@ -363,20 +357,11 @@ def seal(
         if final is not None:
             checkpoint_lines.append(_sign_checkpoint(final, session, key_name, private_key))
 
-    _atomic_write_bytes(out, b"".join(sealed_lines))
-    _atomic_write_bytes(checkpoints_out, b"".join(checkpoint_lines))
+    atomic_write(out, b"".join(sealed_lines))
+    atomic_write(checkpoints_out, b"".join(checkpoint_lines))
     total_events = sum(len(session.events) for session in log_check.sessions)
     typer.echo(f"sealed {total_events} event(s) in {len(log_check.sessions)} session(s)")
     typer.echo(f"wrote {out} and {checkpoints_out}")
-
-
-def _append_record(path: Path, data: bytes) -> None:
-    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
-    try:
-        os.write(fd, data)
-        os.fsync(fd)
-    finally:
-        os.close(fd)
 
 
 @app.command("timestamp")
@@ -405,16 +390,11 @@ def timestamp(
     version = _spec_version(spec)
     rules = load_rules(version)
     roots = _load_tsa_roots([tsa_root])
-    try:
-        with open(checkpoints_file, "rb") as stream:
-            records, errors = sealfile.read_seal_file(
-                str(checkpoints_file), stream, rules.errors.max_line_bytes, version
-            )
-    except OSError as exc:
-        _fail(f"cannot read {checkpoints_file}: {exc.strerror or exc}")
-    if errors:
-        _fail(f"{checkpoints_file} has {len(errors)} malformed line(s); refusing")
+    (seal_file,) = _read_seal_files([checkpoints_file], version, rules)
+    if rejected := sum(seal_file.errors_by_code.values()):
+        _fail(f"{checkpoints_file} has {rejected} rejected line(s); refusing")
 
+    records = seal_file.records
     have = {r.note_sha256 for r in records if isinstance(r, sealfile.TimestampLine)}
     checkpoints = [r for r in records if isinstance(r, sealfile.CheckpointLine)]
     appended = failures = 0
@@ -429,7 +409,8 @@ def timestamp(
             logger.warning("could not timestamp a checkpoint: %s", exc)
             failures += 1
             continue
-        _append_record(checkpoints_file, sealfile.encode_timestamp_line(note_sha256, tsr))
+        append_durably(checkpoints_file, sealfile.encode_timestamp_line(note_sha256, tsr))
+        have.add(note_sha256)
         appended += 1
     typer.echo(f"appended {appended} timestamp record(s); {failures} checkpoint(s) not timestamped")
     if failures:
@@ -465,30 +446,30 @@ def _load_tsa_roots(paths: Sequence[Path]) -> list[x509.Certificate]:
     return out
 
 
-def _read_seal_files(
-    paths: Sequence[Path], version: str, rules: Rules
-) -> tuple[list[SealRecord], list[LineError]]:
-    records: list[SealRecord] = []
-    errors: list[LineError] = []
+def _read_seal_files(paths: Sequence[Path], version: str, rules: Rules) -> list[SealFile]:
+    seal_files: list[SealFile] = []
     for path in paths:
         try:
             with open(path, "rb") as stream:
-                recs, errs = sealfile.read_seal_file(
-                    str(path), stream, rules.errors.max_line_bytes, version
+                seal_files.append(
+                    sealfile.read_seal_file(
+                        str(path),
+                        stream,
+                        rules.errors.max_line_bytes,
+                        rules.errors.list_max_per_code,
+                        version,
+                    )
                 )
         except OSError as exc:
             _fail(f"cannot read {path}: {exc.strerror or exc}")
-        records.extend(recs)
-        errors.extend(errs)
-    return records, errors
+    return seal_files
 
 
-def _meets_level(status: str, require: str) -> bool:
-    return status != "failed" if require == "L1" else status == "verified"
-
-
-def _verify_summary_lines(result: VerifyResult) -> list[str]:
-    lines = [f"spec {result.log_check.spec_version}: {len(result.sessions)} session(s)"]
+def verify_summary_lines(result: VerifyResult, require: TrustLevel) -> list[str]:
+    """Return the human summary of a verification: one line per session with its evidence and
+    gaps, then rejected lines and file problems grouped by code (the first 20 of each), and a
+    final ``result:`` line."""
+    lines = [f"spec {result.spec_version}: {len(result.sessions)} session(s)"]
     for verdict in result.sessions:
         through = (
             f" (sealed through seq {verdict.sealed_through_seq})"
@@ -498,6 +479,24 @@ def _verify_summary_lines(result: VerifyResult) -> list[str]:
         lines.append(f"  {verdict.robot_id}/{verdict.session_id}: {verdict.status}{through}")
         lines += [f"    evidence {i.code}: {i.detail}" for i in verdict.evidence]
         lines += [f"    gap {i.code}: {i.detail}" for i in verdict.gaps]
+    lines += _grouped(
+        "rejected lines",
+        result.rejected_lines,
+        result.rejected_by_code,
+        code=lambda e: e.code,
+        describe=lambda e: f"{e.file}:{e.line}: {e.message}",
+    )
+    lines += _grouped(
+        "file problems",
+        result.file_problems,
+        result.file_problems_by_code,
+        code=lambda p: p.code,
+        describe=lambda p: f"{p.file}:{p.line}: {p.detail}",
+    )
+    reasons = result.reasons(require)
+    lines.append(
+        "result: verified" if not reasons else f"result: NOT verified: {'; '.join(reasons)}"
+    )
     return lines
 
 
@@ -540,9 +539,9 @@ def verify_cmd(  # noqa: PLR0913, PLR0917 -- matches the verify CLI's documented
 ) -> None:
     """Verify sealed logs (definitions.md section 10.6): recompute, never trust a stored value.
 
-    Exit status: 0 only when every session meets ``--require``, none failed and no line (event,
-    checkpoint or anchor) was rejected; 1 otherwise; 2 on bad usage. Event contents are never
-    printed.
+    Exit status: 0 only when every session meets ``--require`` (L1: not failed; L2: verified),
+    no line of any file read (logs, checkpoint and anchor files) was rejected and no file has a
+    problem; 1 otherwise; 2 on bad usage. Event contents are never printed.
     """
     if require not in ("L1", "L2"):
         raise typer.BadParameter("must be 'L1' or 'L2'", param_hint="'--require'")
@@ -558,26 +557,22 @@ def verify_cmd(  # noqa: PLR0913, PLR0917 -- matches the verify CLI's documented
     checkpoint_paths = [
         p for log_path in logs if (p := sealfile.checkpoints_path(log_path)).exists()
     ]
-    checkpoint_records, checkpoint_errors = _read_seal_files(checkpoint_paths, version, rules)
-    anchor_records, anchor_errors = _read_seal_files(anchor or [], version, rules)
-
-    result = verify_.verify_log(
-        log_check, checkpoint_records, anchor_records, trusted_keys, trusted_roots, rules
-    )
+    checkpoint_files = _read_seal_files(checkpoint_paths, version, rules)
+    anchor_files = _read_seal_files(anchor or [], version, rules)
+    level = cast(TrustLevel, require)
+    try:
+        result = verify_.verify_log(
+            log_check, checkpoint_files, anchor_files, trusted_keys, trusted_roots, rules
+        )
+    except SpecError as exc:
+        _fail(str(exc))
 
     if as_json:
-        typer.echo(json.dumps(result.to_json(), indent=2, sort_keys=True))
+        typer.echo(json.dumps(result.to_json(level), indent=2, sort_keys=True))
     else:
-        for line in _verify_summary_lines(result):
+        for line in verify_summary_lines(result, level):
             typer.echo(line)
-
-    ok = (
-        not log_check.errors
-        and not checkpoint_errors
-        and not anchor_errors
-        and all(_meets_level(v.status, require) for v in result.sessions)
-    )
-    if not ok:
+    if not result.verified(level):
         raise typer.Exit(1)
 
 
