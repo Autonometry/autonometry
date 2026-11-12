@@ -54,7 +54,7 @@ dev = [
 path = "src/autonometry/__init__.py"
 
 [tool.hatch.build.targets.sdist]
-include = ["/src", "/spec", "/tests", "/README.md", "/LICENSE", "/CHANGELOG.md"]
+include = ["/src", "/spec", "/tests", "/clients", "/README.md", "/LICENSE", "/CHANGELOG.md"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/autonometry"]
@@ -69,6 +69,8 @@ target-version = "py312"
 src = ["src", "tests"]
 # research/ is reference-only design material: never linted, formatted, imported or shipped.
 extend-exclude = ["research"]
+# The recorder client is copied into connectors on older systems: Python 3.8 syntax only.
+per-file-target-version = { "clients/python/*.py" = "py38", "tests/client/*.py" = "py38" }
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "UP", "S", "SIM", "RUF", "PT", "N", "C4", "PL"]
@@ -76,6 +78,8 @@ select = ["E", "W", "F", "I", "B", "UP", "S", "SIM", "RUF", "PT", "N", "C4", "PL
 [tool.ruff.lint.per-file-ignores]
 # pytest tests rely on bare assert (S101) and compare against literal expected values (PLR2004).
 "tests/**" = ["S101", "PLR2004"]
+# The client's tests use unittest, so CI can run them on Python 3.8 without pytest.
+"tests/client/**" = ["S101", "S108", "PLR2004", "PT009", "PT027", "UP"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["autonometry"]
@@ -94,6 +98,8 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
+# Shared helpers (sealing_helpers, recorder_helpers) live in tests/ and are imported by name.
+pythonpath = ["tests"]
 # research/ is reference-only design material: never collected, even by `pytest .`.
 norecursedirs = ["research", ".*", "build", "dist", "*.egg", ".venv", "node_modules"]
 addopts = "--strict-markers --strict-config --cov=autonometry --cov-report=term-missing --cov-fail-under=90 -m 'not slow'"
