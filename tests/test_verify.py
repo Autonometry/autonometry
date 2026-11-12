@@ -313,6 +313,20 @@ def test_checkpoint_from_an_unknown_key__untrusted_checkpoint() -> None:
     assert _codes(verdict) == {"untrusted_checkpoint", "no_checkpoint"}
 
 
+@pytest.mark.parametrize("marker", ["x_ts_reconstructed", "x_attribution_inferred"])
+def test_marked_events_are_capped_at_l1__defs_10_6(marker: str) -> None:
+    """One marked event caps its session at L1 with gap code reconstructed (8, 6.12, 10.6)."""
+    raw = _raw(SEALED)
+    raw[1][marker] = True
+    resealed, new_notes = _resealed(raw)
+    verdicts = _by_key(_run(resealed, new_notes, anchors=new_notes))
+    assert verdicts["s1"].status == "unverified"
+    assert _codes(verdicts["s1"]) == {"reconstructed"}
+    (gap,) = verdicts["s1"].gaps
+    assert marker in gap.detail
+    assert verdicts["s2"].status == "verified"
+
+
 def test_reconstructed_events_are_capped_at_l1__reconstructed() -> None:
     raw = _raw(SEALED)
     for event in raw:
