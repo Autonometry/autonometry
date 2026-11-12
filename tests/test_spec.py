@@ -137,7 +137,7 @@ def test_invalid_schema_is_a_spec_error(spec_copy: Path) -> None:
 
 def test_schema_pattern_that_does_not_compile_is_a_spec_error(spec_copy: Path) -> None:
     _edit_schema(spec_copy, lambda d: d["$defs"]["scope"].update(pattern="^(unclosed$"))
-    with pytest.raises(spec.SpecError, match=r"event\.schema\.json of spec 0.3 is invalid: "):
+    with pytest.raises(spec.SpecError, match=r"event\.schema\.json of spec 0\.3 is invalid: "):
         spec.load_schema("0.3")
 
 
@@ -205,7 +205,7 @@ def test_invalid_version_is_rejected(bad: str) -> None:
 
 
 def test_unknown_version_is_rejected() -> None:
-    with pytest.raises(spec.SpecError, match=r"unknown spec version '9\.9'; available: 0.3"):
+    with pytest.raises(spec.SpecError, match=r"unknown spec version '9\.9'; available: 0\.3"):
         spec.load_schema("9.9")
 
 
