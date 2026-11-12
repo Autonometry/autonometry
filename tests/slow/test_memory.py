@@ -9,7 +9,7 @@ from autonometry import spec
 from autonometry.reader import read_logs
 
 MiB = 1024 * 1024
-SPEC = "0.2"
+SPEC = "0.3"
 
 
 @pytest.mark.slow

@@ -40,6 +40,8 @@ FlagCode = Literal[
     "ts_reconstructed",
     "repeated_session_marker",
     "event_outside_session",
+    "clock_unsynced",
+    "attribution_inferred",
 ]
 
 # Codes of rules.toml [sealing] evidence_codes and gap_codes (definitions.md section 10.6).
@@ -104,6 +106,10 @@ class Event(TypedDict, total=False):
     task_registry_hash: NotRequired[str]
     plan_hash: NotRequired[str]
     device_registry_hash: NotRequired[str]
+    simulated: NotRequired[bool]
+    unobserved: NotRequired[list[str]]
+    clock_source: NotRequired[str]
+    clock_max_error_s: NotRequired[float]
     prev_hash: NotRequired[str | None]
     hash: NotRequired[str]
     note: NotRequired[str]

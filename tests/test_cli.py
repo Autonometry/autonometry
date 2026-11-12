@@ -20,16 +20,17 @@ def test_version_flag() -> None:
 def test_spec_list() -> None:
     result = runner.invoke(cli.app, ["spec", "list"])
     assert result.exit_code == 0
-    assert result.output.split() == ["0.2"]
+    assert result.output.split() == ["0.3"]
 
 
 def test_spec_show_prints_names_with_hashes__defs_8() -> None:
-    result = runner.invoke(cli.app, ["spec", "show", "0.2"])
+    result = runner.invoke(cli.app, ["spec", "show", "0.3"])
     assert result.exit_code == 0
     lines = [line.split("  ") for line in result.output.strip().splitlines()]
     assert [name for _, name in lines] == [
         "checkpoint.schema.json",
         "definitions.md",
+        "device_registry.schema.json",
         "event.schema.json",
         "rules.toml",
     ]
@@ -40,7 +41,7 @@ def test_spec_show_unknown_version_is_one_line_exit_1() -> None:
     result = runner.invoke(cli.app, ["spec", "show", "9.9"])
     assert result.exit_code == 1
     assert result.output.strip().splitlines() == [
-        "error: unknown spec version '9.9'; available: 0.2"
+        "error: unknown spec version '9.9'; available: 0.3"
     ]
 
 
@@ -110,7 +111,7 @@ def test_validate_clean_log_exits_0__defs_8() -> None:
     result = _validate(str(GOLDEN / "valid" / "multi_robot.jsonl"))
     assert result.exit_code == 0
     assert result.output.splitlines() == [
-        "spec 0.2: 1 file(s), 28 line(s), 28 event(s) in 3 session(s), "
+        "spec 0.3: 1 file(s), 30 line(s), 30 event(s) in 3 session(s), "
         "0 blank, 0 rejected, 0 flag(s)"
     ]
 
@@ -168,7 +169,7 @@ def test_validate_shows_twenty_per_code_then_a_count(tmp_path: Path) -> None:
 
 
 def test_validate_more_uses_exact_counts_beyond_the_listed_lines__defs_8(tmp_path: Path) -> None:
-    limit = spec.load_rules("0.2").errors.list_max_per_code
+    limit = spec.load_rules("0.3").errors.list_max_per_code
     log = tmp_path / "log.jsonl"
     log.write_bytes(b"[]\n" * (limit + 30))
     lines = _validate(str(log)).output.splitlines()
@@ -217,9 +218,9 @@ def test_validate_directory_is_bad_usage(tmp_path: Path) -> None:
 
 
 def test_validate_accepts_an_explicit_spec_version() -> None:
-    result = _validate("--spec", "v0.2", str(GOLDEN / "valid" / "multi_robot.jsonl"))
+    result = _validate("--spec", "v0.3", str(GOLDEN / "valid" / "multi_robot.jsonl"))
     assert result.exit_code == 0
-    assert result.output.startswith("spec 0.2:")
+    assert result.output.startswith("spec 0.3:")
 
 
 def test_validate_read_failure_is_one_line_exit_1(monkeypatch: pytest.MonkeyPatch) -> None:

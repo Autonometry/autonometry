@@ -2,7 +2,7 @@
 
 The spec lives once in the repository (``spec/``). The wheel carries it as ``autonometry/spec/``;
 from a source checkout the repository folder is used. Spec versions are named without the leading
-``v`` (``"0.2"`` is the folder ``spec/v0.2``); a leading ``v`` is accepted on input.
+``v`` (``"0.3"`` is the folder ``spec/v0.3``); a leading ``v`` is accepted on input.
 """
 
 import hashlib
@@ -37,6 +37,7 @@ _VERSION_RE = re.compile(r"v?([0-9]{1,4})\.([0-9]{1,4})")
 _FOLDER_RE = re.compile(r"v([0-9]{1,4})\.([0-9]{1,4})")
 _SCHEMA_FILE = "event.schema.json"
 _CHECKPOINT_SCHEMA_FILE = "checkpoint.schema.json"
+_REGISTRY_SCHEMA_FILE = "device_registry.schema.json"
 _RULES_FILE = "rules.toml"
 
 
@@ -68,12 +69,17 @@ class WholeRobotRule(_Frozen):
 
 
 class InterventionRules(_Frozen):
-    """Interventions (definitions.md 3, 6.1, 6.2, 6.7)."""
+    """Interventions (definitions.md 3, 6.1, 6.2, 6.7, 6.13).
+
+    ``person_started_states`` are the states that, entered from ``from_states``, are an
+    intervention only when a person caused them (a triggered stop, a started preset).
+    """
 
     from_states: tuple[str, ...]
     into_states: tuple[str, ...]
     episode_ends_when_scope_returns_to: tuple[str, ...]
     discrete_event_types: tuple[str, ...]
+    person_started_states: tuple[str, ...]
 
 
 class HoldRules(_Frozen):
@@ -83,7 +89,7 @@ class HoldRules(_Frozen):
 
 
 class DeviceLocationRules(_Frozen):
-    """Device location (definitions.md 6.10)."""
+    """Device registry and location (definitions.md 6.10)."""
 
     undeclared_device_state: str
 
@@ -103,7 +109,7 @@ class GapRules(_Frozen):
 
 
 class Params(_Frozen):
-    """Parameter defaults, seconds except ``unknown_share_max`` (definitions.md 9)."""
+    """Parameter defaults, seconds except ``unknown_share_max`` (definitions.md 9, 6.11, 6.12)."""
 
     idle_threshold_s: float
     gap_tolerance_s: float
@@ -116,11 +122,13 @@ class Params(_Frozen):
     hint_min_dwell_s: float
     takeover_window_s: float
     simultaneity_window_s: float
+    goal_release_s: float
+    contention_window_s: float
     unknown_share_max: float
 
 
 class FlagRules(_Frozen):
-    """Loader flag codes (definitions.md 6.8, 6.10, 8)."""
+    """Loader flag codes (definitions.md 6.8, 6.10, 6.12, 8)."""
 
     codes: tuple[str, ...]
 
@@ -204,7 +212,7 @@ def spec_root() -> Traversable:
 
 
 def available_versions() -> list[str]:
-    """Return the spec versions present, oldest first, without the ``v``, such as ``["0.2"]``."""
+    """Return the spec versions present, oldest first, without the ``v``, such as ``["0.3"]``."""
     found: list[tuple[int, int]] = []
     for entry in spec_root().iterdir():
         match = _FOLDER_RE.fullmatch(entry.name)
@@ -216,7 +224,7 @@ def available_versions() -> list[str]:
 def _normalise(version: str) -> str:
     match = _VERSION_RE.fullmatch(version)
     if match is None:
-        raise SpecError(f"invalid spec version {version!r}; expected a form like '0.2'")
+        raise SpecError(f"invalid spec version {version!r}; expected a form like '0.3'")
     return f"{int(match.group(1))}.{int(match.group(2))}"
 
 
@@ -230,7 +238,7 @@ def _version_dir(version: str) -> Traversable:
 
 
 def known_version(version: str) -> str:
-    """Return a shipped spec version in normal form (``"v0.2"`` gives ``"0.2"``).
+    """Return a shipped spec version in normal form (``"v0.3"`` gives ``"0.3"``).
 
     Raises:
         SpecError: the version is malformed or not shipped with this package.
@@ -256,16 +264,21 @@ def spec_file_hashes(version: str) -> dict[str, str]:
     return dict(sorted(hashes.items()))
 
 
+def _load_json_schema(version: str, file_name: str) -> dict[str, Any]:
+    """Load one JSON Schema file of a spec version and check it is valid draft 2020-12."""
+    try:
+        schema = json.loads(_read(version, file_name))
+    except ValueError as exc:
+        raise SpecError(f"{file_name} of spec {version} is not valid JSON: {exc}") from exc
+    if not isinstance(schema, dict):
+        raise SpecError(f"{file_name} of spec {version} is not a JSON object")
+    compile_schema(version, schema, file_name)
+    return schema
+
+
 def load_schema(version: str) -> dict[str, Any]:
     """Load ``event.schema.json`` (definitions.md section 8) and check it is draft 2020-12."""
-    try:
-        schema = json.loads(_read(version, _SCHEMA_FILE))
-    except ValueError as exc:
-        raise SpecError(f"{_SCHEMA_FILE} of spec {version} is not valid JSON: {exc}") from exc
-    if not isinstance(schema, dict):
-        raise SpecError(f"{_SCHEMA_FILE} of spec {version} is not a JSON object")
-    compile_schema(version, schema)
-    return schema
+    return _load_json_schema(version, _SCHEMA_FILE)
 
 
 def _no_retrieval(uri: str) -> Any:
@@ -296,16 +309,12 @@ def compile_schema(
 
 def load_checkpoint_schema(version: str) -> dict[str, Any]:
     """Load ``checkpoint.schema.json`` (definitions.md 10.4) and check it is draft 2020-12."""
-    try:
-        schema = json.loads(_read(version, _CHECKPOINT_SCHEMA_FILE))
-    except ValueError as exc:
-        raise SpecError(
-            f"{_CHECKPOINT_SCHEMA_FILE} of spec {version} is not valid JSON: {exc}"
-        ) from exc
-    if not isinstance(schema, dict):
-        raise SpecError(f"{_CHECKPOINT_SCHEMA_FILE} of spec {version} is not a JSON object")
-    compile_schema(version, schema, _CHECKPOINT_SCHEMA_FILE)
-    return schema
+    return _load_json_schema(version, _CHECKPOINT_SCHEMA_FILE)
+
+
+def load_registry_schema(version: str) -> dict[str, Any]:
+    """Load ``device_registry.schema.json`` (definitions.md 6.10) and check it is draft 2020-12."""
+    return _load_json_schema(version, _REGISTRY_SCHEMA_FILE)
 
 
 def load_rules(version: str) -> Rules:
@@ -342,6 +351,7 @@ def _referenced_states(rules: Rules) -> dict[str, tuple[str, ...]]:
         "interventions.episode_ends_when_scope_returns_to": (
             rules.interventions.episode_ends_when_scope_returns_to
         ),
+        "interventions.person_started_states": rules.interventions.person_started_states,
         "holds.idle_in_open_task_becomes": (rules.holds.idle_in_open_task_becomes,),
         "device_location.undeclared_device_state": (rules.device_location.undeclared_device_state,),
         "reasons.required_for_states": rules.reasons.required_for_states,

@@ -24,7 +24,7 @@ from autonometry.verify import verify_log
 
 MiB = 1024 * 1024
 N_EVENTS = 100_000
-RULES = load_rules("0.2")
+RULES = load_rules("0.3")
 KEY_NAME = "autonometry/perf-test-key"
 _SEED = hashlib.sha256(b"autonometry-perf-test-seed").digest()
 SEED_KEY = Ed25519PrivateKey.from_private_bytes(_SEED)
@@ -88,7 +88,7 @@ def _verify(sealed_events: list[Event], checkpoints: list[Checkpoint]) -> str:
         errors_by_code={},
         flags_by_code={},
     )
-    log_check = LogCheck("0.2", (session,), (), (), counts)
+    log_check = LogCheck("0.3", (session,), (), (), counts)
     records = tuple(CheckpointLine(i, n) for i, n in enumerate(notes, 1))
     files = [SealFile("perf.checkpoints.jsonl", records, (), {})]
     trusted_keys = [parse_vkey(format_vkey(KEY_NAME, SEED_KEY.public_key().public_bytes_raw()))]

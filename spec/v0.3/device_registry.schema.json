@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autonometry.github.io/spec/v0.3/device_registry.schema.json",
+  "title": "Autonometry device registry (v0.3)",
+  "description": "Every source that can command the robot, declared before the session (definitions.md v0.3 section 6.10). Its SHA-256 in RFC 8785 canonical form is session_start.device_registry_hash. Fields starting with x_ are extensions.",
+  "type": "object",
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "observed": {
+      "type": "string",
+      "pattern": "^[\\u0020-\\u007E]{1,256}$",
+      "description": "An identity the recorder observes: 1 to 256 printable ASCII characters."
+    },
+    "device": {
+      "type": "object",
+      "properties": {
+        "device_id": { "$ref": "#/$defs/id" },
+        "kind": {
+          "type": "string",
+          "enum": ["human", "ai", "script", "support"],
+          "description": "human: an input device a person uses; ai: an automated controller, including the robot's own built-in controllers; script: a fixed sequence; support: a hoist or harness (definitions.md 6.15)."
+        },
+        "location": { "type": "string", "enum": ["local", "remote"] },
+        "actor_id": { "$ref": "#/$defs/id", "description": "Pseudonymous person who uses a human device." },
+        "match": {
+          "type": "object",
+          "description": "The identity under which the recorder observes the device. A source matches the first device whose given fields all equal what the recorder observed.",
+          "properties": {
+            "host": { "$ref": "#/$defs/observed" },
+            "node": { "$ref": "#/$defs/observed" },
+            "topic": { "$ref": "#/$defs/observed" },
+            "participant": { "$ref": "#/$defs/observed" }
+          },
+          "minProperties": 1,
+          "additionalProperties": false
+        }
+      },
+      "required": ["device_id", "kind", "match"],
+      "patternProperties": { "^x_[a-z0-9_]+$": {} },
+      "additionalProperties": false,
+      "if": { "properties": { "kind": { "const": "human" } }, "required": ["kind"] },
+      "then": { "required": ["location"] }
+    }
+  },
+  "properties": {
+    "devices": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/device" } }
+  },
+  "required": ["devices"],
+  "patternProperties": { "^x_[a-z0-9_]+$": {} },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "devices": [
+        { "device_id": "nav2", "kind": "ai", "match": { "node": "/bt_navigator" } },
+        { "device_id": "dock_action", "kind": "script", "match": { "node": "/turtlebot4_node", "topic": "/dock" } },
+        { "device_id": "joy_local", "kind": "human", "location": "local", "actor_id": "op_17", "match": { "node": "/joy_node" } },
+        { "device_id": "teleop_station", "kind": "human", "location": "remote", "match": { "host": "station-2.lab" } },
+        { "device_id": "gantry_hoist", "kind": "support", "match": { "topic": "/hoist/state" } }
+      ]
+    }
+  ]
+}

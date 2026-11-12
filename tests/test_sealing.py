@@ -1,4 +1,4 @@
-"""Tests for autonometry.sealing (definitions.md v0.2 section 8 hash/prev_hash; section 10)."""
+"""Tests for autonometry.sealing (definitions.md v0.3 section 8 hash/prev_hash; section 10)."""
 
 import hashlib
 

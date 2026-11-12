@@ -19,7 +19,7 @@ from autonometry.strictjson import MAX_SAFE_INTEGER
 
 GOLDEN = Path(__file__).parent / "golden"
 REPO_SPEC = Path(__file__).resolve().parents[1] / "spec"
-SPEC = "0.2"
+SPEC = "0.3"
 ZERO_HASH = "0" * 64
 BOM = b"\xef\xbb\xbf"
 LIMIT = spec.load_rules(SPEC).errors.max_line_bytes
@@ -42,6 +42,8 @@ def _event(
         "ts": _ts(second),
         "type": type_,
     }
+    if type_ == "heartbeat":
+        event |= {"clock_source": "ntp", "clock_max_error_s": 0.001}
     return event | fields
 
 
@@ -57,6 +59,7 @@ def _start(seq: int = 0, second: float = 0.0, **fields: Any) -> dict[str, Any]:
             hint_policy="hint_as_shared",
             task_registry_hash=ZERO_HASH,
             plan_hash=ZERO_HASH,
+            simulated=False,
         )
         | fields
     )
@@ -93,7 +96,7 @@ def spec_copy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fresh_spec_cache:
     copy = tmp_path / "spec"
     shutil.copytree(REPO_SPEC, copy)
     monkeypatch.setattr(spec, "spec_root", lambda: copy)
-    return copy / "v0.2"
+    return copy / "v0.3"
 
 
 # --- lines -------------------------------------------------------------------------------------
@@ -296,7 +299,7 @@ def test_counts_add_up_and_are_read_only__defs_8() -> None:
 
 
 def test_spec_version_is_normalised() -> None:
-    assert read_streams([], "v0.2").spec_version == "0.2"
+    assert read_streams([], "v0.3").spec_version == "0.3"
 
 
 def test_unreadable_path_is_a_log_read_error(tmp_path: Path) -> None:
@@ -328,7 +331,7 @@ def test_spec_without_a_reader_flag_code_is_refused__defs_8(spec_copy: Path) -> 
 def test_inconsistent_spec_is_refused(spec_copy: Path) -> None:
     text = (spec_copy / "rules.toml").read_text(encoding="utf-8")
     (spec_copy / "rules.toml").write_text(
-        text.replace('spec_version = "0.2"', 'spec_version = "0.3"'), "utf-8"
+        text.replace('spec_version = "0.3"', 'spec_version = "0.4"'), "utf-8"
     )
     with pytest.raises(spec.SpecError, match="differs from folder"):
         read_streams([], SPEC)
@@ -594,7 +597,15 @@ def _human_input(reasons: list[str]) -> st.SearchStrategy[dict[str, Any]]:
 
 
 _FIELDS_BY_TYPE: dict[str, st.SearchStrategy[dict[str, Any]]] = {
-    "heartbeat": st.just({}),
+    "heartbeat": st.fixed_dictionaries(
+        {},
+        optional={
+            "clock_source": st.sampled_from(["ntp", "ptp", "gnss", "none", "unknown"]),
+            "clock_max_error_s": _nonneg,
+        },
+    ),
+    "support_start": st.fixed_dictionaries({}, optional={"scope": _scope, "device_id": _id}),
+    "support_end": st.fixed_dictionaries({}, optional={"scope": _scope, "device_id": _id}),
     "session_end": st.just({}),
     "help_request": st.fixed_dictionaries({"scope": _scope}),
     "transition": _transition(),
@@ -624,7 +635,13 @@ _FIELDS_BY_TYPE: dict[str, st.SearchStrategy[dict[str, Any]]] = {
             "hint_policy": st.sampled_from(["hint_as_shared", "hint_as_event"]),
             "task_registry_hash": _sha,
             "plan_hash": _sha,
-        }
+            "simulated": st.booleans(),
+        },
+        optional={
+            "unobserved": st.lists(
+                st.sampled_from(["safety_stops", "human_inputs", "tasks"]), unique=True
+            )
+        },
     ),
 }
 

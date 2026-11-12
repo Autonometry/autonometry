@@ -1,4 +1,4 @@
-"""Ed25519 signing keys for sealing checkpoints (definitions.md v0.2 section 10.3).
+"""Ed25519 signing keys for sealing checkpoints (definitions.md v0.3 section 10.3).
 
 Keys are stored as unencrypted PKCS8 PEM, the private key 0600 and its vkey 0644. Folders that
 ``generate`` creates are 0700; an existing folder is never changed (CLAUDE.md Security rules).

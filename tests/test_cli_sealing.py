@@ -1,5 +1,5 @@
 """CLI tests for ``keys generate``, ``seal``, ``timestamp`` and ``verify``
-(definitions.md v0.2 section 10)."""
+(definitions.md v0.3 section 10)."""
 
 import json
 import shutil
@@ -408,7 +408,7 @@ def test_verify_refuses_a_spec_with_different_sealing_codes(
     log, _, _ = sealed
 
     def refuse(*_args: object) -> None:
-        raise SpecError("spec 0.2: its [sealing] gap_codes differ")
+        raise SpecError("spec 0.3: its [sealing] gap_codes differ")
 
     monkeypatch.setattr("autonometry.verify.check_sealing_codes", refuse)
     result = _verify(str(log))

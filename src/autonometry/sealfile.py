@@ -1,4 +1,4 @@
-"""Reading and writing ``<name>.checkpoints.jsonl`` and anchor files (definitions.md v0.2
+"""Reading and writing ``<name>.checkpoints.jsonl`` and anchor files (definitions.md v0.3
 section 10.4).
 
 Same line rules as event logs (section 8): a length limit, strict UTF-8, I-JSON, each line

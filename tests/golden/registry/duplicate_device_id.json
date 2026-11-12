@@ -1,0 +1,34 @@
+{
+  "devices": [
+    {
+      "device_id": "nav2",
+      "kind": "ai",
+      "match": {
+        "node": "/bt_navigator"
+      }
+    },
+    {
+      "device_id": "joy",
+      "kind": "human",
+      "location": "local",
+      "match": {
+        "node": "/joy"
+      }
+    },
+    {
+      "device_id": "nav2",
+      "kind": "ai",
+      "match": {
+        "node": "/controller_server"
+      }
+    },
+    {
+      "device_id": "joy",
+      "kind": "human",
+      "location": "remote",
+      "match": {
+        "host": "far"
+      }
+    }
+  ]
+}

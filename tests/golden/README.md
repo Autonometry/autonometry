@@ -4,9 +4,10 @@ Fixed input logs with their expected `autonometry validate --json` output.
 
 | Folder | Content |
 |---|---|
-| `errors/` | One log per error code of `spec/v0.2/rules.toml` `[errors]`: a clean session plus lines rejected with that code only. |
+| `errors/` | One log per error code of `spec/v0.3/rules.toml` `[errors]`: a clean session plus lines rejected with that code only. |
 | `flags/` | One log per loader flag checked when a log is read: it raises that flag only. |
 | `valid/` | Logs that give no error and no flag: several robots and sessions interleaved, and CRLF, BOM and blank lines. |
+| `registry/` | Device registries (`.json`, definitions.md 6.10) with their expected `autonometry registry check --json` output: TurtleBot 4 and Unitree G1 examples, and one file per kind of problem. |
 | `sealed/` | A small raw log, sealed at test time with a fixed-seed test key; its own README covers it and the real RFC 3161 fixture under `tests/fixtures/tsa/`. |
 
 The `.jsonl` files are byte-exact (`.gitattributes` marks them `-text`), because some test CRLF

@@ -1,0 +1,44 @@
+{
+  "devices": [
+    {
+      "device_id": "loco_ctrl",
+      "kind": "ai",
+      "match": {
+        "topic": "rt/lowcmd",
+        "participant": "g1-loco"
+      }
+    },
+    {
+      "device_id": "dance_replay",
+      "kind": "script",
+      "match": {
+        "node": "/motion_tracking",
+        "topic": "/reference_motion"
+      }
+    },
+    {
+      "device_id": "remote_pad",
+      "kind": "human",
+      "location": "local",
+      "match": {
+        "topic": "rt/wirelesscontroller"
+      }
+    },
+    {
+      "device_id": "vr_teleop",
+      "kind": "human",
+      "location": "remote",
+      "actor_id": "op_03",
+      "match": {
+        "host": "vr-rig.lab"
+      }
+    },
+    {
+      "device_id": "gantry_hoist",
+      "kind": "support",
+      "match": {
+        "topic": "/hoist/state"
+      }
+    }
+  ]
+}

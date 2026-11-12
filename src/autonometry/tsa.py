@@ -1,4 +1,4 @@
-"""RFC 3161 timestamp client and pure token verification (definitions.md v0.2 section 10.5;
+"""RFC 3161 timestamp client and pure token verification (definitions.md v0.3 section 10.5;
 research/methods/trust.md section 2.5).
 
 The HTTP round trip (:func:`request_timestamp`) is the only network call this package makes

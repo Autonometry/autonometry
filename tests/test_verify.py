@@ -1,4 +1,4 @@
-"""Tests for autonometry.verify (definitions.md v0.2 section 10.6) on the golden sealed log, its
+"""Tests for autonometry.verify (definitions.md v0.3 section 10.6) on the golden sealed log, its
 attacks (research/demo-prototypes/seal.py) and every evidence, gap and file code."""
 
 import copy
@@ -25,9 +25,9 @@ from sealing_helpers import KEY_NAME, SEED_KEY, log_check_of, note_sha256, seal_
 
 GOLDEN_LOG = Path(__file__).parent / "golden" / "sealed" / "log.jsonl"
 TSA_FIXTURES = Path(__file__).parent / "fixtures" / "tsa"
-RULES = load_rules("0.2")
+RULES = load_rules("0.3")
 TRUSTED_KEYS = [parse_vkey(format_vkey(KEY_NAME, SEED_KEY.public_key().public_bytes_raw()))]
-GOLDEN = read_logs([GOLDEN_LOG], "0.2")
+GOLDEN = read_logs([GOLDEN_LOG], "0.3")
 SEALED, NOTES = seal_sessions(GOLDEN.sessions)
 S2_FINAL = next(n for n in NOTES if n.startswith("autonometry/r1/s2\n3\n"))
 S1_FINAL = next(n for n in NOTES if n.startswith("autonometry/r1/s1\n4\n"))
@@ -259,7 +259,7 @@ def test_delete_tail_add_session_end_and_resign__caught_only_by_an_older_anchor(
     raw = [e for e in _raw(SEALED) if not (e["session_id"] == "s2" and e["seq"] == 2)]
     raw.append(
         {"robot_id": "r1", "session_id": "s2", "task_id": None, "seq": 2,
-         "ts": "2026-11-03T15:02:10.000Z", "type": "session_end"}
+         "ts": "2026-11-12T07:52:10.000Z", "type": "session_end"}
     )  # fmt: skip
     resealed, new_notes = _resealed(raw)
     assert _by_key(_run(resealed, new_notes, anchors=new_notes))["s2"].status == "verified"
@@ -311,6 +311,20 @@ def test_checkpoint_from_an_unknown_key__untrusted_checkpoint() -> None:
     verdict = _by_key(_run(notes=foreign))["s1"]
     assert verdict.status == "unverified"
     assert _codes(verdict) == {"untrusted_checkpoint", "no_checkpoint"}
+
+
+@pytest.mark.parametrize("marker", ["x_ts_reconstructed", "x_attribution_inferred"])
+def test_marked_events_are_capped_at_l1__defs_10_6(marker: str) -> None:
+    """One marked event caps its session at L1 with gap code reconstructed (8, 6.12, 10.6)."""
+    raw = _raw(SEALED)
+    raw[1][marker] = True
+    resealed, new_notes = _resealed(raw)
+    verdicts = _by_key(_run(resealed, new_notes, anchors=new_notes))
+    assert verdicts["s1"].status == "unverified"
+    assert _codes(verdicts["s1"]) == {"reconstructed"}
+    (gap,) = verdicts["s1"].gaps
+    assert marker in gap.detail
+    assert verdicts["s2"].status == "verified"
 
 
 def test_reconstructed_events_are_capped_at_l1__reconstructed() -> None:
@@ -459,7 +473,7 @@ def _mutate(choice: int) -> tuple[list[Any], list[str], list[str]]:
         case 1:
             del events[index]
         case 2:
-            events[index]["ts"] = "2026-11-03T15:00:01.000Z"
+            events[index]["ts"] = "2026-11-12T07:50:01.000Z"
         case 3:
             events[index]["seq"] += 50
         case 4:

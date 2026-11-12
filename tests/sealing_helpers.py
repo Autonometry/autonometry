@@ -83,7 +83,7 @@ def log_check_of(events: Sequence[Event], errors: Sequence[LineError] = ()) -> L
         errors_by_code=MappingProxyType(by_code),
         flags_by_code=MappingProxyType({}),
     )
-    return LogCheck("0.2", sessions, tuple(errors), (), counts)
+    return LogCheck("0.3", sessions, tuple(errors), (), counts)
 
 
 def seal_file(

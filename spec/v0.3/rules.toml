@@ -1,7 +1,7 @@
-# Autonometry rule tables, v0.2. Machine-readable companion to definitions.md.
+# Autonometry rule tables, v0.3. Machine-readable companion to definitions.md.
 # definitions.md is normative: if this file disagrees with it, this file is the bug.
 
-spec_version = "0.2"
+spec_version = "0.3"
 # Genesis hash of every session chain: SHA-256("autonometry/chain-v1|<robot_id>|<session_id>")
 chain_genesis_prefix = "autonometry/chain-v1"
 
@@ -46,14 +46,18 @@ precedence = ["human_remote", "human_local", "shared", "safety_stop", "scripted"
 idle_requires_all_scopes = true
 fallback = "unknown"
 
-# Interventions (definitions.md 3, 6.1, 6.2, 6.7).
+# Interventions (definitions.md 3, 6.1, 6.2, 6.7, 6.13).
 [interventions]
 from_states = ["ai", "scripted"]
 into_states = ["human_local", "human_remote", "shared"]
+# A scripted state ends an episode only when no person started it (definitions.md 3).
 episode_ends_when_scope_returns_to = ["ai", "scripted"]  # or when the task or session ends
 discrete_event_types = ["approval", "hint"]
+# Entered from from_states, these are interventions when a person caused them: a safety_stop a
+# person triggered (definitions.md 6.7), a scripted preset with reason human_initiated (6.13).
+person_started_states = ["safety_stop", "scripted"]
 
-# Holds (definitions.md 6.8) and device location (6.10).
+# Holds (definitions.md 6.8) and the device registry (6.10).
 [holds]
 idle_in_open_task_becomes = "unknown"  # and is flagged idle_in_task
 
@@ -84,16 +88,18 @@ hint_ttl_s = 60.0
 hint_min_dwell_s = 0.0
 takeover_window_s = 60.0
 simultaneity_window_s = 0.5
+goal_release_s = 1.0
+contention_window_s = 1.0
 unknown_share_max = 0.05
 
-# Loader flag codes (definitions.md 6.8, 6.10, 8).
+# Loader flag codes (definitions.md 6.8, 6.10, 6.12, 8).
 [flags]
 codes = [
   "time_gap", "seq_gap", "ts_regression", "missing_initial_state", "help_reason_recoded",
   "undeclared_scope", "nested_task", "task_end_without_start", "task_not_closed",
   "distance_regression", "no_session_start", "no_session_end", "idle_in_task",
   "ts_reconstructed", "undeclared_device", "repeated_session_marker",
-  "event_outside_session",
+  "event_outside_session", "clock_unsynced", "attribution_inferred",
 ]
 
 [errors]
@@ -101,7 +107,7 @@ codes = ["invalid_utf8", "invalid_unicode", "line_too_long", "invalid_json", "no
 max_line_bytes = 65536
 list_max_per_code = 100
 
-# Trust levels (definitions.md 8; research/methods/trust.md section 7).
+# Trust levels (definitions.md 8, 6.12; research/methods/trust.md section 7).
 [trust]
 reconstructed_events_max_level = 1
 l3_station_only_max_share = 0.005

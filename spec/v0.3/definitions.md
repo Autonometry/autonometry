@@ -1,11 +1,27 @@
-# Autonometry — Definitions (taxonomy v0.2)
+# Autonometry — Definitions (taxonomy v0.3)
 
-Status: draft, 2026-11-01 (v0.2; v0.1 was 2026-10-30 under the working name Autonomy Meter). Normative words (MUST, SHOULD, MAY) are used in their ordinary engineering sense.
+Status: draft, 2026-11-12 (v0.3; v0.2 was 2026-11-01; v0.1 was 2026-10-30 under the working name Autonomy Meter). Normative words (MUST, SHOULD, MAY) are used in their ordinary engineering sense.
 This document defines the control-state taxonomy, the event log, and the edge-case rules that the
 `autonometry` package, the event schema (`event.schema.json`) and the rule tables (`rules.toml`) implement.
 Everything here is a definition we propose, not a claim about the world, except where a source is cited.
 Citations are tagged VERIFIED (primary text read; '(excerpt)' when only the quoted portion was read), CLAIM (secondary source or abstract only), UNKNOWN (not verified).
 Retrieval date for all URLs: 2026-10-30.
+
+## Changes in v0.3 (2026-11-12)
+
+Resolves the cases that the TurtleBot 4 and Unitree G1 research found uncovered by v0.2.
+
+1. `safety_stop` also covers protective manoeuvres (brake, a damping mode used as a safe state, an evasive reflex) and records who triggered it (Section 2).
+2. On `safety_stop`, `actor_id` names the person who triggered the stop and is null when a safety function acted on its own (Section 3).
+3. Interventions also include a `safety_stop` a person triggered and a `scripted` preset a person started (Section 3).
+4. An intervention episode ends when the scope returns to `ai`, or to `scripted` that no person started (Section 3).
+5. A stop a person triggered from `ai` or `scripted` is one intervention; stops are reported as `safety_stops_human_triggered` and `safety_stops_automatic` (Section 6.7).
+6. A limp, damping or zero-torque mode is `safety_stop` only when a safety function or an emergency-stop control caused it; a control with both uses is decided from how it was used (Section 6.8).
+7. A pre-recorded reference executed by a controller, learned or not, is `scripted` (Section 6.9).
+8. The device registry declares every source that can command the robot (`human`, `ai`, `script`, `support`), how the recorder matches it, and its hash; an undeclared source counts as a remote human (Section 6.10, `device_registry.schema.json`).
+9. New rules for continuous goal input, several sources at once, presets started by a person, hand-overs and stale input, and physical support (Sections 6.11 to 6.15).
+10. Event format: `session_start.simulated` (required) and `unobserved`; clock status on heartbeats with flag `clock_unsynced`; events `support_start` and `support_end` (Section 8).
+11. Parameters `goal_release_s` and `contention_window_s`; events with `x_attribution_inferred: true` are capped at trust level L1 like reconstructed ones (Sections 9, 10.6).
 
 ## Changes in v0.2 (2026-10-31)
 
@@ -42,7 +58,7 @@ A control state is a property of one control scope at one instant. States are **
 | `human_remote` | A human not co-located commands the scope over a link (teleoperation, remote joystick, VR, remote waypoint). | Human time; active |
 | `shared` | Human and AI command inputs are both in the loop and blended or arbitrated (haptic shared control, human sets goals while AI executes, AI acts under an active human hint, AI blocked waiting for a human decision). The human fraction within `shared` is unknown by default. | Human time (conservative default); AI time under the `shared_as_ai` sensitivity; active |
 | `scripted` | The scope follows a pre-recorded or pre-programmed sequence that does not use current sensing to choose its actions beyond limit and safety checks: replay of a recorded demonstration, teach-and-repeat, a fixed macro or choreographed routine. No live human command input (Section 6.9). | Neither AI nor human; **active**; reported as `scripted_share` |
-| `safety_stop` | Motion is inhibited by a safety function (E-stop, protective stop, geofence stop, watchdog), regardless of who triggered it. No actor commands the scope. | Neither AI nor human; **active** (time the robot was supposed to be working) |
+| `safety_stop` | A safety function has taken the scope: motion is inhibited or a protective manoeuvre runs (E-stop, protective stop, geofence stop, watchdog, brake, a damping mode used as a safe state, an evasive reflex such as backing away from a bump or cliff), regardless of who triggered it. No actor commands the scope; when a person triggered the stop, `actor_id` names that person (Section 6.7). | Neither AI nor human; **active** (time the robot was supposed to be working) |
 | `idle` | The scope is powered and logging but has no open task and no commanded motion for at least `idle_threshold_s` (default 30 s). Idle is a declared state, not inferred from zero velocity during a task: a robot waiting for a part during a task is `ai` or `human_*`, not idle. | Not active |
 | `unknown` | The logger cannot assert the state: a gap in the log longer than `gap_tolerance_s` (default 2 s), a gap in `seq`, a corrupt segment, or an explicit `unknown` transition emitted by a logger that lost its source of truth. | Unmeasured time; reported with bounds (Section 7) |
 
@@ -63,7 +79,7 @@ A transition event records that `scope` entered `state` at `ts`. It applies from
 | `ts` | string | RFC 3339 date-time in UTC with the `Z` suffix and 3 to 9 fraction digits, e.g. `2026-10-30T09:15:02.250Z`. Second `60` (a leap second) is invalid; recorders use a clock that smears or steps leap seconds. `ts` MUST be non-decreasing with `seq`. |
 | `state` | enum | One of the eight states. |
 | `reason` | enum, nullable | `ai_requested_help`, `human_initiated`, `safety`, `planned`. Required when `state` is `human_local`, `human_remote`, `shared` or `safety_stop`; MAY be null for transitions into `ai`, `scripted`, `idle`, `unknown`. |
-| `actor_id` | string, nullable | Who holds control after the transition. Required when `state` is `human_local`, `human_remote` or `shared`. |
+| `actor_id` | string, nullable | Who holds control after the transition. Required when `state` is `human_local`, `human_remote` or `shared`. For `safety_stop` it names the person who triggered the stop and is null when a safety function acted on its own. |
 
 Reason definitions:
 
@@ -74,9 +90,9 @@ Reason definitions:
 | `safety` | A safety function, or a human acting for safety, stopped or took the scope. Transitions into `safety_stop` always carry `safety`. |
 | `planned` | A pre-registered human action: a declared reset between tasks, a scheduled calibration, a planned demonstration block, a pre-registered approval gate. Planned transitions MUST reference a `plan_item_id`; the plan is frozen and its hash is in `session_start.plan_hash`. |
 
-**Intervention.** An intervention is any transition of a scope out of `ai` or `scripted` into `human_local`, `human_remote` or `shared`, regardless of reason, plus any `approval` or discrete `hint` event (Sections 6.1, 6.2).
+**Intervention.** An intervention is any of: (a) a transition of a scope out of `ai` or `scripted` into `human_local`, `human_remote` or `shared`, regardless of reason; (b) an `approval` or discrete `hint` event (Sections 6.1, 6.2); (c) a transition out of `ai` or `scripted` into `safety_stop` that a person triggered (Section 6.7); (d) a transition out of `ai` or `scripted` into `scripted` with reason `human_initiated`, a preset a person started (Section 6.13). Interventions here are control hand-overs, not the interventions of machinery or AI regulation (such as tampering with safety functions under Regulation (EU) 2023/1230), which this standard does not measure.
 
-**Intervention episode.** An intervention lasts from the moment a scope leaves `ai` or `scripted` for a human or shared state until the scope returns to `ai` or `scripted`, the task ends, or the session ends. Every change between human and shared states inside that span (for example a pause-then-correct hand-over, `ai → shared → human_local → shared → ai`) belongs to the same intervention and is counted once, however long the steps are. `simultaneity_window_s` applies only to one human action taking several scopes (Section 6.6). Transitions into `safety_stop` are counted separately as `safety_stops` (Section 6.7). Between tasks (`task_id = null`), a transition into `human_*` from `idle` or `unknown`, or any transition into `human_*` with reason `planned`, is a reset (Section 6.3), not an intervention, but it is human time. A `planned` transition during an open task (e.g. a scheduled demonstration block) is an intervention with reason `planned`. This is deliberately broader than the California testing-regulation notion of a disengagement, which is a deactivation of the autonomous mode when a failure of the autonomous technology is detected or when safe operation requires the test driver (or, for driverless vehicles, the safety of vehicle, occupants or public) to deactivate the technology — Cal. Code Regs. tit. 13 § 227.50, https://www.law.cornell.edu/regulations/california/13-CCR-227.50 and the DMV adopted regulatory text https://www.dmv.ca.gov/portal/uploads/2020/06/Adopted-Regulatory-Text-2019.pdf [VERIFIED (excerpt): regulatory text excerpt read via web search 2026-10-30; full section not fetched]. The `reason` field lets a report recover the narrower count (`human_initiated` + `safety`, excluding `planned` and `ai_requested_help`) as a filter; the broad count is the default because it cannot be shrunk by relabelling.
+**Intervention episode.** An intervention episode starts with the transition that makes it an intervention (cases a, c and d) and lasts until the scope returns to `ai`, or to `scripted` that no person started, the task ends, or the session ends. Every change between human and shared states inside that span (for example a pause-then-correct hand-over, `ai → shared → human_local → shared → ai`) belongs to the same intervention and is counted once, however long the steps are. `simultaneity_window_s` applies only to one human action taking several scopes (Section 6.6). Transitions into `safety_stop` are counted separately as `safety_stops` (Section 6.7). Between tasks (`task_id = null`), a transition into `human_*` from `idle` or `unknown`, or any transition into `human_*` with reason `planned`, is a reset (Section 6.3), not an intervention, but it is human time. A `planned` transition during an open task (e.g. a scheduled demonstration block) is an intervention with reason `planned`. This is deliberately broader than the California testing-regulation notion of a disengagement, which is a deactivation of the autonomous mode when a failure of the autonomous technology is detected or when safe operation requires the test driver (or, for driverless vehicles, the safety of vehicle, occupants or public) to deactivate the technology — Cal. Code Regs. tit. 13 § 227.50, https://www.law.cornell.edu/regulations/california/13-CCR-227.50 and the DMV adopted regulatory text https://www.dmv.ca.gov/portal/uploads/2020/06/Adopted-Regulatory-Text-2019.pdf [VERIFIED (excerpt): regulatory text excerpt read via web search 2026-10-30; full section not fetched]. The `reason` field lets a report recover the narrower count (`human_initiated` + `safety`, excluding `planned` and `ai_requested_help`) as a filter; the broad count is the default because it cannot be shrunk by relabelling.
 
 ## 4. Active time
 
@@ -136,7 +152,7 @@ Intervention counts are per scope and summed; one human action that takes severa
 
 ### 6.7 Safety stops and takeovers
 
-A `safety_stop` followed within `takeover_window_s` (default 60 s) by a `human_*` transition on the same scope is one intervention with reason `safety`; the stop itself is counted in `safety_stops`. A `safety_stop` that returns to `ai` without a human is a safety stop only, not an intervention. `safety_stops_per_active_hour` is a required report field so that stopping instead of handing over is visible.
+A `safety_stop` that a person triggered from `ai` or `scripted` is one intervention with reason `safety`: the person interrupted the robot, whether the control was meant as an emergency stop or a pause. An automatic `safety_stop` followed within `takeover_window_s` (default 60 s) by a `human_*` transition on the same scope is also one intervention with reason `safety`. Either way a takeover within `takeover_window_s` belongs to the same intervention episode. Every stop is counted in `safety_stops`, reported as `safety_stops_human_triggered` and `safety_stops_automatic`. An automatic `safety_stop` that returns to `ai` without a human is a safety stop only. `safety_stops_per_active_hour` is a required report field so that stopping instead of handing over is visible.
 
 ### 6.8 Holds and pauses
 
@@ -146,20 +162,42 @@ A hold is any period in which a scope keeps still or waits while a task is open:
 |---|---|---|
 | A human paused or froze the robot (pause key, operator freeze, hand-over alignment) | `shared` | `human_initiated` |
 | The AI is blocked waiting for a human decision (Section 6.1) | `shared` | `ai_requested_help` |
-| A safety function stopped motion (e-stop, protective stop, a limp or damping mode used as a safe state) | `safety_stop` | `safety` |
+| A safety function stopped motion, or a person used an emergency-stop control | `safety_stop` | `safety` |
 | The AI chose to wait as part of its own plan (a part has not arrived) | `ai` | — |
 | No task is open | `idle` after `idle_threshold_s` | — |
 | The cause cannot be observed | `unknown` | — |
+
+A limp, damping or zero-torque mode is `safety_stop` only when a safety function or an emergency-stop control caused it. Used as a routine step (start-up, staging, a pause key) it is a hold of whoever caused it. When one control serves both purposes (for example a key that pauses when tapped and stops when held), the recorder decides from how it was used and keeps the evidence in `x_` fields.
 
 A declared `idle` while a task is open is converted to `unknown` by the loader and flagged `idle_in_task`. A pause followed by human control is one intervention episode (Section 3).
 
 ### 6.9 Scripted motion
 
-Replay of recorded actions (for example LeRobot `lerobot-replay`), teach-and-repeat and fixed macros are `scripted`. Replaying a recorded human demonstration moves human work in time; it MUST NOT be reported as `ai`. Commands that match a stored action sequence, or motion that does not react to a scene perturbation, are evidence of `scripted` whatever the log says.
+Replay of recorded actions (for example LeRobot `lerobot-replay`), teach-and-repeat and fixed macros are `scripted`. Replaying a recorded human demonstration moves human work in time; it MUST NOT be reported as `ai`. Commands that match a stored action sequence, or motion that does not react to a scene perturbation, are evidence of `scripted` whatever the log says. A pre-recorded reference executed by a controller, learned or not (for example a motion-tracking policy following a recorded dance), is `scripted`: the recording decides what the robot does.
 
-### 6.10 Device location (local versus remote)
+### 6.10 Device registry and location
 
-Software often cannot tell whether a human is next to the robot or far away. Every human input device is declared before the session in a device registry (`device_id`, device kind, location `local` or `remote`) whose hash is written into `session_start.device_registry_hash`. Human transitions, approvals and hints carry `device_id`. The state follows the declared location. Human control through an undeclared device, or a device without a declared location, is `human_remote` and is flagged `undeclared_device`. Remote control declared as local is exposed at trust level L3 when it passes through the instrumented station.
+Software often cannot tell which source sent a command, or whether a person is next to the robot. Every source that can command the robot is declared before the session in a device registry, a JSON file valid against `device_registry.schema.json`. Each device has a `device_id`; a `kind`: `human` (an input device a person uses), `ai` (an automated controller, including the robot's own built-in controllers), `script` (a fixed sequence) or `support` (a hoist or harness, Section 6.15); for `human`, a `location` (`local` or `remote`) and optionally the pseudonymous `actor_id` who uses it; and `match`, the identity under which the recorder observes the device (host, ROS node, topic or DDS participant). A source matches the first device whose given `match` fields all equal what the recorder observed. `session_start.device_registry_hash` is the lower-case hex SHA-256 of the registry's RFC 8785 canonical form. Transitions, approvals and hints carry the `device_id` of their source, and the state follows the declared kind and location. Control through an undeclared source is `human_remote` and is flagged `undeclared_device`; an AI controller left out of the registry therefore counts as a remote human. Remote control declared as local is exposed at trust level L3 when it passes through the instrumented station.
+
+### 6.11 Continuous goal input
+
+A person who streams goals to an AI controller (joystick or thumbstick velocities into a balance or navigation controller, assisted teleoperation) makes the scope `shared` with reason `human_initiated`, from the first input outside the device's dead zone until `goal_release_s` (default 1 s) after the last such input; a command that carries its own duration lasts until that duration ends. A person whose commands reach the actuators without an AI controller in between (for example wheel velocities sent straight to a base) holds the scope: `human_local` or `human_remote`. A neutral command (zero velocity, centred sticks, a released dead-man key) ends a human or shared span at its `ts` and never opens one.
+
+### 6.12 Several sources at once
+
+When two or more sources command one scope within `contention_window_s` (default 1 s) of each other, interleaved on one channel, blended with weights or summed, the scope is `shared` with reason `human_initiated` if any of them is a person; otherwise `ai` if any is an AI controller; otherwise `scripted`. A span of contention is one intervention episode. Sources are told apart by the identity the recorder observes live (Section 6.10). When the recorder can only infer the source, for example from a recording that does not keep sender identity, the events carry `x_attribution_inferred: true`; the loader flags them `attribution_inferred` and spans built from them are trust level L1 at most.
+
+### 6.13 Presets started by a person
+
+A preset behaviour that a person starts (a posture macro, a gesture, docking, undocking, wall-following) is `scripted`, with actor `script:<name>` and reason `human_initiated`, when it is a fixed motion; it is `shared` with reason `human_initiated` when it is a closed-loop routine that senses as it runs, because the person chose the goal and the AI executes it (Section 2). Either way it is an intervention (Section 3). Started by a program, the same behaviours are `scripted` or `ai`. Between tasks the same states apply with `task_id = null` (Section 6.3).
+
+### 6.14 Hand-overs and stale input
+
+While no source commands a scope between two controllers (for example a limp gap while one program releases the robot and another starts), the scope takes the state of the incoming controller if it starts within `gap_tolerance_s`, else it is `unknown`. A human state needs live input: when the declared input device stops reporting (tracking lost, link dropped) while its last command keeps being repeated, the scope is `unknown` from `gap_tolerance_s` after the last live input.
+
+### 6.15 Physical support
+
+A robot held up by a hoist, a harness or a person is physically supported. Support is not a control state: it is recorded with `support_start` and `support_end` events (optional `scope`, default the whole robot, and `device_id`), and an unclosed support lasts until `session_end`. Reports print `supported_time`, `supported_time / active_time` and the time autonomy share over unsupported active time only. Moving the robot by hand (lifting, carrying, pushing) is `human_local`.
 
 ## 7. Unmeasured time and bounds
 
@@ -176,7 +214,7 @@ The log is JSON Lines (one JSON object per line) validated against `event.schema
 
 | `type` | Required fields beyond the common ones | Purpose |
 |---|---|---|
-| `session_start` | `scopes`, `initial_states`, `heartbeat_interval_s`, `hint_policy`, `task_registry_hash`, `plan_hash`; optional `scope_weights`, `device_registry_hash` | Opens a session; declares scopes and parameters. |
+| `session_start` | `scopes`, `initial_states`, `heartbeat_interval_s`, `hint_policy`, `task_registry_hash`, `plan_hash`, `simulated`; optional `scope_weights`, `device_registry_hash`, `unobserved` | Opens a session; declares scopes and parameters. |
 | `session_end` | — | Closes a session. |
 | `transition` | `scope`, `state`; `reason`/`actor_id` per Section 3; optional `plan_item_id`, `related_seq`, `device_id` | State change. |
 | `approval` | `scope`, `actor_id`, `reason`; optional `dwell_s`, `device_id` | Discrete human decision (6.1). |
@@ -185,7 +223,9 @@ The log is JSON Lines (one JSON object per line) validated against `event.schema
 | `task_start` | `task_id`, `task_definition_id` | Opens a task. |
 | `task_end` | `task_id`, `outcome` | Closes a task. |
 | `supervision` | `level`, `n_supervisors` | Supervision level change (6.4). |
-| `heartbeat` | optional `distance_m` | Liveness; cumulative odometry for distance-based metrics. |
+| `heartbeat` | optional `distance_m`, `clock_source`, `clock_max_error_s` | Liveness; cumulative odometry for distance-based metrics. |
+| `support_start` | optional `scope`, `device_id` | Physical support begins (6.15). |
+| `support_end` | optional `scope`, `device_id` | Physical support ends. |
 
 Common fields on every event: `robot_id`, `session_id`, `task_id` (nullable), `seq`, `ts`, `type`; optional `distance_m` (cumulative metres since `session_start`, non-decreasing), `prev_hash`, `hash`. `hash` is the lower-case hex SHA-256 of the event serialised with the RFC 8785 JSON Canonicalization Scheme (https://www.rfc-editor.org/rfc/rfc8785), without its own `hash` field and including `prev_hash`. `prev_hash` is the previous event's `hash`; for the first event of a session it is the genesis hash SHA-256 of the UTF-8 string `autonometry/chain-v1|<robot_id>|<session_id>` (the prefix names the hashing scheme, not the spec version, so it changes only if the hashing itself changes). `prev_hash` may be null only in unsealed (trust level L1) logs; a verifier asked for L2 or above MUST fail when any event lacks `hash` or `prev_hash`. Section 10 specifies sealing and trust levels L1 and L2; L3 and L4 follow in later versions.
 
@@ -193,7 +233,9 @@ Common fields on every event: `robot_id`, `session_id`, `task_id` (nullable), `s
 
 **JSON.** Each line is one I-JSON object (RFC 7493): no duplicate keys, no lone surrogates or Unicode noncharacters, numbers within the range of an IEEE 754 double, integers within ±(2^53 − 1). Integer fields (`seq`, `related_seq`, `n_supervisors`) are written as JSON integers, without a fraction or exponent (`5`, not `5.0`).
 
-**Time.** `ts` is the time the recorder observed the event, from a UTC clock synchronised by NTP or PTP; the recorder logs its clock status as events (defined with the recorder). A source's own timestamp MAY be kept as `x_src_ts` with `x_src_clock` (`wall`, `monotonic`, `sim`, `frame_index`). Events rebuilt after the fact from files rather than observed live (for example from LeRobot dataset frames, whose `timestamp` is `frame_index / fps`) MUST carry `x_ts_reconstructed: true`; the loader counts them under the flag `ts_reconstructed`, and spans built from them are reported at trust level L1 at most.
+**Time.** `ts` is the time the recorder observed the event, from a UTC clock synchronised by NTP or PTP; the recorder reports its clock status on heartbeats: `clock_source` (`ntp`, `ptp`, `gnss`, `none`, `unknown`) and `clock_max_error_s`, its estimated maximum error in seconds. The loader flags `clock_unsynced` for a session whose clock source is `none` or `unknown` or whose error exceeds `clock_tolerance_s` or is not reported. A source's own timestamp MAY be kept as `x_src_ts` with `x_src_clock` (`wall`, `monotonic`, `sim`, `frame_index`). Events rebuilt after the fact from files rather than observed live (for example from LeRobot dataset frames, whose `timestamp` is `frame_index / fps`) MUST carry `x_ts_reconstructed: true`; the loader counts them under the flag `ts_reconstructed`, and spans built from them are reported at trust level L1 at most.
+
+**Simulation and blind spots.** `session_start.simulated` is true for a session run in a simulator; reports MUST NOT pool simulated and real sessions. `session_start.unobserved` lists signal classes the recorder cannot see on the platform (`safety_stops`, `human_inputs`, `tasks`), for example safety events a robot does not publish by default; reports print them beside every metric that depends on them.
 
 **Extensions.** Fields whose names start with `x_` are allowed on every event and ignored by the metrics. Any other field not defined here is a schema error.
 
@@ -213,11 +255,13 @@ Common fields on every event: `robot_id`, `session_id`, `task_id` (nullable), `s
 | `hint_min_dwell_s` | 0 | 6.2 |
 | `takeover_window_s` | 60 | 6.7 |
 | `simultaneity_window_s` | 0.5 | 6.6 |
+| `goal_release_s` | 1 | 6.11 |
+| `contention_window_s` | 1 | 6.12 |
 | `unknown_share_max` | 0.05 | 7 |
 | `checkpoint_every_events` | 1000 | 10.3 |
 | `checkpoint_every_s` | 600 | 10.3 |
 | `max_commit_delay_s` | 3600 | 10.5 |
-| `clock_tolerance_s` | 1 | 10.5 |
+| `clock_tolerance_s` | 1 | 8, 10.5 |
 
 All parameters MUST be printed in the report; changing a default is allowed but is itself a reported fact.
 
@@ -233,7 +277,7 @@ All parameters MUST be printed in the report; changing a default is allowed but 
 
 **10.5 Anchors.** A checkpoint is anchored when either (a) a timestamp record for it holds a granted RFC 3161 response for the signed note that verifies against a TSA root certificate the verifier trusts, with a time at most `max_commit_delay_s` after and at most `clock_tolerance_s` before the `ts` of the last event the checkpoint covers; or (b) the verifier holds the same checkpoint (origin, size, root, valid signature) in an anchor file: a copy kept outside the log, such as the customer's or a witness's.
 
-**10.6 Verification.** A verifier recomputes every event hash from the event and every root from the events; it never trusts a stored value. Anchors are checked against the events exactly like checkpoints, and a valid anchor counts as an anchored checkpoint. A span of events is trust level L2 when every event in it is sealed and it is covered by a checkpoint with a valid signature from a trusted key, a matching root and an anchor. Everything else is L1, and so are sessions holding events with `x_ts_reconstructed: true` (Section 8). Each session gets one status:
+**10.6 Verification.** A verifier recomputes every event hash from the event and every root from the events; it never trusts a stored value. Anchors are checked against the events exactly like checkpoints, and a valid anchor counts as an anchored checkpoint. A span of events is trust level L2 when every event in it is sealed and it is covered by a checkpoint with a valid signature from a trusted key, a matching root and an anchor. Everything else is L1, and so are sessions holding events with `x_ts_reconstructed: true` or `x_attribution_inferred: true` (Section 8). Each session gets one status:
 - `verified`: L2 up to the last event;
 - `partial`: L2 up to `sealed_through_seq`, L1 after it;
 - `unverified`: no L2 span, and nothing contradicts the log;
@@ -253,7 +297,7 @@ Gap codes; they never raise the level:
 - `untrusted_checkpoint`: no signature from a trusted key; the note is ignored.
 - `not_anchored`: a valid checkpoint without an anchor, including when its token does not verify against the trusted TSA roots or no TSA root is trusted.
 - `late_anchor`, `clock_skew`: a verified token outside the window of 10.5.
-- `reconstructed`: events carry `x_ts_reconstructed: true`.
+- `reconstructed`: events carry `x_ts_reconstructed: true` or `x_attribution_inferred: true`.
 
 **File problems.** A record that cannot be tied to one session is reported for its file: `malformed_checkpoint` (a checkpoint note that is not a well-formed signed checkpoint) and `orphan_timestamp` (a timestamp record whose `note_sha256` matches no checkpoint record in the same file). File problems, like rejected lines, make the result not verified whatever the sessions' statuses.
 

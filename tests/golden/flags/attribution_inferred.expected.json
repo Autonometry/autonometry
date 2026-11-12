@@ -1,0 +1,35 @@
+{
+  "counts": {
+    "blank_lines": 0,
+    "errors_by_code": {},
+    "events": 6,
+    "files": 1,
+    "flags": 1,
+    "flags_by_code": {
+      "attribution_inferred": 1
+    },
+    "lines": 6,
+    "rejected_lines": 0,
+    "sessions": 1
+  },
+  "errors": [],
+  "flags": [
+    {
+      "code": "attribution_inferred",
+      "detail": "3 events with x_attribution_inferred: true",
+      "robot_id": "r01",
+      "seq": 1,
+      "session_id": "s01"
+    }
+  ],
+  "sessions": [
+    {
+      "events": 6,
+      "first_seq": 0,
+      "last_seq": 5,
+      "robot_id": "r01",
+      "session_id": "s01"
+    }
+  ],
+  "spec_version": "0.3"
+}

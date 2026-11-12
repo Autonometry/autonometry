@@ -1,0 +1,9 @@
+{
+  "devices": [
+    {
+      "device_id": "nav2",
+      "kind": "ai",
+      "match": {}
+    }
+  ]
+}

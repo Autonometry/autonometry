@@ -1,0 +1,10 @@
+{
+  "devices": 0,
+  "file": "no_devices.json",
+  "problems": [
+    "schema_violation: /devices: must be a list of length >= 1"
+  ],
+  "sha256": null,
+  "spec_version": "0.3",
+  "valid": false
+}

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://autonometry.github.io/spec/v0.2/event.schema.json",
-  "title": "Autonometry event (v0.2)",
-  "description": "One event of a robot control-state log. One JSON object per line (JSON Lines). See definitions.md (v0.2) for the normative taxonomy. Fields starting with x_ are extensions and are ignored by the metrics.",
+  "$id": "https://autonometry.github.io/spec/v0.3/event.schema.json",
+  "title": "Autonometry event (v0.3)",
+  "description": "One event of a robot control-state log. One JSON object per line (JSON Lines). See definitions.md (v0.3) for the normative taxonomy. Fields starting with x_ are extensions and are ignored by the metrics.",
   "type": "object",
   "$defs": {
     "state": {
@@ -46,13 +46,13 @@
     "type": {
       "type": "string",
       "enum": ["session_start", "session_end", "transition", "approval", "hint", "help_request",
-               "task_start", "task_end", "supervision", "heartbeat"]
+               "task_start", "task_end", "supervision", "heartbeat", "support_start", "support_end"]
     },
     "scope":      { "$ref": "#/$defs/scope" },
     "state":      { "$ref": "#/$defs/state" },
     "reason":     { "oneOf": [ { "$ref": "#/$defs/reason" }, { "type": "null" } ] },
     "actor_id":   { "$ref": "#/$defs/id", "description": "Pseudonymous actor; automated controllers are 'ai:<controller_id>', scripts 'script:<script_id>'." },
-    "device_id":  { "$ref": "#/$defs/id", "description": "Declared human input device from the device registry (definitions.md 6.10)." },
+    "device_id":  { "$ref": "#/$defs/id", "description": "Source that sent the command, declared in the device registry (definitions.md 6.10)." },
     "plan_item_id": { "$ref": "#/$defs/id", "description": "Required when reason is 'planned'." },
     "related_seq": { "type": ["integer", "null"], "minimum": 0, "description": "Links a takeover to the safety_stop it follows." },
     "dwell_s":    { "$ref": "#/$defs/nonneg", "description": "Measured human decision time for approval/hint events." },
@@ -79,7 +79,16 @@
     "hint_policy": { "type": "string", "enum": ["hint_as_shared", "hint_as_event"] },
     "task_registry_hash": { "$ref": "#/$defs/sha256hex" },
     "plan_hash":   { "$ref": "#/$defs/sha256hex" },
-    "device_registry_hash": { "$ref": "#/$defs/sha256hex", "description": "Hash of the declared device registry (definitions.md 6.10)." },
+    "device_registry_hash": { "$ref": "#/$defs/sha256hex", "description": "SHA-256 of the device registry in RFC 8785 canonical form (definitions.md 6.10)." },
+    "simulated":   { "type": "boolean", "description": "True for a session run in a simulator (definitions.md 8)." },
+    "unobserved":  {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "enum": ["safety_stops", "human_inputs", "tasks"] },
+      "description": "Signal classes the recorder cannot see on the platform (definitions.md 8)."
+    },
+    "clock_source": { "type": "string", "enum": ["ntp", "ptp", "gnss", "none", "unknown"], "description": "How the recorder's clock is synchronised (definitions.md 8)." },
+    "clock_max_error_s": { "$ref": "#/$defs/nonneg", "description": "Estimated maximum clock error, seconds (definitions.md 8)." },
     "prev_hash":   {
       "oneOf": [ { "$ref": "#/$defs/sha256hex" }, { "type": "null" } ],
       "description": "Previous event's hash; for the first event the genesis SHA-256('autonometry/chain-v1|<robot_id>|<session_id>'). Null only in unsealed (L1) logs."
@@ -93,7 +102,7 @@
   "allOf": [
     {
       "if": { "properties": { "type": { "const": "session_start" } } },
-      "then": { "required": ["scopes", "initial_states", "heartbeat_interval_s", "hint_policy", "task_registry_hash", "plan_hash"] }
+      "then": { "required": ["scopes", "initial_states", "heartbeat_interval_s", "hint_policy", "task_registry_hash", "plan_hash", "simulated"] }
     },
     {
       "if": { "properties": { "type": { "const": "transition" } } },
@@ -154,7 +163,8 @@
       "type": "session_start", "scopes": ["whole_robot"], "initial_states": {"whole_robot": "idle"},
       "heartbeat_interval_s": 1.0, "hint_policy": "hint_as_shared",
       "task_registry_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-      "plan_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+      "plan_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "simulated": false
     },
     {
       "robot_id": "r01", "session_id": "s001", "task_id": "t1", "seq": 1, "ts": "2026-10-30T09:00:10.000Z",
@@ -200,6 +210,14 @@
       "robot_id": "r01", "session_id": "s002", "task_id": "t9", "seq": 5, "ts": "2026-10-31T10:12:03.000Z",
       "type": "transition", "scope": "whole_robot", "state": "scripted", "reason": null, "actor_id": "script:replay_ep12",
       "x_src_ts": 412.5, "x_src_clock": "frame_index", "x_ts_reconstructed": true
+    },
+    {
+      "robot_id": "g1_03", "session_id": "s014", "task_id": null, "seq": 1, "ts": "2026-11-12T08:00:01.000Z",
+      "type": "heartbeat", "clock_source": "ptp", "clock_max_error_s": 0.0005
+    },
+    {
+      "robot_id": "g1_03", "session_id": "s014", "task_id": null, "seq": 2, "ts": "2026-11-12T08:00:01.500Z",
+      "type": "support_start", "device_id": "gantry_hoist"
     }
   ]
 }

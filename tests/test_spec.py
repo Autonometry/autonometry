@@ -21,7 +21,7 @@ def spec_copy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     copy = tmp_path / "spec"
     shutil.copytree(REPO_SPEC, copy)
     monkeypatch.setattr(spec, "spec_root", lambda: copy)
-    return copy / "v0.2"
+    return copy / "v0.3"
 
 
 def _edit_schema(folder: Path, edit: Any) -> None:
@@ -38,19 +38,19 @@ def _edit_rules(folder: Path, old: str, new: str) -> None:
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
-def test_available_versions_lists_v0_2() -> None:
-    assert spec.available_versions() == ["0.2"]
+def test_available_versions_lists_v0_3() -> None:
+    assert spec.available_versions() == ["0.3"]
 
 
 def test_schema_is_valid_draft_2020_12__defs_8() -> None:
-    schema = spec.load_schema("0.2")
+    schema = spec.load_schema("0.3")
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-    spec.compile_schema("0.2", schema)
+    spec.compile_schema("0.3", schema)
 
 
 def test_every_schema_example_validates__defs_8() -> None:
-    schema = spec.load_schema("0.2")
-    validator = spec.compile_schema("0.2", schema)
+    schema = spec.load_schema("0.3")
+    validator = spec.compile_schema("0.3", schema)
     examples = schema["examples"]
     assert len(examples) > 5
     for example in examples:
@@ -58,7 +58,7 @@ def test_every_schema_example_validates__defs_8() -> None:
 
 
 def test_schema_rejects_human_transition_without_actor__defs_3() -> None:
-    schema = spec.load_schema("0.2")
+    schema = spec.load_schema("0.3")
     bad = {
         "robot_id": "r01",
         "session_id": "s001",
@@ -70,12 +70,12 @@ def test_schema_rejects_human_transition_without_actor__defs_3() -> None:
         "state": "human_remote",
         "reason": "human_initiated",
     }
-    assert not spec.compile_schema("0.2", schema).is_valid(bad)
+    assert not spec.compile_schema("0.3", schema).is_valid(bad)
 
 
 def test_rules_load_as_frozen_model__defs_9() -> None:
-    rules = spec.load_rules("0.2")
-    assert rules.spec_version == "0.2"
+    rules = spec.load_rules("0.3")
+    assert rules.spec_version == "0.3"
     assert rules.params.idle_threshold_s == 30.0
     assert rules.params.unknown_share_max == 0.05
     assert rules.states["shared"].category == "human"
@@ -86,23 +86,23 @@ def test_rules_load_as_frozen_model__defs_9() -> None:
 def test_rules_reject_unknown_keys__defs_9(spec_copy: Path) -> None:
     _edit_rules(spec_copy, "[gaps]", "surprise = 1\n[gaps]")
     with pytest.raises(spec.SpecError, match=r"rules\.toml .* invalid"):
-        spec.load_rules("0.2")
+        spec.load_rules("0.3")
 
 
-def test_check_consistency_passes_for_v0_2__defs_2() -> None:
-    spec.check_consistency("0.2")
+def test_check_consistency_passes_for_v0_3__defs_2() -> None:
+    spec.check_consistency("0.3")
 
 
 def test_state_removed_from_schema_fails_consistency__defs_2(spec_copy: Path) -> None:
     _edit_schema(spec_copy, lambda d: d["$defs"]["state"]["enum"].remove("scripted"))
     with pytest.raises(spec.SpecConsistencyError, match="'scripted' is in rules but not"):
-        spec.check_consistency("0.2")
+        spec.check_consistency("0.3")
 
 
 def test_reason_added_to_schema_fails_consistency__defs_3(spec_copy: Path) -> None:
     _edit_schema(spec_copy, lambda d: d["$defs"]["reason"]["enum"].append("curiosity"))
     with pytest.raises(spec.SpecConsistencyError, match="'curiosity' is in the schema but not"):
-        spec.check_consistency("0.2")
+        spec.check_consistency("0.3")
 
 
 def test_unknown_state_in_rules_fails_consistency__defs_6_6(spec_copy: Path) -> None:
@@ -112,7 +112,7 @@ def test_unknown_state_in_rules_fails_consistency__defs_6_6(spec_copy: Path) -> 
         '"human_remoet", "human_local", "shared"',
     )
     with pytest.raises(spec.SpecConsistencyError, match="unknown state 'human_remoet'"):
-        spec.check_consistency("0.2")
+        spec.check_consistency("0.3")
 
 
 def test_duplicate_flag_code_fails_consistency__defs_8(spec_copy: Path) -> None:
@@ -120,25 +120,25 @@ def test_duplicate_flag_code_fails_consistency__defs_8(spec_copy: Path) -> None:
     with pytest.raises(
         spec.SpecConsistencyError, match="flag code 'time_gap' appears more than once"
     ):
-        spec.check_consistency("0.2")
+        spec.check_consistency("0.3")
 
 
 def test_wrong_spec_version_in_rules_fails_consistency(spec_copy: Path) -> None:
-    _edit_rules(spec_copy, 'spec_version = "0.2"', 'spec_version = "0.3"')
+    _edit_rules(spec_copy, 'spec_version = "0.3"', 'spec_version = "0.4"')
     with pytest.raises(spec.SpecConsistencyError, match="differs from folder"):
-        spec.check_consistency("0.2")
+        spec.check_consistency("0.3")
 
 
 def test_invalid_schema_is_a_spec_error(spec_copy: Path) -> None:
     _edit_schema(spec_copy, lambda d: d.update(type=12))
     with pytest.raises(spec.SpecError, match="is invalid"):
-        spec.load_schema("0.2")
+        spec.load_schema("0.3")
 
 
 def test_schema_pattern_that_does_not_compile_is_a_spec_error(spec_copy: Path) -> None:
     _edit_schema(spec_copy, lambda d: d["$defs"]["scope"].update(pattern="^(unclosed$"))
-    with pytest.raises(spec.SpecError, match=r"event\.schema\.json of spec 0\.2 is invalid: "):
-        spec.load_schema("0.2")
+    with pytest.raises(spec.SpecError, match=r"event\.schema\.json of spec 0\.3 is invalid: "):
+        spec.load_schema("0.3")
 
 
 def test_schema_with_remote_reference_is_refused_without_fetching(spec_copy: Path) -> None:
@@ -146,33 +146,33 @@ def test_schema_with_remote_reference_is_refused_without_fetching(spec_copy: Pat
         spec_copy, lambda d: d["properties"].update(note={"$ref": "https://example.invalid/n.json"})
     )
     with pytest.raises(spec.SpecError, match=r"is invalid: .*not fetched"):
-        spec.load_schema("0.2")
+        spec.load_schema("0.3")
 
 
 def test_broken_json_and_toml_are_spec_errors(spec_copy: Path) -> None:
     (spec_copy / "event.schema.json").write_text("{not json", encoding="utf-8")
     (spec_copy / "rules.toml").write_text("not = [toml", encoding="utf-8")
     with pytest.raises(spec.SpecError, match="not valid JSON"):
-        spec.load_schema("0.2")
+        spec.load_schema("0.3")
     with pytest.raises(spec.SpecError, match="not valid TOML"):
-        spec.load_rules("0.2")
+        spec.load_rules("0.3")
 
 
 def test_non_object_schema_is_a_spec_error(spec_copy: Path) -> None:
     (spec_copy / "event.schema.json").write_text("[1]", encoding="utf-8")
     with pytest.raises(spec.SpecError, match="not a JSON object"):
-        spec.load_schema("0.2")
+        spec.load_schema("0.3")
 
 
 def test_missing_enum_is_a_spec_error() -> None:
     with pytest.raises(spec.SpecError, match=r"no \$defs/state/enum"):
-        spec.find_inconsistencies("0.2", {}, spec.load_rules("0.2"))
+        spec.find_inconsistencies("0.3", {}, spec.load_rules("0.3"))
 
 
 def test_missing_file_is_a_spec_error(spec_copy: Path) -> None:
     (spec_copy / "rules.toml").unlink()
     with pytest.raises(spec.SpecError, match=r"cannot read rules\.toml"):
-        spec.load_rules("0.2")
+        spec.load_rules("0.3")
 
 
 def test_missing_spec_root_is_a_spec_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -183,29 +183,30 @@ def test_missing_spec_root_is_a_spec_error(tmp_path: Path, monkeypatch: pytest.M
 
 
 def test_file_hashes_are_sha256_of_the_files() -> None:
-    hashes = spec.spec_file_hashes("0.2")
+    hashes = spec.spec_file_hashes("0.3")
     assert list(hashes) == [
         "checkpoint.schema.json",
         "definitions.md",
+        "device_registry.schema.json",
         "event.schema.json",
         "rules.toml",
     ]
-    expected = hashlib.sha256((REPO_SPEC / "v0.2" / "rules.toml").read_bytes()).hexdigest()
+    expected = hashlib.sha256((REPO_SPEC / "v0.3" / "rules.toml").read_bytes()).hexdigest()
     assert hashes["rules.toml"] == expected
 
 
 def test_version_with_leading_v_is_accepted() -> None:
-    assert spec.spec_file_hashes("v0.2") == spec.spec_file_hashes("0.2")
+    assert spec.spec_file_hashes("v0.3") == spec.spec_file_hashes("0.3")
 
 
-@pytest.mark.parametrize("bad", ["", "../x", "0.2/../..", "latest", "0.2.1", "v", "0.2\n"])
+@pytest.mark.parametrize("bad", ["", "../x", "0.3/../..", "latest", "0.3.1", "v", "0.3\n"])
 def test_invalid_version_is_rejected(bad: str) -> None:
     with pytest.raises(spec.SpecError, match="invalid spec version"):
         spec.spec_file_hashes(bad)
 
 
 def test_unknown_version_is_rejected() -> None:
-    with pytest.raises(spec.SpecError, match=r"unknown spec version '9\.9'; available: 0\.2"):
+    with pytest.raises(spec.SpecError, match=r"unknown spec version '9\.9'; available: 0\.3"):
         spec.load_schema("9.9")
 
 
@@ -224,7 +225,7 @@ def test_spec_files_have_no_carriage_return__defs_8() -> None:
 
 
 def test_rules_state_table_is_read_only__defs_2() -> None:
-    rules = spec.load_rules("0.2")
+    rules = spec.load_rules("0.3")
     with pytest.raises(TypeError):
         rules.states["ai"] = rules.states["idle"]  # type: ignore[index]
     with pytest.raises(AttributeError):
@@ -233,7 +234,7 @@ def test_rules_state_table_is_read_only__defs_2() -> None:
 
 
 def test_rules_error_table__defs_8() -> None:
-    errors = spec.load_rules("0.2").errors
+    errors = spec.load_rules("0.3").errors
     assert errors.max_line_bytes == 65536
     assert errors.list_max_per_code == 100
     assert errors.codes[:2] == ("invalid_utf8", "invalid_unicode")
@@ -243,46 +244,136 @@ def test_rules_error_table__defs_8() -> None:
 def test_non_positive_list_limit_is_a_spec_error__defs_8(spec_copy: Path) -> None:
     _edit_rules(spec_copy, "list_max_per_code = 100", "list_max_per_code = 0")
     with pytest.raises(spec.SpecError, match=r"errors\.list_max_per_code"):
-        spec.load_rules("0.2")
+        spec.load_rules("0.3")
 
 
 def test_rules_flag_table_has_session_marker_codes__defs_1() -> None:
-    codes = spec.load_rules("0.2").flags.codes
+    codes = spec.load_rules("0.3").flags.codes
     assert {"repeated_session_marker", "event_outside_session"} <= set(codes)
 
 
 def test_non_positive_line_limit_is_a_spec_error__defs_8(spec_copy: Path) -> None:
     _edit_rules(spec_copy, "max_line_bytes = 65536", "max_line_bytes = 0")
     with pytest.raises(spec.SpecError, match=r"errors\.max_line_bytes"):
-        spec.load_rules("0.2")
+        spec.load_rules("0.3")
 
 
 def test_duplicate_error_code_fails_consistency__defs_8(spec_copy: Path) -> None:
     _edit_rules(spec_copy, '"invalid_utf8", "invalid_unicode"', '"invalid_utf8", "invalid_utf8"')
     with pytest.raises(spec.SpecConsistencyError, match="error code 'invalid_utf8' appears more"):
-        spec.check_consistency("0.2")
+        spec.check_consistency("0.3")
 
 
 def test_code_in_flags_and_errors_fails_consistency__defs_8(spec_copy: Path) -> None:
     _edit_rules(spec_copy, '"duplicate_seq"]', '"duplicate_seq", "seq_gap"]')
     with pytest.raises(spec.SpecConsistencyError, match="'seq_gap' is both a flag and an error"):
-        spec.check_consistency("0.2")
+        spec.check_consistency("0.3")
 
 
 def test_file_code_shared_with_a_gap_code_fails_consistency__defs_10_6(spec_copy: Path) -> None:
     _edit_rules(spec_copy, '"orphan_timestamp"]', '"orphan_timestamp", "unsealed"]')
     with pytest.raises(spec.SpecError, match="file_codes"):
-        spec.load_rules("0.2")
+        spec.load_rules("0.3")
 
 
 def test_rules_sealing_table__defs_10() -> None:
-    sealing = spec.load_rules("0.2").sealing
+    sealing = spec.load_rules("0.3").sealing
     assert sealing.checkpoint_every_events == 1000
     assert sealing.max_commit_delay_s == 3600.0
     assert sealing.file_codes == ("malformed_checkpoint", "orphan_timestamp")
 
 
 def test_known_version_normalises() -> None:
-    assert spec.known_version("v0.2") == "0.2"
+    assert spec.known_version("v0.3") == "0.3"
     with pytest.raises(spec.SpecError, match="unknown spec version"):
         spec.known_version("9.9")
+
+
+def _session_start(**fields: Any) -> dict[str, Any]:
+    return {
+        "robot_id": "r01",
+        "session_id": "s01",
+        "task_id": None,
+        "seq": 0,
+        "ts": "2026-11-12T08:00:00.000Z",
+        "type": "session_start",
+        "scopes": ["whole_robot"],
+        "initial_states": {"whole_robot": "idle"},
+        "heartbeat_interval_s": 1.0,
+        "hint_policy": "hint_as_shared",
+        "task_registry_hash": "0" * 64,
+        "plan_hash": "0" * 64,
+        "simulated": False,
+    } | fields
+
+
+def _event(type_: str, **fields: Any) -> dict[str, Any]:
+    base = {"robot_id": "r01", "session_id": "s01", "task_id": None, "seq": 1}
+    return base | {"ts": "2026-11-12T08:00:01.000Z", "type": type_} | fields
+
+
+def _valid(event: dict[str, Any]) -> bool:
+    return spec.compile_schema("0.3", spec.load_schema("0.3")).is_valid(event)
+
+
+def test_session_start_requires_simulated__defs_8() -> None:
+    assert _valid(_session_start())
+    assert _valid(_session_start(simulated=True))
+    without = _session_start()
+    del without["simulated"]
+    assert not _valid(without)
+    assert not _valid(_session_start(simulated="no"))
+
+
+def test_unobserved_lists_unique_signal_classes__defs_8() -> None:
+    assert _valid(_session_start(unobserved=[]))
+    assert _valid(_session_start(unobserved=["safety_stops", "human_inputs", "tasks"]))
+    assert not _valid(_session_start(unobserved=["tasks", "tasks"]))
+    assert not _valid(_session_start(unobserved=["video"]))
+
+
+def test_heartbeat_clock_status__defs_8() -> None:
+    for source in ("ntp", "ptp", "gnss", "none", "unknown"):
+        assert _valid(_event("heartbeat", clock_source=source, clock_max_error_s=0.0))
+    assert not _valid(_event("heartbeat", clock_source="gps"))
+    assert not _valid(_event("heartbeat", clock_max_error_s=-0.1))
+
+
+def test_support_events__defs_6_15() -> None:
+    for type_ in ("support_start", "support_end"):
+        assert _valid(_event(type_))
+        assert _valid(_event(type_, scope="legs", device_id="gantry_hoist"))
+        assert not _valid(_event(type_, scope="bad scope"))
+
+
+def test_rules_v0_3_params_and_flags__defs_9() -> None:
+    rules = spec.load_rules("0.3")
+    assert rules.params.goal_release_s == 1.0
+    assert rules.params.contention_window_s == 1.0
+    assert {"clock_unsynced", "attribution_inferred"} <= set(rules.flags.codes)
+
+
+def test_person_started_states__defs_6_7_and_6_13() -> None:
+    rules = spec.load_rules("0.3")
+    assert rules.interventions.person_started_states == ("safety_stop", "scripted")
+
+
+def test_unknown_person_started_state_fails_consistency__defs_3(spec_copy: Path) -> None:
+    _edit_rules(
+        spec_copy,
+        'person_started_states = ["safety_stop", "scripted"]',
+        'person_started_states = ["estop", "scripted"]',
+    )
+    with pytest.raises(
+        spec.SpecConsistencyError,
+        match=r"interventions\.person_started_states names unknown state 'estop'",
+    ):
+        spec.check_consistency("0.3")
+
+
+def test_registry_schema_loads_as_draft_2020_12__defs_6_10(spec_copy: Path) -> None:
+    schema = spec.load_registry_schema("0.3")
+    assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+    (spec_copy / "device_registry.schema.json").write_text("[]", encoding="utf-8")
+    with pytest.raises(spec.SpecError, match=r"device_registry\.schema\.json of spec 0\.3"):
+        spec.load_registry_schema("0.3")

@@ -1,4 +1,4 @@
-"""Tests for autonometry.keys (definitions.md v0.2 section 10.3; CLAUDE.md security rules)."""
+"""Tests for autonometry.keys (definitions.md v0.3 section 10.3; CLAUDE.md security rules)."""
 
 import os
 import stat

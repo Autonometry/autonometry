@@ -24,9 +24,10 @@ Once released: `pip install autonometry` (extras: `report`, `lerobot`).
 ```
 autonometry --version
 autonometry spec list          # spec versions shipped with the package
-autonometry spec show 0.2      # its files with SHA-256 hashes
+autonometry spec show 0.3      # its files with SHA-256 hashes
 autonometry validate robot.jsonl station.jsonl         # summary; exit 1 if any line is rejected
-autonometry validate --json --spec 0.2 robot.jsonl     # the same as stable JSON
+autonometry validate --json --spec 0.3 robot.jsonl     # the same as stable JSON
+autonometry registry check devices.json                # device registry: valid? and its hash
 ```
 
 `validate` reads each file line by line. A line that is not one valid event (bad UTF-8, longer than
@@ -35,10 +36,20 @@ autonometry validate --json --spec 0.2 robot.jsonl     # the same as stable JSON
 Every rejected line is counted; the first 100 of each code are listed. Each session is then checked for structural
 problems (missing `session_start` or `session_end`, gaps in `seq`, silences longer than the heartbeat
 plus tolerance, `ts` going backwards, tasks that overlap or never close, and more), reported as
-warning flags. The codes are listed in [`spec/v0.2/rules.toml`](spec/v0.2/rules.toml). Event contents,
+warning flags. The codes are listed in [`spec/v0.3/rules.toml`](spec/v0.3/rules.toml). Event contents,
 such as actor ids, are never printed; the robot and session ids it does print are restricted by
 the schema to letters, digits and `._:-`, so a log cannot send control codes to your terminal. Add
 `-v` before the command for debug output.
+
+Every `session_start` says whether the session ran in a simulator (`simulated`), and heartbeats
+report the recorder's clock (`clock_source`, `clock_max_error_s`). A session whose clock is not
+reported as synchronised within `clock_tolerance_s` is flagged `clock_unsynced`.
+
+`registry check` validates a device registry, the JSON file that declares every source that can
+command the robot (people's input devices with their location, AI controllers, scripts, hoists;
+definitions.md 6.10), and prints its SHA-256, which goes into `session_start.device_registry_hash`.
+It exits 1 for an invalid registry, including a repeated `device_id` or a device that an earlier
+one shadows (the first match wins), and never prints values from the file.
 
 ## Sealing and verification
 
@@ -64,7 +75,7 @@ tampering or corruption) and gap codes (never raise the trust level). Records th
 one session (a malformed checkpoint, a timestamp for no checkpoint) are file problems. The output
 ends with `result: verified` or `result: NOT verified: <reasons>`; rejected lines of any file read
 and file problems make the result not verified whatever the sessions' statuses. The codes are in
-`spec/v0.2/rules.toml` `[sealing]`.
+`spec/v0.3/rules.toml` `[sealing]`.
 
 What L2 proves: nothing was dropped, re-timed or edited after a checkpoint was anchored, and any
 such change is detected even without the original log. What it does not prove: a dishonest recorder
@@ -87,7 +98,7 @@ needs a Rust toolchain to build it from source.
 
 ## Links
 
-- [`spec/`](spec/): the normative definitions, the event JSON Schema and the machine-readable rules (current draft: v0.2). The wheel ships this folder as `autonometry/spec/`.
+- [`spec/`](spec/): the normative definitions, the event JSON Schema and the machine-readable rules (current draft: v0.3). The wheel ships this folder as `autonometry/spec/`.
 - [`research/`](research/): design-phase material, for reference only. It is not part of the package.
 - [`CHANGELOG.md`](CHANGELOG.md), [`SECURITY.md`](SECURITY.md), [`RELEASING.md`](RELEASING.md)
 

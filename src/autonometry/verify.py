@@ -1,4 +1,4 @@
-"""Verifying sealed logs (definitions.md v0.2 section 10.6).
+"""Verifying sealed logs (definitions.md v0.3 section 10.6).
 
 A pure function over already-read data: :func:`verify_log` never opens a file or makes a network
 call, and it never trusts a stored value. Every event's hash is recomputed from its content,
@@ -301,6 +301,10 @@ def _status(
     return ("verified" if best_anchored == len(events) else "partial"), sealed_through
 
 
+# Extension fields that cap a session at L1 (definitions.md 8 Time, 6.12, 10.6 "reconstructed").
+_L1_MARKERS = ("x_ts_reconstructed", "x_attribution_inferred")
+
+
 def _verify_session(
     key: _SessionKey,
     events: tuple[Event, ...],
@@ -313,11 +317,14 @@ def _verify_session(
     fully_sealed = _check_chain(
         events, hashes, genesis_hash(ctx.rules.chain_genesis_prefix, robot_id, session_id), work
     )
-    reconstructed = any(
-        cast(Mapping[str, Any], event).get("x_ts_reconstructed") is True for event in events
-    )
+    markers = [
+        field
+        for field in _L1_MARKERS
+        if any(cast(Mapping[str, Any], event).get(field) is True for event in events)
+    ]
+    reconstructed = bool(markers)
     if reconstructed:
-        work.gap("reconstructed", "events carry x_ts_reconstructed: true; capped at L1")
+        work.gap("reconstructed", f"events carry {' or '.join(markers)}: true; capped at L1")
 
     roots = _roots_at(hashes, {c.size for c in checkpoints if c.size <= len(events)})
     valid: list[_Checkpoint] = []

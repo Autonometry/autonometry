@@ -1,0 +1,10 @@
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":0,"ts":"2026-11-12T08:00:00.000Z","type":"session_start","simulated":true,"scopes":["legs","arms"],"initial_states":{"legs":"idle","arms":"idle"},"heartbeat_interval_s":1.0,"hint_policy":"hint_as_shared","task_registry_hash":"0000000000000000000000000000000000000000000000000000000000000000","plan_hash":"0000000000000000000000000000000000000000000000000000000000000000","unobserved":["safety_stops","tasks"],"device_registry_hash":"3333333333333333333333333333333333333333333333333333333333333333"}
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":1,"ts":"2026-11-12T08:00:00.500Z","type":"support_start","device_id":"gantry_hoist"}
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":2,"ts":"2026-11-12T08:00:01.000Z","type":"heartbeat","clock_source":"ptp","clock_max_error_s":0.0005}
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":3,"ts":"2026-11-12T08:00:01.500Z","type":"support_start","scope":"arms","device_id":"harness_arms"}
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":4,"ts":"2026-11-12T08:00:02.000Z","type":"heartbeat","clock_source":"gnss","clock_max_error_s":2e-05}
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":5,"ts":"2026-11-12T08:00:02.500Z","type":"transition","scope":"legs","state":"ai","reason":null,"actor_id":"ai:balance","device_id":"balance_ctrl"}
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":6,"ts":"2026-11-12T08:00:03.000Z","type":"support_end","scope":"arms","device_id":"harness_arms"}
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":7,"ts":"2026-11-12T08:00:03.000Z","type":"heartbeat","clock_source":"ntp","clock_max_error_s":0.01}
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":8,"ts":"2026-11-12T08:00:04.000Z","type":"support_end"}
+{"robot_id":"r01","session_id":"s01","task_id":null,"seq":9,"ts":"2026-11-12T08:00:04.500Z","type":"session_end"}
