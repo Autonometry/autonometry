@@ -17,6 +17,7 @@ from autonometry.registry import (
     RegistryReadError,
     check_registry,
     check_registry_bytes,
+    hash_problem,
     registry_hash,
 )
 
@@ -296,3 +297,87 @@ def test_cli_registry_check_unreadable_file_exits_1(
     result = runner.invoke(cli.app, ["registry", "check", str(path)])
     assert result.exit_code == 1
     assert "error: cannot read" in result.output
+
+
+# --- task registries and plans (definitions.md 1, 3, 8) ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("kind", "document", "problems"),
+    [
+        ("tasks", {"tasks": [{"task_definition_id": "a", "description": "x" * 500}]}, []),
+        (
+            "tasks",
+            {"tasks": [], "x_note": 1},
+            ["schema_violation: /tasks: must be a list of length >= 1"],
+        ),
+        (
+            "tasks",
+            {"tasks": [{"task_definition_id": "a"}, {"task_definition_id": "a"}]},
+            ["duplicate_task_definition_id: /tasks/1 repeats the task_definition_id of /tasks/0"],
+        ),
+        (
+            "tasks",
+            {"tasks": [{"task_definition_id": "a", "description": "x" * 501}]},
+            ["schema_violation: /tasks/0/description: must be a string of length <= 500"],
+        ),
+        ("plan", {"items": []}, []),
+        (
+            "plan",
+            {"items": [{"plan_item_id": "p", "kind": "reset", "x_by": "lab"}], "x_v": 2},
+            [],
+        ),
+        (
+            "plan",
+            {"items": [{"plan_item_id": "p", "kind": "lunch"}]},
+            [
+                'schema_violation: /items/0/kind: must be one of "reset", "calibration", '
+                '"demonstration", "approval_gate"'
+            ],
+        ),
+        (
+            "plan",
+            {"items": [{"plan_item_id": "p", "kind": "reset"}] * 2},
+            ["duplicate_plan_item_id: /items/1 repeats the plan_item_id of /items/0"],
+        ),
+        (
+            "plan",
+            {"items": [], "extra": 1},
+            [
+                "schema_violation: registry: has a field the schema does not define "
+                "(extensions start with x_)"
+            ],
+        ),
+    ],
+)
+def test_task_registry_and_plan_checks__defs_8(
+    kind: str, document: dict[str, Any], problems: list[str]
+) -> None:
+    result = check_registry_bytes(json.dumps(document).encode(), "r.json", SPEC, kind)  # type: ignore[arg-type]
+    assert list(result.problems) == problems
+    assert result.kind == kind
+    assert (result.sha256 == registry_hash(document)) is (not problems)
+    assert (result.document == document) is (not problems)
+
+
+@pytest.mark.parametrize("kind", ["tasks", "plan"])
+def test_task_registry_and_plan_schema_examples_are_valid__defs_8(kind: str) -> None:
+    schema = spec.load_registry_schema(SPEC, kind)  # type: ignore[arg-type]
+    python = Draft202012Validator(schema)
+    for example in schema["examples"]:
+        assert python.is_valid(example)
+        assert check_registry_bytes(json.dumps(example).encode(), "r.json", SPEC, kind).valid  # type: ignore[arg-type]
+
+
+def test_hash_problem_names_the_session_start_field__defs_8() -> None:
+    document = {"items": [{"plan_item_id": "p", "kind": "reset"}]}
+    result = check_registry_bytes(json.dumps(document).encode(), "plan.json", SPEC, "plan")
+    assert hash_problem(result, registry_hash(document)) is None
+    assert hash_problem(result, "0" * 64) == "plan.json does not match session_start.plan_hash"
+    assert hash_problem(result, None) == (
+        "plan.json cannot be matched: session_start has no plan_hash"
+    )
+    invalid = check_registry_bytes(b"[]", "plan.json", SPEC, "plan")
+    assert hash_problem(invalid, "0" * 64) == (
+        "plan.json is not a valid plan registry: schema_violation: registry: must be of type object"
+    )

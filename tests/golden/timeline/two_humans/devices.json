@@ -1,0 +1,41 @@
+{
+  "devices": [
+    {
+      "device_id": "policy",
+      "kind": "ai",
+      "match": {
+        "node": "/policy"
+      }
+    },
+    {
+      "device_id": "replay",
+      "kind": "script",
+      "match": {
+        "node": "/replay"
+      }
+    },
+    {
+      "device_id": "joy_local",
+      "kind": "human",
+      "location": "local",
+      "match": {
+        "node": "/joy"
+      }
+    },
+    {
+      "device_id": "vr_remote",
+      "kind": "human",
+      "location": "remote",
+      "match": {
+        "node": "/vr"
+      }
+    },
+    {
+      "device_id": "hoist",
+      "kind": "support",
+      "match": {
+        "topic": "/hoist"
+      }
+    }
+  ]
+}
