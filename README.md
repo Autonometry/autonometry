@@ -5,9 +5,10 @@ It records every change of control in a sealed, tamper-evident log, verifies log
 It is open source and the reference implementation of an open standard; it only observes and never sits in a robot's control loop.
 
 **Status: pre-alpha.** Version 0.0.1.dev0 records sealed logs on a robot (`autonometry record`),
-reads and checks event logs (`autonometry validate`), and seals and verifies them (`autonometry
-seal`, `timestamp`, `verify`; trust levels L1 and L2). There are no autonomy metrics yet, and
-nothing is published on PyPI yet.
+reads and checks event logs (`autonometry validate`), seals and verifies them (`autonometry
+seal`, `timestamp`, `verify`; trust levels L1 and L2), and turns each session into an exact
+timeline (`autonometry timeline`). There are no autonomy statistics yet, and nothing is published
+on PyPI yet.
 
 ## Install
 
@@ -29,6 +30,7 @@ autonometry spec show 0.3      # its files with SHA-256 hashes
 autonometry validate robot.jsonl station.jsonl         # summary; exit 1 if any line is rejected
 autonometry validate --json --spec 0.3 robot.jsonl     # the same as stable JSON
 autonometry registry check devices.json                # device registry: valid? and its hash
+autonometry registry check --kind tasks tasks.json     # the same for a task registry or a plan
 ```
 
 `validate` reads each file line by line. A line that is not one valid event (bad UTF-8, longer than
@@ -50,7 +52,10 @@ reported as synchronised within `clock_tolerance_s` is flagged `clock_unsynced`.
 command the robot (people's input devices with their location, AI controllers, scripts, hoists;
 definitions.md 6.10), and prints its SHA-256, which goes into `session_start.device_registry_hash`.
 It exits 1 for an invalid registry, including a repeated `device_id` or a device that an earlier
-one shadows (the first match wins), and never prints values from the file.
+one shadows (the first match wins), and never prints values from the file. `--kind tasks` checks a
+task registry (`{"tasks": [{"task_definition_id": ...}]}`, section 1) and `--kind plan` a plan
+of pre-registered human actions (`{"items": [{"plan_item_id": ..., "kind": "reset"}]}`, section 3)
+the same way; their hashes go into `task_registry_hash` and `plan_hash`.
 
 ## Sealing and verification
 
@@ -86,6 +91,68 @@ fabricator can also redo does not). Sealing an old, unanchored log late is indis
 log that was sealed on time but anchored late, and shows up as `late_anchor`. Trust levels L3 (a
 second, independent witness) and L4 (hardware-rooted keys) follow in later spec versions.
 
+## Read a timeline
+
+```
+autonometry timeline /var/lib/autonometry/tb4_sim_01/*/events.jsonl          # summary per session
+autonometry timeline robot.jsonl --devices devices.json --tasks tasks.json --plan plan.json --json
+```
+
+`timeline` turns each session into exact facts (definitions.md sections 1 to 8). It needs the
+session's three registries: the device registry, the task registry and the plan. By default it reads
+`devices.json`, `tasks.json` and `plan.json` from the folder of the log, where the recorder keeps
+them; `--devices`, `--tasks` and `--plan` name one file for every session instead. Each file must
+match its hash in `session_start`. A file that does not match, or is not a valid registry, is an
+error: that session gets no timeline and the command exits 1. A missing file is not an error but
+is counted against the robot: without the device registry every source counts as a remote human
+(`registry_missing`, `undeclared_device`); without the task registry every task is flagged
+`unknown_task_definition`; without the plan every `planned` reason becomes `human_initiated`
+(`unplanned`). The command also exits 1 when lines were rejected, and 2 on bad usage.
+
+For each session it prints:
+
+- **Time.** Observed time (`session_start` to `session_end`), split into active, idle and unknown
+  time and into the eight states, for the whole robot, scope-weighted and per scope. The whole
+  robot is human when any scope is human (`human_remote` before `human_local` before `shared`),
+  else `safety_stop`, `scripted`, `ai`, `idle` (all scopes idle) or `unknown`. Scope weights are
+  the declared `scope_weights` normalised to 1, or equal. Every total is exact: the states of
+  each timeline add up to observed time to the nanosecond.
+- **Unknown time.** A silence longer than the heartbeat interval plus `gap_tolerance_s` is
+  unknown from that limit on. A gap in `seq`, such as a rejected line, is unknown, and every scope
+  then stays unknown until its next transition. `idle` while a task is open is unknown too
+  (`idle_in_task`).
+- **The registry decides the state.** A transition from a person's device takes `human_local` or
+  `human_remote` by the device's location (or stays `shared`), from an AI controller `ai`, from a
+  script `scripted`; when the log says otherwise the registry wins (`registry_mismatch`).
+  Control from a device that is not in the registry, from no named device, or as an initial state
+  at `session_start` counts as `human_remote` (`undeclared_device`).
+- **Interventions.** Each episode on a scope runs from the change that makes it an intervention to
+  the return to `ai` (or to `scripted` no person started), the task end or the session end. It
+  counts once however many hand-overs it holds. The kinds are `takeover` (into `human_*`),
+  `shared`, `safety_stop` (a stop a person triggered), `preset` (a fixed motion a person started),
+  `approval` and `hint`. An automatic stop followed within `takeover_window_s` by a person taking
+  over is one `takeover` with reason `safety` that starts at the stop. The whole-robot count takes
+  one person's takeovers of several scopes within `simultaneity_window_s` once. Between tasks, a
+  person taking over from `idle` or `unknown`, or with reason `planned`, is a reset, not an
+  intervention. `ai_requested_help` without a `help_request` on the scope within
+  `help_latency_max_s` becomes `human_initiated` (`help_reason_recoded`).
+- **Approvals and hints** with their dwell. A dwell sits on [ts − dwell, ts); only the part that
+  overlaps `ai` time moves from AI to human time (`moved_from_ai_s`).
+- **Safety stops**, each human-triggered or automatic, and whether a takeover joined it.
+- **Tasks**: outcome (`unknown` when not closed), autonomous (no human time and no intervention
+  inside), whether it contains unknown time, its human time, and the unplanned reset time since the
+  previous task.
+- **Resets** (human time between tasks, planned or not), **supervision** (`supervision_ratio` and
+  supervisor-hours per robot-hour over active time), **humans** (distinct people and actor-time:
+  two people on one scope count twice), **supported time** and **distance** (the largest
+  `distance_m` a heartbeat reported).
+- **Flags**, the reader's and the timeline's, with the `seq` where each shows.
+
+`--json` gives the same as stable JSON: durations in seconds, times in RFC 3339 with nine fraction
+digits. Unlike `validate`, it prints identifiers from the log (actor, device, task and plan item
+ids): they are pseudonyms, and the schema restricts them to letters, digits and `._:-`. Statistics
+and confidence intervals come with the report (M4b).
+
 ## Recorder
 
 `autonometry record --config FILE` runs on the robot's computer (Linux; macOS for development). It
@@ -101,13 +168,13 @@ takes the largest counter on disk plus 1, and the newest session is the one with
 counter, never decided by time: a computer without a real-time clock (a Raspberry Pi, as in the
 TurtleBot 4) can boot with an old time. Each session folder also gets private copies of the device
 registry, task registry and plan the session used, as `devices.json`, `tasks.json` and `plan.json`,
-so the folder is complete for an auditor; their hashes are in `session_start`, and checking the
-copies against them comes with the metrics (M4). The recorder alone writes `session_start`,
+so the folder is complete for an auditor; their hashes are in `session_start`, and `autonometry
+timeline` checks the copies against them. The recorder alone writes `session_start`,
 `session_end`, heartbeats, `seq` and `ts` (its receive time from the system UTC clock, never earlier
 than the previous event's). `session_start` carries the config's scopes, weights, hint policy,
 `simulated` and `unobserved`, the scopes' current states, and the SHA-256 of the device registry
-(checked first; an invalid registry stops the start), the task registry and the plan, each in
-RFC 8785 form. Heartbeats every second carry the clock status: on Linux it is read from the kernel
+(checked first), the task registry and the plan, each in RFC 8785 form; a registry or plan that is
+not valid against its schema stops the start. Heartbeats every second carry the clock status: on Linux it is read from the kernel
 with `adjtimex(2)` (unsynchronised gives `none`, else the configured `clock_source` and the kernel's
 maximum error), elsewhere `unknown`.
 
@@ -187,8 +254,8 @@ unobserved = []                       # signal classes the connectors cannot see
 clock_source = "ntp"                  # ntp, ptp or gnss: what keeps this computer's clock in sync
 key_path = "tb4_sim_01.key"
 device_registry = "devices.json"      # required: every source that can command the robot (6.10)
-task_registry = "tasks.json"          # any JSON file; its RFC 8785 SHA-256 goes into session_start
-plan = "plan.json"
+task_registry = "tasks.json"          # required: the tasks declared before the session (section 1)
+plan = "plan.json"                    # required: pre-registered human actions, may be empty (3)
 # tsa_url = "https://freetsa.org/tsr" # optional RFC 3161 anchoring, together with tsa_roots
 # tsa_roots = "freetsa.pem"
 # Defaults: fsync_interval_s = 1.0, max_events_per_s = 1000, max_log_bytes = 268435456
