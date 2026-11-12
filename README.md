@@ -27,6 +27,7 @@ autonometry spec list          # spec versions shipped with the package
 autonometry spec show 0.3      # its files with SHA-256 hashes
 autonometry validate robot.jsonl station.jsonl         # summary; exit 1 if any line is rejected
 autonometry validate --json --spec 0.3 robot.jsonl     # the same as stable JSON
+autonometry registry check devices.json                # device registry: valid? and its hash
 ```
 
 `validate` reads each file line by line. A line that is not one valid event (bad UTF-8, longer than
@@ -39,6 +40,15 @@ warning flags. The codes are listed in [`spec/v0.3/rules.toml`](spec/v0.3/rules.
 such as actor ids, are never printed; the robot and session ids it does print are restricted by
 the schema to letters, digits and `._:-`, so a log cannot send control codes to your terminal. Add
 `-v` before the command for debug output.
+
+Every `session_start` says whether the session ran in a simulator (`simulated`), and heartbeats
+report the recorder's clock (`clock_source`, `clock_max_error_s`). A session whose clock is not
+reported as synchronised within `clock_tolerance_s` is flagged `clock_unsynced`.
+
+`registry check` validates a device registry, the JSON file that declares every source that can
+command the robot (people's input devices with their location, AI controllers, scripts, hoists;
+definitions.md 6.10), and prints its SHA-256, which goes into `session_start.device_registry_hash`.
+It exits 1 for an invalid registry and never prints values from the file.
 
 ## Sealing and verification
 
