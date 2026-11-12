@@ -95,8 +95,14 @@ L2. It never sits in a control loop: connectors send fire-and-forget datagrams a
 recorder that is down or slow only costs events, which the log then shows as `unknown` time.
 
 What it writes, per robot and session: `<data_dir>/<robot_id>/<session_id>/events.jsonl` and
-`events.checkpoints.jsonl` (folders 0700, files 0600), where `session_id` is the UTC start time and a
-random suffix, such as `20261112T083000Z-7f3a`. The recorder alone writes `session_start`,
+`events.checkpoints.jsonl` (folders 0700, files 0600), where `session_id` is a per-robot counter,
+the UTC start time and a random suffix, such as `000042-20261112T083000Z-7f3a`. The next session
+takes the largest counter on disk plus 1, and the newest session is the one with the largest
+counter, never decided by time: a computer without a real-time clock (a Raspberry Pi, as in the
+TurtleBot 4) can boot with an old time. Each session folder also gets private copies of the device
+registry, task registry and plan the session used, as `devices.json`, `tasks.json` and `plan.json`,
+so the folder is complete for an auditor; their hashes are in `session_start`, and checking the
+copies against them comes with the metrics (M4). The recorder alone writes `session_start`,
 `session_end`, heartbeats, `seq` and `ts` (its receive time from the system UTC clock, never earlier
 than the previous event's). `session_start` carries the config's scopes, weights, hint policy,
 `simulated` and `unobserved`, the scopes' current states, and the SHA-256 of the device registry
@@ -116,9 +122,14 @@ received; transitions and heartbeats carry the id of the open task.
 
 **Loss is visible.** A gap in a connector's counter `n`, a datagram that is not a valid event, or
 one over the rate limit (`max_events_per_s` per connector) makes every scope `unknown` at once,
-because nothing says which scope it touched; the connectors' next assertions restore them. The next
-heartbeat carries `x_lost_client_events`, `x_rejected_client_events` and `x_rate_limited_events`;
-a step of the system clock backwards is clamped and reported as `x_clock_stepped_back_s`.
+because nothing says which scope it touched. Assertions restore the scopes only once a whole
+heartbeat interval (1 s) has passed without another of these, so a flood writes at most one
+`unknown` per scope per interval. A connector first seen with `n` above 0 kept running while the
+recorder restarted: every scope is `unknown` too, but it is counted as `x_resumed_clients`, not as
+lost events (the previous run mostly recorded them). The next heartbeat carries
+`x_lost_client_events`, `x_rejected_client_events`, `x_rate_limited_events` and
+`x_resumed_clients`; a step of the system clock backwards is clamped and reported as
+`x_clock_stepped_back_s`.
 
 **Durability.** Each event is one `write` on an `O_APPEND` descriptor. Events are fsynced at most
 every `fsync_interval_s` and always before a checkpoint that covers them; the checkpoint file is
@@ -128,13 +139,18 @@ for each new checkpoint; failures are retried with backoff and never block the w
 
 **Crash recovery.** On start, if the newest session has no `session_end`, the recorder cuts a final
 partial line (never complete, so no checkpoint covers it), replays the session verifying its hash
-chain, and continues it: a heartbeat with `x_recovered: true` and `x_truncated_bytes`, every scope
-`unknown`, and a checkpoint. The downtime is a gap and so `unknown` time. A session whose chain does
-not verify is left as it is and a new one starts; a session whose config fields changed is closed
+chain and checking its checkpoint file against the events, and continues it: a heartbeat with
+`x_recovered: true` and `x_truncated_bytes`, every scope `unknown`, and a checkpoint. The downtime
+is a gap and so `unknown` time. A session whose chain does not verify, or whose checkpoints
+contradict its events (a checkpoint covering more events than the log holds, a different root, a
+bad signature by the recorder's key), is left as it is and a new one starts: the recorder never
+appends to a log that contradicts its own seals. A session whose config fields changed is closed
 (`x_cause: "config_changed"`) and a new one starts. SIGTERM or SIGINT writes a final heartbeat,
 `session_end`, the final checkpoint, waits up to 10 s for its token and exits 0. A log about to
 exceed `max_log_bytes` ends its session (`x_cause: "rotation"`) and a new one starts with the
-current states. Exit status: 0 after a clean stop, 1 on a failure while recording (a restart
+current states, followed by one transition per scope that is not `unknown` repeating its full value
+(state, reason, actor, device); an open task carries over and the new `session_start` names it in
+`x_carried_task`. Exit status: 0 after a clean stop, 1 on a failure while recording (a restart
 continues the same session), 2 when it cannot start (config, key, registry, socket or folder in
 use). Operational messages go to stderr and never contain event contents.
 
@@ -170,7 +186,7 @@ simulated = true                      # Gazebo: reports never pool it with real 
 unobserved = []                       # signal classes the connectors cannot see on the platform
 clock_source = "ntp"                  # ntp, ptp or gnss: what keeps this computer's clock in sync
 key_path = "tb4_sim_01.key"
-device_registry = "devices.json"      # every source that can command the robot (definitions.md 6.10)
+device_registry = "devices.json"      # required: every source that can command the robot (6.10)
 task_registry = "tasks.json"          # any JSON file; its RFC 8785 SHA-256 goes into session_start
 plan = "plan.json"
 # tsa_url = "https://freetsa.org/tsr" # optional RFC 3161 anchoring, together with tsa_roots
@@ -268,7 +284,7 @@ checkpoint files somewhere the robot cannot change (or configure a TSA) so that 
 ```
 autonometry validate /var/lib/autonometry/tb4_sim_01/*/events.jsonl
 autonometry verify /var/lib/autonometry/tb4_sim_01/*/events.jsonl --vkey tb4_sim_01.key.vkey \
-    --anchor copy/20261112T083000Z-7f3a/events.checkpoints.jsonl     # or --tsa-root freetsa.pem
+    --anchor copy/000042-20261112T083000Z-7f3a/events.checkpoints.jsonl     # or --tsa-root freetsa.pem
 ```
 
 ## Supported platforms
