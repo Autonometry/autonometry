@@ -11,8 +11,8 @@
     },
     "observed": {
       "type": "string",
-      "pattern": "^[\\u0020-\\u007E]{0,256}$",
-      "description": "An identity the recorder observes: at most 256 printable ASCII characters."
+      "pattern": "^[\\u0020-\\u007E]{1,256}$",
+      "description": "An identity the recorder observes: 1 to 256 printable ASCII characters."
     },
     "device": {
       "type": "object",
