@@ -86,6 +86,10 @@ class Sealer:
         """Number of events sealed so far."""
         return self._tree.size
 
+    def root(self) -> bytes:
+        """The Merkle root (32 raw bytes) of every event sealed so far (definitions.md 10.2)."""
+        return self._tree.root()
+
     def add(self, event: Mapping[str, Any]) -> tuple[dict[str, Any], Checkpoint | None]:
         """Seal one more event; return it and a checkpoint when the policy of 10.3 fires."""
         sealed = seal_event(event, self._prev_hash)

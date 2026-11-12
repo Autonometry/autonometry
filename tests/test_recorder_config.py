@@ -9,10 +9,11 @@ import pytest
 from autonometry.recorder.config import (
     MAX_CONFIG_BYTES,
     ConfigError,
-    json_file_hash,
+    json_hash,
     load_config,
     parse_config,
     prepare,
+    read_input,
 )
 from recorder_helpers import make_config, write_inputs
 
@@ -27,6 +28,7 @@ clock_source = "ntp"
 key_path = "etc/robot.key"
 task_registry = "etc/tasks.json"
 plan = "etc/plan.json"
+device_registry = "etc/devices.json"
 """
 
 
@@ -110,11 +112,25 @@ def test_prepare_loads_key_registries_and_hashes(tmp_path: Path) -> None:
 
 
 def test_prepare_without_optional_inputs(tmp_path: Path) -> None:
-    prepared = prepare(make_config(tmp_path, device_registry=None))
-    declaration = prepared.declaration()
-    assert "device_registry_hash" not in declaration
+    declaration = prepare(make_config(tmp_path)).declaration()
     assert "scope_weights" not in declaration
     assert "unobserved" not in declaration
+
+
+def test_a_device_registry_is_required__defs_6_10(tmp_path: Path) -> None:
+    text = MINIMAL.replace('device_registry = "etc/devices.json"\n', "")
+    with pytest.raises(ConfigError, match="device_registry: Field required"):
+        parse_config(text, tmp_path)
+
+
+def test_prepare_keeps_the_exact_bytes_it_hashed__defs_6_10(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    prepared = prepare(config)
+    assert prepared.inputs == {
+        "devices.json": config.device_registry.read_bytes(),
+        "tasks.json": config.task_registry.read_bytes(),
+        "plan.json": config.plan.read_bytes(),
+    }
 
 
 def test_prepare_loads_tsa_roots(tmp_path: Path) -> None:
@@ -125,7 +141,7 @@ def test_prepare_loads_tsa_roots(tmp_path: Path) -> None:
 def test_task_registry_hash_is_sha256_of_rfc8785_form(tmp_path: Path) -> None:
     path = tmp_path / "tasks.json"
     path.write_text('﻿{ "b": 1, "a": [1.0, "x"] }', encoding="utf-8")
-    assert json_file_hash(path) == hashlib.sha256(b'{"a":[1,"x"],"b":1}').hexdigest()
+    assert json_hash(read_input(path), path) == hashlib.sha256(b'{"a":[1,"x"],"b":1}').hexdigest()
 
 
 def test_prepare_refuses_unusable_inputs(tmp_path: Path) -> None:

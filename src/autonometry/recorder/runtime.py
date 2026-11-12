@@ -182,9 +182,10 @@ class Recorder:
 
     def _open(self) -> None:
         robot = robot_dir(self._prepared)
-        directory = new_session_dir(robot, self._engine.now_ns())
+        directory = new_session_dir(robot, self._engine.now_ns(), self._prepared.inputs)
         self._log = SessionLog(directory, self._prepared.config.robot_id, self._prepared, self._ops)
-        self._write([self._engine.session_start(), self._engine.heartbeat()])
+        start = self._engine.session_start()
+        self._write([start, *self._engine.carried_states(), self._engine.heartbeat()])
         logger.info("started session %s", directory.name)
 
     def _close(self, cause: str) -> None:

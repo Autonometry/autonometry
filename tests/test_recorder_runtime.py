@@ -22,7 +22,8 @@ from hypothesis import strategies as st
 from autonometry import sealfile, signednote
 from autonometry.reader import read_logs
 from autonometry.recorder.anchor import Anchorer
-from autonometry.recorder.config import Prepared
+from autonometry.recorder.config import Prepared, json_hash
+from autonometry.recorder.engine import PLACEHOLDER_SESSION_ID
 from autonometry.recorder.runtime import Recorder, tsa_anchorer
 from autonometry.recorder.store import CHECKPOINTS_FILE, EVENTS_FILE
 from autonometry.registry import check_registry
@@ -34,6 +35,7 @@ from recorder_helpers import (
     RecordingOps,
     all_events,
     assert_all_verified,
+    check_logs,
     events_of,
     heartbeats,
     make_prepared,
@@ -44,7 +46,7 @@ from recorder_helpers import (
     with_data_dir,
 )
 
-SESSION_RE = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}")
+SESSION_RE = re.compile(r"[0-9]{6}-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}")
 
 
 @pytest.fixture(scope="module")
@@ -120,7 +122,7 @@ def test_a_fresh_session_is_sealed_and_verifies__defs_8_10_6(
 
     (folder,) = session_folders(data_dir)
     assert SESSION_RE.fullmatch(folder.name)
-    assert folder.name.startswith("20261112T080000Z-")
+    assert folder.name.startswith("000001-20261112T080000Z-")
     events = events_of(folder)
     assert [e["seq"] for e in events] == list(range(len(events)))
     start = events[0]
@@ -178,12 +180,15 @@ def test_an_event_of_the_longest_sealed_line_passes_validate__defs_8(
     recorder.receive(probe.event("help_request", scope="base", x_pad=""))
     (folder,) = session_folders(data_dir)
     line = (folder / EVENTS_FILE).read_bytes().splitlines()[-1]
-    # Same length as the placeholder session id and the longest seq the check assumes.
-    room = 65536 - len(line) - (16 - len(str(json.loads(line)["seq"])))
+    # The check assumes the longest session id and seq: the real line is that much shorter.
+    slack = (16 - len(str(json.loads(line)["seq"]))) + (
+        len(PLACEHOLDER_SESSION_ID) - len(folder.name)
+    )
+    room = 65536 - len(line) - slack
     recorder.receive(probe.event("help_request", scope="base", x_pad="p" * room))
     recorder.stop()
     longest = max(len(raw) for raw in (folder / EVENTS_FILE).read_bytes().splitlines())
-    assert longest == 65536 - (16 - 1)
+    assert longest == 65536 - slack
     assert_all_verified(setup, data_dir)
 
 
@@ -572,11 +577,13 @@ def test_rotation_ends_the_session_and_carries_states_over(
     tokens = anchorer(tsa)
     recorder = make_recorder(setup, clock, anchorer=tokens)
     recorder.start()
-    nav = Client("nav")
-    recorder.receive(nav.state("base", "ai", actor_id="ai:nav2"))
+    nav, reset = Client("nav"), Client("reset")
+    planned = {"reason": "planned", "actor_id": "tech_02", "plan_item_id": "reset_scene"}
+    recorder.receive(reset.event("task_start", task_id="t1", task_definition_id="dock_v1"))
     for index in range(40):
         recorder.receive(nav.event("help_request", scope="base", x_pad="p" * 60000, x_i=index))
-        recorder.receive(nav.state("base", "ai", actor_id="ai:nav2"))
+        recorder.receive(nav.state("base", "ai", actor_id="ai:nav2", device_id="nav2"))
+        recorder.receive(reset.state("arm", "human_local", device_id="joy_local", **planned))
         clock.advance(0.1)
         recorder.tick()
     recorder.stop()
@@ -585,7 +592,31 @@ def test_rotation_ends_the_session_and_carries_states_over(
     for older, newer in itertools.pairwise(folders):
         assert (older / EVENTS_FILE).stat().st_size <= limit
         assert events_of(older)[-1]["x_cause"] == "rotation"
-        assert events_of(newer)[0]["initial_states"] == {"base": "ai", "arm": "unknown"}
+        start, *carried = events_of(newer)[:3]
+        assert start["initial_states"] == {"base": "ai", "arm": "human_local"}
+        assert start["x_carried_task"] == "t1"
+        assert [
+            {k: e.get(k) for k in ("scope", "state", "reason", "actor_id", "device_id")}
+            for e in carried
+        ] == [
+            {
+                "scope": "base",
+                "state": "ai",
+                "reason": None,
+                "actor_id": "ai:nav2",
+                "device_id": "nav2",
+            },
+            {
+                "scope": "arm",
+                "state": "human_local",
+                "reason": "planned",
+                "actor_id": "tech_02",
+                "device_id": "joy_local",
+            },
+        ]
+        assert carried[1]["plan_item_id"] == "reset_scene"
+        assert {e["x_cause"] for e in carried} == {"rotation"}
+        assert {e["task_id"] for e in carried} == {"t1"}
     stamped = {
         folder.name
         for folder in folders
@@ -675,3 +706,78 @@ def test_a_crash_before_the_final_checkpoint_commits_the_closed_session__defs_10
     assert events_of(closed)[-1]["type"] == "session_end"
     assert events_of(new)[0]["type"] == "session_start"
     assert_all_verified(setup, data_dir)
+
+
+def test_every_session_folder_holds_its_registries_and_plan__defs_6_10(
+    setup: Prepared, data_dir: Path
+) -> None:
+    recorder = make_recorder(setup, FakeClock())
+    recorder.start()
+    recorder.stop()
+    (folder,) = session_folders(data_dir)
+    for name, source in [
+        ("devices.json", setup.config.device_registry),
+        ("tasks.json", setup.config.task_registry),
+        ("plan.json", setup.config.plan),
+    ]:
+        assert (folder / name).read_bytes() == source.read_bytes()
+        if sys.platform != "win32":
+            assert stat.S_IMODE((folder / name).stat().st_mode) == 0o600
+    start = events_of(folder)[0]
+    assert start["device_registry_hash"] == check_registry(folder / "devices.json", SPEC).sha256
+    assert start["task_registry_hash"] == json_hash((folder / "tasks.json").read_bytes(), folder)
+    assert start["plan_hash"] == json_hash((folder / "plan.json").read_bytes(), folder)
+
+
+def test_the_newest_session_is_the_largest_counter_whatever_the_clock(
+    setup: Prepared, data_dir: Path
+) -> None:
+    clock = FakeClock()
+    first = make_recorder(setup, clock)
+    first.start()
+    first.stop()
+    clock.wall -= 6 * 365 * 24 * 3600 * 10**9  # booted with no real-time clock: back to 2020
+    ops = CrashingOps(crash_at=10_000)
+    second = make_recorder(setup, clock, ops)
+    second.start()
+    drive(second, clock, traffic(3))
+    ops.close_all()  # crashed
+    clock.wall += 6 * 365 * 24 * 3600 * 10**9  # the clock is synchronised again
+    third = make_recorder(setup, clock)
+    third.start()
+    third.stop()
+    first_dir, second_dir = session_folders(data_dir)
+    assert first_dir.name.startswith("000001-2026")
+    assert second_dir.name.startswith("000002-2020")
+    assert any(h.get("x_recovered") for h in heartbeats(events_of(second_dir)))
+    assert events_of(second_dir)[-1]["x_cause"] == "shutdown"
+    assert_all_verified(setup, data_dir)
+
+
+def test_a_log_shorter_than_its_checkpoints_is_left_and_fails_verification__defs_10_6(
+    setup: Prepared, data_dir: Path
+) -> None:
+    clock = FakeClock()
+    ops = CrashingOps(crash_at=10_000)
+    recorder = make_recorder(setup, clock, ops)
+    recorder.start()
+    nav = Client("nav")
+    for index in range(1100):  # a checkpoint at 1000 events
+        recorder.receive(nav.event("help_request", scope="base", x_i=index))
+    ops.close_all()  # crashed
+    (folder,) = session_folders(data_dir)
+    path = folder / EVENTS_FILE
+    lines = path.read_bytes().splitlines(keepends=True)
+    path.write_bytes(b"".join(lines[:900]))  # the chain of what is left still verifies
+    clock.advance(5)
+    restarted = make_recorder(setup, clock)
+    restarted.start()
+    restarted.stop()
+    old, new = session_folders(data_dir)
+    assert old == folder
+    assert len(path.read_bytes().splitlines()) == 900  # never appended to
+    _, result = check_logs(setup, data_dir)
+    verdicts = {v.session_id: v for v in result.sessions}
+    assert verdicts[old.name].status == "failed"
+    assert {i.code for i in verdicts[old.name].evidence} == {"missing_events"}
+    assert verdicts[new.name].status == "verified"

@@ -11,6 +11,7 @@ from hypothesis import strategies as st
 from autonometry.recorder.clock import ClockStatus
 from autonometry.recorder.engine import (
     MAX_CLIENTS,
+    PLACEHOLDER_SESSION_ID,
     SEAL_OVERHEAD_BYTES,
     Engine,
     Restored,
@@ -133,19 +134,20 @@ def both_ai(engine: Engine, client: Client) -> None:
 
 
 def test_gap_in_n_makes_every_scope_unknown_and_is_counted__defs_2() -> None:
-    engine, _ = make_engine()
+    engine, clock = make_engine()
     nav = Client("nav")
     both_ai(engine, nav)
     nav.n += 2  # two datagrams lost
     written = engine.receive(nav.state("base", "ai", actor_id="ai:nav2"))
-    assert kinds(written) == [
-        "transition:base:unknown",
-        "transition:arm:unknown",
-        "transition:base:ai",
-    ]
-    assert {e.get("x_cause") for e in written[:2]} == {"lost"}
-    assert engine.heartbeat()["x_lost_client_events"] == 2
+    assert kinds(written) == ["transition:base:unknown", "transition:arm:unknown"]
+    assert {e.get("x_cause") for e in written} == {"lost"}
+    heartbeat = engine.heartbeat()
+    assert heartbeat["x_lost_client_events"] == 2
     assert "x_lost_client_events" not in engine.heartbeat()
+    clock.advance(1.0)  # one quiet interval: the next assertion restores the scope
+    assert kinds(engine.receive(nav.state("base", "ai", actor_id="ai:nav2")))[-1:] == [
+        "transition:base:ai"
+    ]
 
 
 def test_client_restart_with_n_zero_is_not_a_loss() -> None:
@@ -165,44 +167,60 @@ def test_restart_whose_first_datagrams_were_lost_counts_them() -> None:
     restarted = Client("nav")
     restarted.n = 3
     written = engine.receive(restarted.state("base", "ai", actor_id="ai:nav2"))
-    assert kinds(written) == ["transition:base:unknown", "transition:base:ai"]
+    assert kinds(written) == ["transition:base:unknown"]
     assert engine.heartbeat()["x_lost_client_events"] == 3
 
 
-def test_first_datagram_with_n_above_zero_counts_as_lost() -> None:
-    engine, _ = make_engine()
-    late = Client("late")
-    late.n = 7
-    engine.receive(late.event("help_request", scope="base"))
-    assert engine.heartbeat()["x_lost_client_events"] == 7
-
-
-def test_rejected_datagrams_make_every_scope_unknown_and_are_counted__defs_8() -> None:
+def test_a_client_that_kept_running_is_counted_as_resumed_not_lost() -> None:
     engine, _ = make_engine()
     nav = Client("nav")
+    both_ai(engine, nav)
+    late = Client("late")
+    late.n = 7  # the recorder restarted while this client kept sending
+    written = engine.receive(late.event("help_request", scope="base"))
+    assert kinds(written) == [
+        "transition:base:unknown",
+        "transition:arm:unknown",
+        "help_request",
+    ]
+    assert {e.get("x_cause") for e in written[:2]} == {"resumed"}
+    heartbeat = engine.heartbeat()
+    assert heartbeat["x_resumed_clients"] == 1
+    assert "x_lost_client_events" not in heartbeat
+    # Not a loss: assertions restore the scopes at once.
+    assert kinds(engine.receive(nav.state("base", "ai", actor_id="ai:nav2"))) == [
+        "transition:base:ai"
+    ]
+
+
+def test_rejected_datagrams_make_every_scope_unknown__defs_8() -> None:
+    engine, clock = make_engine()
+    nav, odd = Client("nav"), Client("odd")  # odd's datagrams are sent in the order built
     bad = [
         b"not json",
         b'["an array"]',
         json.dumps({"client": "bad name!", "n": 0, "event": {}}).encode(),
-        nav.event("session_start"),
-        nav.event("heartbeat"),
-        nav.event("help_request", scope="base", seq=4),
-        nav.state("base", "human_remote"),  # no reason or actor
-        nav.state("gripper", "ai"),  # undeclared scope
-        json.dumps({"client": "nav", "n": nav.n, "event": {}, "distance_m": 1}).encode(),
-        json.dumps({"client": "nav", "n": nav.n + 1, "distance_m": -1}).encode(),
-        b'{"client": "nav", "n": 0, "n": 1, "event": {}}',
+        odd.event("session_start"),
+        odd.event("heartbeat"),
+        odd.event("help_request", scope="base", seq=4),
+        odd.state("base", "human_remote"),  # no reason or actor
+        odd.state("gripper", "ai"),  # undeclared scope
+        json.dumps({"client": "c1", "n": 0, "event": {}, "distance_m": 1}).encode(),
+        json.dumps({"client": "c2", "n": 0, "distance_m": -1}).encode(),
+        b'{"client": "c3", "n": 0, "n": 1, "event": {}}',
         b"\xff\xfe",
         b"x" * 70000,
     ]
-    rejected = 0
     for data in bad:
+        clock.advance(1.0)  # a quiet interval, so the assertions restore the scopes
         both_ai(engine, nav)
         written = engine.receive(data)
-        rejected += 1
-        assert kinds(written)[-2:] == ["transition:base:unknown", "transition:arm:unknown"], data
-        assert {e["x_cause"] for e in written} <= {"rejected", "lost"}
-    assert engine.heartbeat()["x_rejected_client_events"] == rejected
+        transitions = [e for e in written if e["type"] == "transition"]
+        assert kinds(transitions)[-2:] == [
+            "transition:base:unknown",
+            "transition:arm:unknown",
+        ], data
+        assert {e["x_cause"] for e in transitions} == {"rejected"}
 
 
 def test_rejection_keeps_following_the_client_counter() -> None:
@@ -225,13 +243,56 @@ def test_rate_limit_drops_makes_every_scope_unknown_and_counts() -> None:
     written = engine.receive(nav.event("help_request", scope="base"))
     assert kinds(written) == ["transition:base:unknown", "transition:arm:unknown"]
     assert written[0]["x_cause"] == "rate_limited"
-    clock.advance(0.2)  # one token back
-    assert kinds(engine.receive(nav.state("base", "ai", actor_id="ai:nav2"))) == [
-        "transition:base:ai"
-    ]
+    clock.advance(0.2)  # one token back, but not yet a quiet interval
+    assert engine.receive(nav.state("base", "ai", actor_id="ai:nav2")) == []
     heartbeat = engine.heartbeat()
     assert heartbeat["x_rate_limited_events"] == 1
     assert "x_lost_client_events" not in heartbeat
+    clock.advance(0.8)
+    assert kinds(engine.receive(nav.state("base", "ai", actor_id="ai:nav2"))) == [
+        "transition:base:ai"
+    ]
+
+
+@pytest.mark.parametrize("disturbance", ["rejected", "rate_limited", "lost"])
+def test_a_flood_writes_at_most_one_unknown_per_scope_per_interval(disturbance: str) -> None:
+    engine, clock = make_engine(max_events_per_s=20)
+    nav, noisy = Client("nav"), Client("noisy")
+    both_ai(engine, nav)
+    engine.receive(noisy.event("help_request", scope="base"))  # known from n = 0
+    written = []
+    for _ in range(300):  # 3 s of a flood, one disturbance every 10 ms
+        if disturbance == "rejected":
+            written += engine.receive(b"garbage")
+        elif disturbance == "rate_limited":
+            written += engine.receive(noisy.event("help_request", scope="base"))
+        else:
+            noisy.n += 1
+            written += engine.receive(noisy.event("help_request", scope="base"))
+        written += engine.receive(nav.state("base", "ai", actor_id="ai:nav2"))
+        written += engine.receive(nav.state("arm", "ai", actor_id="ai:arm"))
+        clock.advance(0.01)
+    unknowns = [e for e in written if e["type"] == "transition" and e["state"] == "unknown"]
+    assert len(unknowns) == 2  # once per scope: the flood never left a quiet interval
+    restored = [e for e in written if e["type"] == "transition" and e["state"] == "ai"]
+    assert restored == []
+    clock.advance(0.5)
+    assert transitions_of(engine.receive(nav.state("base", "ai", actor_id="ai:nav2"))) == []
+    clock.advance(0.5)  # a whole interval without a disturbance
+    assert kinds(transitions_of(engine.receive(nav.state("base", "ai", actor_id="ai:nav2")))) == [
+        "transition:base:ai"
+    ]
+
+
+def test_quiet_assertions_keep_ownership_alive__defs_6_14() -> None:
+    engine, clock = make_engine()
+    nav = Client("nav")
+    both_ai(engine, nav)
+    for _ in range(30):  # 3 s of rejections; nav keeps asserting
+        engine.receive(b"garbage")
+        engine.receive(nav.state("base", "ai", actor_id="ai:nav2"))
+        clock.advance(0.1)
+    assert all(e.get("x_cause") != "silent" for e in engine.tick())
 
 
 def test_more_than_max_clients_are_rejected() -> None:
@@ -266,11 +327,12 @@ def test_assertions_from_a_second_client_are_dropped_and_counted__defs_6_14() ->
 
 
 def test_owner_keeps_its_scope_after_a_loss() -> None:
-    engine, _ = make_engine()
+    engine, clock = make_engine()
     nav, teleop = Client("nav"), Client("teleop")
     engine.receive(nav.state("base", "ai", actor_id="ai:nav2"))
     engine.receive(b"garbage")
-    assert engine.receive(teleop.state("base", "ai", actor_id="ai:other")) == []
+    clock.advance(1.0)
+    assert transitions_of(engine.receive(teleop.state("base", "ai", actor_id="ai:other"))) == []
     assert kinds(engine.receive(nav.state("base", "ai", actor_id="ai:nav2"))) == [
         "transition:base:ai"
     ]
@@ -397,7 +459,7 @@ def test_an_event_longer_than_a_line_once_sealed_is_rejected__defs_8() -> None:
     engine, _ = make_engine()
     probe = Client("probe")
     (event,) = engine.receive(probe.event("help_request", scope="base", x_pad=""))
-    trial = {**event, "robot_id": "r1", "session_id": "0" * 21, "seq": 2**53 - 1}
+    trial = {**event, "robot_id": "r1", "session_id": PLACEHOLDER_SESSION_ID, "seq": 2**53 - 1}
     room = 65536 - SEAL_OVERHEAD_BYTES - len(json.dumps(trial, separators=(",", ":")))
     assert engine.receive(probe.event("help_request", scope="base", x_pad="p" * room))
     engine.receive(probe.event("help_request", scope="base", x_pad="p" * (room + 1)))

@@ -11,8 +11,11 @@ session log adds. Its rules:
   then the scope is ``unknown`` (definitions.md 6.14) and the next client to assert it owns it.
   Assertions from another client meanwhile are dropped and counted.
 - Loss is visible. A gap in a client's counter ``n``, a rejected datagram or one dropped by the
-  rate limit makes every scope ``unknown`` at once (nothing says which scope it touched); the next
-  assertions restore them. The next heartbeat carries the counts.
+  rate limit makes every scope ``unknown`` at once (nothing says which scope it touched). Once a
+  whole ``heartbeat_interval_s`` has passed without another of these, the next assertions restore
+  the scopes, so a flood writes at most one ``unknown`` per scope per interval. A client first seen
+  with ``n`` above 0 kept running while the recorder restarted: every scope is ``unknown`` too,
+  and it is counted as resumed, not as lost. The next heartbeat carries the counts.
 - ``ts`` is the receive time from the system UTC clock, never earlier than the previous event's;
   a backward step is clamped and the next heartbeat carries its size (``x_clock_stepped_back_s``).
 - Heartbeats every ``heartbeat_interval_s`` carry the clock status and the distance travelled.
@@ -40,9 +43,10 @@ MAX_CLIENTS = 256
 SEAL_OVERHEAD_BYTES = len(rfc8785.dumps({"a": 0, "hash": "0" * 64, "prev_hash": "0" * 64})) - len(
     rfc8785.dumps({"a": 0})
 )
-#: Stands in for the real session id while a client event is checked; session ids always have
-#: this length (``YYYYMMDDTHHMMSSZ-xxxx``), so the length check is exact.
-PLACEHOLDER_SESSION_ID = "00000000T000000Z-0000"
+#: Stands in for the real session id while a client event is checked: the longest id a session
+#: counter below 10**16 gives (``<counter>-YYYYMMDDTHHMMSSZ-xxxx``), so a real line is never longer
+#: than the line checked.
+PLACEHOLDER_SESSION_ID = "0000000000000000-00000000T000000Z-0000"
 
 
 class Clock(Protocol):
@@ -115,6 +119,7 @@ class _Counters:
     rejected: int = 0
     rate_limited: int = 0
     foreign: int = 0
+    resumed: int = 0
     stepped_back_ns: int = 0
     first_rejection: str | None = None
 
@@ -124,6 +129,7 @@ class _Counters:
             "x_rejected_client_events": self.rejected,
             "x_rate_limited_events": self.rate_limited,
             "x_foreign_assertions": self.foreign,
+            "x_resumed_clients": self.resumed,
         }
         out = {name: value for name, value in found.items() if value}
         if self.stepped_back_ns:
@@ -162,6 +168,9 @@ class Engine:
         self._read_clock_status = read_clock_status
         self._scopes = frozenset(settings.scopes)
         self._values: dict[str, ScopeValue] = dict.fromkeys(settings.scopes, UNKNOWN)
+        self._plan_items: dict[str, str | None] = {}
+        # Until then, assertions do not restore scopes after a loss, rejection or rate limit.
+        self._quiet_until = float("-inf")
         self._owners: dict[str, _Owner] = {}
         self._clients: dict[str, _Client] = {}
         self._counters = _Counters()
@@ -205,7 +214,29 @@ class Engine:
         event["task_id"] = None
         event.update(self._settings.declaration)
         event["initial_states"] = {scope: value.state for scope, value in self._values.items()}
+        if self._open_task is not None:
+            event["x_carried_task"] = self._open_task
         return event
+
+    def carried_states(self) -> list[dict[str, Any]]:
+        """After a new ``session_start``, one transition per scope that is not ``unknown``,
+        repeating its full value, since ``initial_states`` holds only the state."""
+        events = []
+        for scope in self._settings.scopes:
+            value = self._values[scope]
+            if value == UNKNOWN:
+                continue
+            event = self._base(STATE_TYPE)
+            event.update(
+                scope=scope, state=value.state, reason=value.reason, actor_id=value.actor_id
+            )
+            if value.device_id is not None:
+                event["device_id"] = value.device_id
+            if self._plan_items.get(scope) is not None:
+                event["plan_item_id"] = self._plan_items[scope]
+            event["x_cause"] = "rotation"
+            events.append(event)
+        return events
 
     def session_end(self, cause: str) -> dict[str, Any]:
         """A ``session_end`` with ``x_cause`` saying why the recorder closed the session."""
@@ -294,35 +325,43 @@ class Engine:
         events += self._follow(message.client, message.n)
         if not self._take_token(message.client):
             self._counters.rate_limited += 1
-            return events + self.all_unknown("rate_limited")
+            return events + self._disturbed("rate_limited")
         return events + self._handle(message)
 
     def _reject(self, reason: str) -> list[dict[str, Any]]:
         self._counters.rejected += 1
         if self._counters.first_rejection is None:
             self._counters.first_rejection = reason
-        return self.all_unknown("rejected")
+        return self._disturbed("rejected")
+
+    def _disturbed(self, cause: str) -> list[dict[str, Any]]:
+        """Every scope ``unknown``; assertions restore none before a quiet interval."""
+        self._quiet_until = self._clock.monotonic() + self._settings.heartbeat_interval_s
+        return self.all_unknown(cause)
 
     def _can_follow(self, client: str) -> bool:
         return client in self._clients or len(self._clients) < MAX_CLIENTS
 
     def _follow(self, client: str, n: int) -> list[dict[str, Any]]:
         """Track a client's counter: ``n`` should be one more than the last, or 0 after the
-        client restarted. A first datagram with ``n`` above 0, or a jump, means datagrams
-        were lost; a smaller ``n`` above 0 means it restarted and its first ``n`` were lost."""
+        client restarted. A jump means datagrams were lost; a smaller ``n`` above 0 means it
+        restarted and its first ``n`` were lost. A first datagram with ``n`` above 0 means the
+        client kept running while the recorder restarted: it is counted as resumed."""
         now = self._clock.monotonic()
         known = self._clients.get(client)
         if known is None:
             limit = float(self._settings.max_events_per_s)
             self._clients[client] = _Client(n, limit, now)
-            lost = n
-        else:
-            last, known.last_n = known.last_n, n
-            lost = n - last - 1 if n > last else n
+            if n == 0:
+                return []
+            self._counters.resumed += 1
+            return self.all_unknown("resumed")
+        last, known.last_n = known.last_n, n
+        lost = n - last - 1 if n > last else n
         if lost <= 0:
             return []
         self._counters.lost += lost
-        return self.all_unknown("lost")
+        return self._disturbed("lost")
 
     def _take_token(self, client: str) -> bool:
         """Token bucket of ``max_events_per_s`` per client, refilled continuously."""
@@ -388,10 +427,13 @@ class Engine:
             self._counters.foreign += 1
             return []
         owner.last_assertion = now
+        if now < self._quiet_until:
+            return []
         value = ScopeValue(
             event["state"], event.get("reason"), event.get("actor_id"), event.get("device_id")
         )
         if value == self._values[scope]:
             return []
         self._values[scope] = value
+        self._plan_items[scope] = event.get("plan_item_id")
         return [event]

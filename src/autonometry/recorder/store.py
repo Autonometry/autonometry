@@ -12,6 +12,7 @@ and rebuilds the :class:`~autonometry.sealing.Sealer` and the recorder's state; 
 constant whatever the size of the log.
 """
 
+import hashlib
 import logging
 import os
 import re
@@ -25,7 +26,12 @@ from typing import Any, Protocol, cast
 import rfc8785
 
 from autonometry import sealfile, signednote, strictjson
-from autonometry.fileio import PRIVATE_FILE_MODE, fsync_directory, make_private_dirs
+from autonometry.fileio import (
+    PRIVATE_FILE_MODE,
+    atomic_write,
+    fsync_directory,
+    make_private_dirs,
+)
 from autonometry.reader import RejectedEventError, check_event, iter_lines
 from autonometry.recorder.config import Prepared
 from autonometry.recorder.engine import ScopeValue
@@ -36,7 +42,9 @@ logger = logging.getLogger(__name__)
 
 EVENTS_FILE = "events.jsonl"
 CHECKPOINTS_FILE = "events.checkpoints.jsonl"
-_SESSION_RE = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}", re.ASCII)
+_SESSION_RE = re.compile(r"(?P<counter>[0-9]{6,16})-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}", re.ASCII)
+#: Width the session counter is padded to; it grows beyond when it must.
+_COUNTER_DIGITS = 6
 _BINARY = getattr(os, "O_BINARY", 0)
 _CLOEXEC = getattr(os, "O_CLOEXEC", 0)
 _TAIL_CHUNK = 65536
@@ -231,31 +239,42 @@ def robot_dir(prepared: Prepared) -> Path:
     return path
 
 
+def _counter(entry: Path) -> int | None:
+    match = _SESSION_RE.fullmatch(entry.name)
+    return int(match.group("counter")) if match else None
+
+
 def session_dirs(robot: Path) -> list[Path]:
-    """Session folders of a robot, oldest first by name; anything else, including symbolic
-    links and names that are not session ids, is ignored."""
+    """Session folders of a robot, oldest first by their counter, never by time: a computer
+    without a real-time clock can boot with an old time. Anything else, including symbolic links
+    and names that are not session ids, is ignored."""
     root = robot.resolve()
     found = []
     for entry in robot.iterdir():
         if (
-            _SESSION_RE.fullmatch(entry.name)
+            _counter(entry) is not None
             and not entry.is_symlink()
             and entry.is_dir()
             and entry.resolve().parent == root
         ):
             found.append(entry)
-    return sorted(found, key=lambda p: p.name)
+    return sorted(found, key=lambda p: (_counter(p), p.name))
 
 
-def new_session_dir(robot: Path, now_ns: int) -> Path:
-    """Create the folder of a new session, 0700: its id is the UTC start time and a random
-    suffix, for example ``20261112T083000Z-7f3a``."""
+def new_session_dir(robot: Path, now_ns: int, inputs: Mapping[str, bytes]) -> Path:
+    """Create the folder of a new session, 0700, holding private copies of ``inputs`` (the device
+    registry, task registry and plan the session's hashes cover). Its id is a per-robot counter,
+    one more than the largest on disk, then the UTC start time and a random suffix, for example
+    ``000042-20261112T083000Z-7f3a``."""
     stamp = datetime.fromtimestamp(now_ns // 1_000_000_000, UTC).strftime("%Y%m%dT%H%M%SZ")
-    while True:
-        path = robot / f"{stamp}-{secrets.token_hex(2)}"
-        if not path.exists():
-            make_private_dirs(path)
-            return path
+    # Every entry with a session id's form counts, so the new name is never taken.
+    counters = [c for entry in robot.iterdir() if (c := _counter(entry)) is not None]
+    counter = max(counters, default=0) + 1
+    path = robot / f"{counter:0{_COUNTER_DIGITS}d}-{stamp}-{secrets.token_hex(2)}"
+    make_private_dirs(path)
+    for name, data in sorted(inputs.items()):
+        atomic_write(path / name, data)
+    return path
 
 
 def _tail_cut(path: Path) -> int:
@@ -418,16 +437,78 @@ class Recovered:
             self.open_task = None
 
 
+def _own_key(prepared: Prepared) -> signednote.VerifierKey:
+    public = prepared.key.public_key().public_bytes_raw()
+    return signednote.parse_vkey(signednote.format_vkey(prepared.key_name, public))
+
+
+def _committed_roots(directory: Path, prepared: Prepared) -> dict[int, bytes]:
+    """The tree size and root of every well-formed checkpoint in a session's checkpoint file.
+
+    Raises:
+        RecoveryError: a checkpoint names another session, its signature by the recorder's own
+            key does not verify, or two checkpoints of one size differ.
+    """
+    path = directory / CHECKPOINTS_FILE
+    if not path.exists():
+        return {}
+    rules = prepared.rules
+    with open(path, "rb") as stream:
+        seal_file = sealfile.read_seal_file(
+            str(path),
+            stream,
+            rules.errors.max_line_bytes,
+            rules.errors.list_max_per_code,
+            prepared.spec_version,
+        )
+    own_key = _own_key(prepared)
+    roots: dict[int, bytes] = {}
+    for record in seal_file.records:
+        if not isinstance(record, sealfile.CheckpointLine):
+            continue
+        try:
+            body, note = signednote.parse_signed_checkpoint(record.note)
+        except signednote.SignedNoteError:
+            continue  # not well formed: the verifier reports it as a file problem
+        where = f"the checkpoint at line {record.line}"
+        if (body.robot_id, body.session_id) != (prepared.config.robot_id, directory.name):
+            raise RecoveryError(f"{where} names another session")
+        try:
+            signednote.trusted_signers(note, [own_key])
+        except signednote.BadSignatureError:
+            raise RecoveryError(f"{where} has a signature that does not verify") from None
+        if roots.setdefault(body.size, body.root) != body.root:
+            raise RecoveryError(f"{where} contradicts an earlier checkpoint of the same size")
+    return roots
+
+
+def _check_seals(
+    committed: Mapping[int, bytes], replayed: Mapping[int, bytes], events: int
+) -> None:
+    """Every checkpoint covers at most the events on disk, with the root they have."""
+    for size, root in sorted(committed.items()):
+        if size > events:
+            raise RecoveryError(
+                f"a checkpoint covers {size} events but the log holds {events}: "
+                "the log contradicts its own seals"
+            )
+        if replayed[size] != root:
+            raise RecoveryError(f"the checkpoint of {size} events has another root than the log")
+
+
 def recover(directory: Path, prepared: Prepared) -> Recovered:
     """Rebuild a session from disk: cut its final partial line (a write a crash interrupted,
     never complete, so no checkpoint covers it), then replay its events, verifying every hash and
-    link of its chain (definitions.md 8, 10.1). ``closed`` tells whether it ends with
-    ``session_end``.
+    link of its chain (definitions.md 8, 10.1), and check its checkpoint file
+    against the events: every well-formed checkpoint must cover at most the events on disk, with
+    their root, and carry no bad signature by the recorder's key (10.6). ``closed`` tells whether
+    it ends with ``session_end``.
 
     Raises:
         RecoveryError: a line does not verify, the session does not open with ``session_start``,
-            has no complete event, or has a second ``session_start`` or an event after
-            ``session_end``. Only the partial line was cut then.
+            has no complete event, has a second ``session_start`` or an event after
+            ``session_end``, or its checkpoints contradict its events: never append to a log that
+            contradicts its own seals. Only the partial line was cut then.
     """
     rules = prepared.rules
     robot_id, session_id = prepared.config.robot_id, directory.name
@@ -440,6 +521,8 @@ def recover(directory: Path, prepared: Prepared) -> Recovered:
         rules.sealing.checkpoint_every_events,
         rules.sealing.checkpoint_every_s,
     )
+    committed = _committed_roots(directory, prepared)
+    replayed: dict[int, bytes] = {0: hashlib.sha256(b"").digest()}  # the empty tree (RFC 9162)
     recovered: Recovered | None = None
     for event in _replay(events_path, rules.errors.max_line_bytes, prepared.spec_version):
         if (event["robot_id"], event["session_id"]) != (robot_id, session_id):
@@ -461,6 +544,9 @@ def recover(directory: Path, prepared: Prepared) -> Recovered:
         recovered.closed = event["type"] == "session_end"
         recovered.follow(event)
         recovered.events += 1
+        if sealer.size in committed:
+            replayed[sealer.size] = sealer.root()
+    _check_seals(committed, replayed, sealer.size)
     if recovered is None:
         raise RecoveryError("the session has no complete event")
     return recovered

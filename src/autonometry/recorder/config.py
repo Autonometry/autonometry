@@ -14,6 +14,7 @@ import urllib.parse
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Annotated, Any, Literal, Self
 
 import rfc8785
@@ -31,7 +32,7 @@ from pydantic import (
 )
 
 from autonometry import keys, strictjson, tsa
-from autonometry.registry import MAX_REGISTRY_BYTES, RegistryReadError, check_registry
+from autonometry.registry import MAX_REGISTRY_BYTES, check_registry_bytes
 from autonometry.spec import Rules, SpecError, available_versions, load_rules
 
 #: Largest config file read, in bytes.
@@ -87,7 +88,7 @@ class RecorderConfig(BaseModel):
     unobserved: Annotated[tuple[Unobserved, ...], AfterValidator(_unique)] = ()
     clock_source: Literal["ntp", "ptp", "gnss"]
     key_path: Path
-    device_registry: Path | None = None
+    device_registry: Path
     task_registry: Path
     plan: Path
     tsa_url: str | None = None
@@ -169,13 +170,17 @@ def load_config(path: Path) -> RecorderConfig:
         raise ConfigError(f"{path}: {exc}") from None
 
 
-def json_file_hash(path: Path) -> str:
-    """Return the lower-case hex SHA-256 of a JSON file's RFC 8785 canonical form, the value of
-    ``session_start.task_registry_hash`` and ``plan_hash`` (definitions.md 1 and 3). The file must
-    be I-JSON of at most 1 MiB.
+#: Names of the copies of the device registry, task registry and plan in each session folder.
+DEVICES_COPY = "devices.json"
+TASKS_COPY = "tasks.json"
+PLAN_COPY = "plan.json"
+
+
+def read_input(path: Path) -> bytes:
+    """Read a registry or plan file of at most 1 MiB.
 
     Raises:
-        ConfigError: the file cannot be read or is not I-JSON.
+        ConfigError: the file cannot be read or is larger.
     """
     try:
         with open(path, "rb") as stream:
@@ -184,6 +189,17 @@ def json_file_hash(path: Path) -> str:
         raise ConfigError(f"cannot read {path}: {exc.strerror or exc}") from None
     if len(data) > MAX_REGISTRY_BYTES:
         raise ConfigError(f"{path} is larger than {MAX_REGISTRY_BYTES} bytes")
+    return data
+
+
+def json_hash(data: bytes, path: Path) -> str:
+    """Return the lower-case hex SHA-256 of a JSON file's RFC 8785 canonical form, the value of
+    ``session_start.task_registry_hash`` and ``plan_hash`` (definitions.md 1 and 3). The file must
+    be I-JSON; ``path`` only names it in errors.
+
+    Raises:
+        ConfigError: the bytes are not UTF-8 I-JSON.
+    """
     try:
         value = strictjson.parse(data.decode("utf-8").removeprefix("﻿"))
     except UnicodeDecodeError as exc:
@@ -196,7 +212,9 @@ def json_file_hash(path: Path) -> str:
 @dataclass(frozen=True, slots=True)
 class Prepared:
     """A config with everything it points to loaded and checked: the spec rules, the signing key
-    and its name, the hashes for ``session_start`` and the trusted TSA roots."""
+    and its name, the hashes for ``session_start``, the trusted TSA roots, and the exact bytes of
+    the device registry, task registry and plan that were hashed (``inputs``: copy name to
+    bytes), which every session folder gets a copy of."""
 
     config: RecorderConfig
     spec_version: str
@@ -205,8 +223,9 @@ class Prepared:
     key_name: str
     task_registry_hash: str
     plan_hash: str
-    device_registry_hash: str | None
+    device_registry_hash: str
     tsa_roots: tuple[x509.Certificate, ...]
+    inputs: Mapping[str, bytes]
 
     def declaration(self) -> Mapping[str, Any]:
         """The ``session_start`` fields that the config decides (definitions.md 8), except
@@ -218,12 +237,11 @@ class Prepared:
             "hint_policy": config.hint_policy,
             "task_registry_hash": self.task_registry_hash,
             "plan_hash": self.plan_hash,
+            "device_registry_hash": self.device_registry_hash,
             "simulated": config.simulated,
         }
         if config.scope_weights is not None:
             fields["scope_weights"] = dict(config.scope_weights)
-        if self.device_registry_hash is not None:
-            fields["device_registry_hash"] = self.device_registry_hash
         if config.unobserved:
             fields["unobserved"] = list(config.unobserved)
         return fields
@@ -236,12 +254,10 @@ def _newest_spec() -> str:
     return versions[-1]
 
 
-def _device_registry_hash(path: Path | None, spec_version: str) -> str | None:
-    if path is None:
-        return None
+def _device_registry_hash(data: bytes, path: Path, spec_version: str) -> str:
     try:
-        check = check_registry(path, spec_version)
-    except (RegistryReadError, SpecError) as exc:
+        check = check_registry_bytes(data, str(path), spec_version)
+    except SpecError as exc:
         raise ConfigError(str(exc)) from None
     if check.sha256 is None:
         raise ConfigError(f"device registry {path} is not valid: {check.problems[0]}")
@@ -275,14 +291,18 @@ def prepare(config: RecorderConfig) -> Prepared:
         key_name = keys.load_key_name(config.key_path)
     except keys.SigningKeyError as exc:
         raise ConfigError(str(exc)) from None
+    devices = read_input(config.device_registry)
+    tasks = read_input(config.task_registry)
+    plan = read_input(config.plan)
     return Prepared(
         config=config,
         spec_version=version,
         rules=rules,
         key=key,
         key_name=key_name,
-        task_registry_hash=json_file_hash(config.task_registry),
-        plan_hash=json_file_hash(config.plan),
-        device_registry_hash=_device_registry_hash(config.device_registry, version),
+        task_registry_hash=json_hash(tasks, config.task_registry),
+        plan_hash=json_hash(plan, config.plan),
+        device_registry_hash=_device_registry_hash(devices, config.device_registry, version),
         tsa_roots=_tsa_roots(config.tsa_roots),
+        inputs=MappingProxyType({DEVICES_COPY: devices, TASKS_COPY: tasks, PLAN_COPY: plan}),
     )

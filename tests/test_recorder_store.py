@@ -9,7 +9,9 @@ from typing import Any
 
 import pytest
 import rfc8785
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from autonometry import sealfile, signednote
 from autonometry.recorder import store
 from autonometry.recorder.config import Prepared
 from autonometry.recorder.store import (
@@ -80,14 +82,22 @@ def test_is_closed_reads_only_the_last_complete_line(tmp_path: Path) -> None:
     assert not is_closed(folder)
 
 
-def test_session_dirs_ignore_other_entries(tmp_path: Path) -> None:
-    (tmp_path / "20261112T080000Z-00aa").mkdir()
-    (tmp_path / "20261112T090000Z-00bb").mkdir()
+def test_session_dirs_are_ordered_by_counter_never_by_time(tmp_path: Path) -> None:
+    (tmp_path / "000010-20200101T000000Z-00cc").mkdir()  # booted with an old clock
+    (tmp_path / "000002-20261112T090000Z-00bb").mkdir()
+    (tmp_path / "1000000-19700101T000000Z-00dd").mkdir()
+    (tmp_path / "000001-20261112T080000Z-00aa").mkdir()
+    (tmp_path / "20261112T080000Z-00ee").mkdir()  # no counter
     (tmp_path / "notes").mkdir()
-    (tmp_path / "20261112T100000Z-00cc").write_text("a file", encoding="utf-8")
+    (tmp_path / "000011-20261112T100000Z-00ff").write_text("a file", encoding="utf-8")
     (tmp_path / ".lock").write_text("", encoding="utf-8")
     names = [p.name for p in session_dirs(tmp_path)]
-    assert names == ["20261112T080000Z-00aa", "20261112T090000Z-00bb"]
+    assert names == [
+        "000001-20261112T080000Z-00aa",
+        "000002-20261112T090000Z-00bb",
+        "000010-20200101T000000Z-00cc",
+        "1000000-19700101T000000Z-00dd",
+    ]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="symbolic links need privileges on Windows")
@@ -96,18 +106,24 @@ def test_session_dirs_ignore_symbolic_links(tmp_path: Path) -> None:
     robot.mkdir()
     outside = tmp_path / "outside"
     outside.mkdir()
-    (robot / "20261112T110000Z-00dd").symlink_to(outside)
+    (robot / "000001-20261112T110000Z-00dd").symlink_to(outside)
     assert session_dirs(robot) == []
 
 
-def test_new_session_dir_retries_a_taken_name(
+def test_new_session_dir_counts_on_from_the_largest_counter(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    suffixes = iter(["abcd", "abcd", "0001"])
-    monkeypatch.setattr(store.secrets, "token_hex", lambda _: next(suffixes))
-    first = new_session_dir(tmp_path, START_NS)
-    second = new_session_dir(tmp_path, START_NS)
-    assert (first.name, second.name) == ("20261112T080000Z-abcd", "20261112T080000Z-0001")
+    monkeypatch.setattr(store.secrets, "token_hex", lambda _: "abcd")
+    inputs = {"devices.json": b"{}", "plan.json": b"[]"}
+    first = new_session_dir(tmp_path, START_NS, inputs)
+    assert first.name == "000001-20261112T080000Z-abcd"
+    assert (first / "devices.json").read_bytes() == b"{}"
+    assert (first / "plan.json").read_bytes() == b"[]"
+    (tmp_path / "000041-20200101T000000Z-0000").write_text("not a folder", encoding="utf-8")
+    second = new_session_dir(tmp_path, START_NS - 10**18, {})
+    assert second.name == "000042-19950306T061320Z-abcd"
+    (tmp_path / "999999-20261112T080000Z-0000").mkdir()
+    assert new_session_dir(tmp_path, START_NS, {}).name.startswith("1000000-")
 
 
 def test_append_file_writes_the_rest_of_a_short_write(tmp_path: Path) -> None:
@@ -170,7 +186,7 @@ def test_recover_rebuilds_state_from_a_session(prepared: Prepared, tmp_path: Pat
         (lambda lines: [*lines, b"\xff\n"], "not valid UTF-8"),
         (lambda lines: [*lines, b"{}\n"], "not a valid event"),
         (lambda lines: [*lines, b"{\n"], "not a valid event"),
-        (lambda lines: [], "no complete event"),
+        (lambda lines: [], "contradicts its own seals"),
         (
             lambda lines: [lines[0].replace(b'"simulated":true', b'"simulated":false'), *lines[1:]],
             "does not verify",
@@ -249,3 +265,79 @@ def test_is_committed_reads_the_last_checkpoint(prepared: Prepared, tmp_path: Pa
     assert not is_committed(folder, setup)
     os.remove(checkpoints)
     assert not is_committed(folder, setup)
+
+
+def append_checkpoint(
+    prepared: Prepared, folder: Path, session_id: str, size: int, root: bytes
+) -> None:
+    body = signednote.checkpoint_body("r1", session_id, size, root)
+    note = signednote.sign_note(body, prepared.key_name, prepared.key)
+    with open(folder / CHECKPOINTS_FILE, "ab") as stream:
+        stream.write(sealfile.encode_checkpoint_line(note))
+
+
+def test_recovery_refuses_a_checkpoint_with_another_root__defs_10_6(
+    prepared: Prepared, tmp_path: Path
+) -> None:
+    folder = open_session(prepared, tmp_path / "data")
+    append_checkpoint(prepared, folder, folder.name, 2, b"\x01" * 32)
+    with pytest.raises(RecoveryError, match="another root"):
+        recover(folder, with_data_dir(prepared, tmp_path / "data"))
+
+
+def test_recovery_refuses_a_checkpoint_beyond_the_log__defs_10_6(
+    prepared: Prepared, tmp_path: Path
+) -> None:
+    folder = open_session(prepared, tmp_path / "data")
+    append_checkpoint(prepared, folder, folder.name, 10_000, b"\x01" * 32)
+    with pytest.raises(RecoveryError, match="contradicts its own seals"):
+        recover(folder, with_data_dir(prepared, tmp_path / "data"))
+
+
+def test_recovery_refuses_a_checkpoint_of_another_session(
+    prepared: Prepared, tmp_path: Path
+) -> None:
+    folder = open_session(prepared, tmp_path / "data")
+    append_checkpoint(prepared, folder, "000099-20261112T080000Z-0000", 1, b"\x01" * 32)
+    with pytest.raises(RecoveryError, match="names another session"):
+        recover(folder, with_data_dir(prepared, tmp_path / "data"))
+
+
+def test_recovery_refuses_a_bad_signature_by_its_own_key__defs_10_6(
+    prepared: Prepared, tmp_path: Path
+) -> None:
+    folder = open_session(prepared, tmp_path / "data")
+    path = folder / CHECKPOINTS_FILE
+    first, *rest = path.read_bytes().splitlines(keepends=True)
+    record = json.loads(first)
+    text, signature = record["note"].rsplit(" ", 1)
+    # Past the 4-byte key ID (the first 5 base64 characters), so the key still matches.
+    flipped = signature[:20] + ("A" if signature[20] != "A" else "B") + signature[21:]
+    record["note"] = f"{text} {flipped}"
+    path.write_bytes(sealfile.encode_checkpoint_line(record["note"]) + b"".join(rest))
+    with pytest.raises(RecoveryError, match="signature that does not verify"):
+        recover(folder, with_data_dir(prepared, tmp_path / "data"))
+
+
+def test_recovery_refuses_two_checkpoints_of_one_size_that_differ(
+    prepared: Prepared, tmp_path: Path
+) -> None:
+    folder = open_session(prepared, tmp_path / "data")
+    append_checkpoint(prepared, folder, folder.name, 1, b"\x01" * 32)
+    with pytest.raises(RecoveryError, match="contradicts an earlier checkpoint"):
+        recover(folder, with_data_dir(prepared, tmp_path / "data"))
+
+
+def test_recovery_skips_malformed_checkpoints_but_checks_any_key(
+    prepared: Prepared, tmp_path: Path
+) -> None:
+    folder = open_session(prepared, tmp_path / "data")
+    other_key = Ed25519PrivateKey.generate()
+    body = signednote.checkpoint_body("r1", folder.name, 3, b"\x02" * 32)
+    foreign = signednote.sign_note(body, "someone/else", other_key)
+    with open(folder / CHECKPOINTS_FILE, "ab") as stream:
+        stream.write(sealfile.encode_checkpoint_line("not a signed note"))
+        stream.write(sealfile.encode_checkpoint_line(foreign))
+    # A foreign key's checkpoint still has to match the events: size 3 with another root.
+    with pytest.raises(RecoveryError, match="another root"):
+        recover(folder, with_data_dir(prepared, tmp_path / "data"))
