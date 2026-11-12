@@ -55,10 +55,16 @@ autonometry verify robot.sealed.jsonl --vkey robot.key.vkey --json       # trust
 refusing input that has rejected lines, is already sealed, or would overwrite an existing output.
 `timestamp` anchors a checkpoint with a real RFC 3161 token from a Time Stamping Authority; an
 anchor file -- a copy of a checkpoint kept outside the log, by the customer or a witness -- does
-the same without a TSA. `verify` recomputes every hash and Merkle root from the events and never
-trusts a stored value; each session is reported `verified`, `partial`, `unverified` or `failed`,
-with evidence codes (any one means the log contradicts its own seals: tampering or corruption) and
-gap codes (never raise the trust level) from `spec/v0.2/rules.toml` `[sealing]`.
+the same without a TSA (`verify --anchor FILE`). `verify` recomputes every event's hash from its
+content and every Merkle root from the events, and never trusts a stored value; every checkpoint
+and anchor is checked against them, so an anchor also catches events or whole sessions deleted
+later, together with their checkpoints. Each session is reported `verified`, `partial`,
+`unverified` or `failed`, with evidence codes (any one means the log contradicts its own seals:
+tampering or corruption) and gap codes (never raise the trust level). Records that cannot be tied to
+one session (a malformed checkpoint, a timestamp for no checkpoint) are file problems. The output
+ends with `result: verified` or `result: NOT verified: <reasons>`; rejected lines of any file read
+and file problems make the result not verified whatever the sessions' statuses. The codes are in
+`spec/v0.2/rules.toml` `[sealing]`.
 
 What L2 proves: nothing was dropped, re-timed or edited after a checkpoint was anchored, and any
 such change is detected even without the original log. What it does not prove: a dishonest recorder
