@@ -130,18 +130,26 @@ For each session it prints:
   the return to `ai` (or to `scripted` no person started), the task end or the session end. It
   counts once however many hand-overs it holds. The kinds are `takeover` (into `human_*`),
   `shared`, `safety_stop` (a stop a person triggered), `preset` (a fixed motion a person started),
-  `approval` and `hint`. An automatic stop followed within `takeover_window_s` by a person taking
-  over is one `takeover` with reason `safety` that starts at the stop. The whole-robot count takes
-  one person's takeovers of several scopes within `simultaneity_window_s` once. Between tasks, a
-  person taking over from `idle` or `unknown`, or with reason `planned`, is a reset, not an
-  intervention. `ai_requested_help` without a `help_request` on the scope within
-  `help_latency_max_s` becomes `human_initiated` (`help_reason_recoded`).
+  `approval` and `hint`. A run of `unknown` and `safety_stop` between AI control and human
+  control does not hide an intervention: the scope still counts as leaving `ai`. An automatic stop
+  followed within `takeover_window_s` (and before the task ends) by a person taking over is one
+  `takeover` with reason `safety` that starts at the stop; a later takeover is a takeover of its
+  own. The whole-robot count takes one person's takeovers of several scopes within
+  `simultaneity_window_s` once. Between tasks, a person taking over from `idle` or `unknown`, or
+  with reason `planned`, is a reset, not an intervention. On transitions, approvals and hints,
+  `ai_requested_help` without a `help_request` on the scope within `help_latency_max_s` becomes
+  `human_initiated` (`help_reason_recoded`), and so does `planned` without its plan item
+  (`unplanned`); a transition the registry makes human without a reason takes `human_initiated`.
 - **Approvals and hints** with their dwell. A dwell sits on [ts − dwell, ts); only the part that
-  overlaps `ai` time moves from AI to human time (`moved_from_ai_s`).
+  overlaps `ai` time moves from AI to human time (`moved_from_ai_s`). One inside an intervention
+  episode belongs to it and is not counted again (`in_episode`). An `ai_requested_help` approval
+  more than `approval_wait_max_s` after the help request, with the scope left in `ai` all along,
+  turns that wait into `shared` time (`approval_wait_recoded`).
 - **Safety stops**, each human-triggered or automatic, and whether a takeover joined it.
-- **Tasks**: outcome (`unknown` when not closed), autonomous (no human time and no intervention
-  inside), whether it contains unknown time, its human time, and the unplanned reset time since the
-  previous task.
+- **Tasks**: outcome (`unknown` when not closed), autonomous (no human time, no intervention, no
+  approval or hint inside, and no unplanned human time since the previous task), whether it
+  contains unknown time, its human time, and the unplanned human time since the previous task
+  (`unplanned_reset_s`, which adds to the task's human minutes).
 - **Resets** (human time between tasks, planned or not), **supervision** (`supervision_ratio` and
   supervisor-hours per robot-hour over active time), **humans** (distinct people and actor-time:
   two people on one scope count twice), **supported time** and **distance** (the largest
