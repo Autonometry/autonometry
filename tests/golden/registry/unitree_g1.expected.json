@@ -1,0 +1,8 @@
+{
+  "devices": 5,
+  "file": "unitree_g1.json",
+  "problems": [],
+  "sha256": "d16e05ab8154e43dbe240b67ec1b19b30ff4fe7aacff8440ada6a84e4f452e8d",
+  "spec_version": "0.3",
+  "valid": true
+}

@@ -1,0 +1,47 @@
+{
+  "devices": [
+    {
+      "device_id": "nav2",
+      "kind": "ai",
+      "match": {
+        "node": "/bt_navigator"
+      }
+    },
+    {
+      "device_id": "create3_reflexes",
+      "kind": "ai",
+      "match": {
+        "node": "/motion_control"
+      },
+      "x_note": "built-in hazard reflexes"
+    },
+    {
+      "device_id": "dock_action",
+      "kind": "script",
+      "match": {
+        "node": "/turtlebot4_node",
+        "topic": "/dock"
+      }
+    },
+    {
+      "device_id": "joy_local",
+      "kind": "human",
+      "location": "local",
+      "actor_id": "op_17",
+      "match": {
+        "node": "/joy_teleop",
+        "topic": "/cmd_vel"
+      }
+    },
+    {
+      "device_id": "station_remote",
+      "kind": "human",
+      "location": "remote",
+      "match": {
+        "host": "station-2.lab",
+        "participant": "0110.0f2a.4c1d.0000"
+      }
+    }
+  ],
+  "x_robot_model": "turtlebot4_standard"
+}

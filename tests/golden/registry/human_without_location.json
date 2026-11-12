@@ -1,0 +1,11 @@
+{
+  "devices": [
+    {
+      "device_id": "joy",
+      "kind": "human",
+      "match": {
+        "node": "/joy"
+      }
+    }
+  ]
+}

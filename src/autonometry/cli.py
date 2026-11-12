@@ -18,6 +18,7 @@ from autonometry import verify as verify_
 from autonometry.events import LogCheck, Session, TrustLevel, VerifyResult
 from autonometry.fileio import append_durably, atomic_write
 from autonometry.reader import LogReadError, read_logs
+from autonometry.registry import RegistryReadError, check_registry
 from autonometry.sealfile import SealFile
 from autonometry.signednote import SignedNoteError, VerifierKey
 from autonometry.spec import (
@@ -44,6 +45,12 @@ spec_app = typer.Typer(
     pretty_exceptions_enable=False,
 )
 app.add_typer(spec_app, name="spec")
+registry_app = typer.Typer(
+    help="Check device registries (definitions.md 6.10).",
+    no_args_is_help=True,
+    pretty_exceptions_enable=False,
+)
+app.add_typer(registry_app, name="registry")
 
 _SHOWN_PER_CODE = 20
 _VERBOSE_FORMAT = "%(levelname)s %(name)s: %(message)s"
@@ -176,6 +183,51 @@ def validate(
         for line in summary_lines(result):
             typer.echo(line)
     if result.errors:
+        raise typer.Exit(1)
+
+
+@registry_app.command("check")
+def registry_check(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            help="Device registry JSON file.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            show_default=False,
+        ),
+    ],
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Print the result as JSON instead of a summary.")
+    ] = False,
+    spec: Annotated[
+        str | None,
+        typer.Option(
+            "--spec", help="Spec version, for example 0.3. Default: the newest one shipped."
+        ),
+    ] = None,
+) -> None:
+    """Check a device registry and print its hash for session_start.device_registry_hash.
+
+    Exit status: 0 when the registry is valid, 1 when it is not (or cannot be read), 2 on bad
+    usage. Values from the file are never printed.
+    """
+    version = _spec_version(spec)
+    try:
+        result = check_registry(path, version)
+    except (SpecError, RegistryReadError) as exc:
+        _fail(str(exc))
+    if as_json:
+        typer.echo(json.dumps(result.to_json(), indent=2, sort_keys=True))
+    elif result.sha256 is not None:
+        typer.echo(f"spec {version}: {result.devices} device(s), valid")
+        typer.echo(f"sha256 {result.sha256}")
+    else:
+        typer.echo(f"spec {version}: NOT valid")
+        for problem in result.problems:
+            typer.echo(f"  {problem}")
+    if not result.valid:
         raise typer.Exit(1)
 
 

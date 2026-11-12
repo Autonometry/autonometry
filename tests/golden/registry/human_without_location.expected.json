@@ -1,0 +1,10 @@
+{
+  "devices": 0,
+  "file": "human_without_location.json",
+  "problems": [
+    "schema_violation: /devices/0: missing field location"
+  ],
+  "sha256": null,
+  "spec_version": "0.3",
+  "valid": false
+}

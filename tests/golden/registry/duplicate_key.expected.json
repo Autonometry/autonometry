@@ -1,0 +1,10 @@
+{
+  "devices": 0,
+  "file": "duplicate_key.json",
+  "problems": [
+    "duplicate_key: an object has the same key twice"
+  ],
+  "sha256": null,
+  "spec_version": "0.3",
+  "valid": false
+}

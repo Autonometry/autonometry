@@ -1,0 +1,11 @@
+{
+  "devices": 4,
+  "file": "duplicate_device_id.json",
+  "problems": [
+    "duplicate_device_id: /devices/2 repeats the device_id of /devices/0",
+    "duplicate_device_id: /devices/3 repeats the device_id of /devices/1"
+  ],
+  "sha256": null,
+  "spec_version": "0.3",
+  "valid": false
+}

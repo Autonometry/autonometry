@@ -117,20 +117,36 @@ def iter_lines(stream: IO[bytes], max_line_bytes: int) -> Iterator[bytes | None]
         yield None if len(content) > max_line_bytes else content
 
 
+def first_schema_error(
+    validator: jsonschema_rs.Draft202012Validator, value: Any
+) -> jsonschema_rs.ValidationError | None:
+    """Return the schema error to report for ``value``, or None when it is valid.
+
+    The choice does not depend on the validator's own order (see :func:`_error_rank`).
+    """
+    if validator.is_valid(value):
+        return None
+    return min(validator.iter_errors(value), key=_error_rank)
+
+
 def describe_schema_error(
-    error: jsonschema_rs.ValidationError, schema: Mapping[str, Any], field_names: frozenset[str]
+    error: jsonschema_rs.ValidationError,
+    schema: Mapping[str, Any],
+    field_names: frozenset[str],
+    root: str = "event",
 ) -> str:
-    """Describe a schema error by location and rule, without quoting any value from the event.
+    """Describe a schema error by location and rule, without quoting any value from the input.
 
     The rule is the keyword at the end of the error's schema path and its value in the schema.
     Path parts that are not schema field names (for example scope names used as keys) print as
-    ``*`` and unexpected field names are not repeated, so no event contents reach the output.
+    ``*`` and unexpected field names are not repeated, so no input contents reach the output.
+    An error at the top level is placed at ``root``.
     """
     parts = [
         str(part) if isinstance(part, int) or part in field_names else "*"
         for part in error.instance_path
     ]
-    where = "/" + "/".join(parts) if parts else "event"
+    where = "/" + "/".join(parts) if parts else root
     keyword = str(error.schema_path[-1]) if error.schema_path else ""
     expected = _schema_value(schema, error.schema_path)
     if keyword == "required" and isinstance(expected, list):
@@ -165,6 +181,7 @@ _BOUNDS = {
     "minLength": "a string of length >=",
     "maxLength": "a string of length <=",
     "minItems": "a list of length >=",
+    "minProperties": "an object with a number of fields >=",
 }
 
 
@@ -253,8 +270,8 @@ class _Reader:
             raise _RejectedLineError(
                 "not_an_object", f"line is {_json_kind(value)}, not a JSON object"
             )
-        if not self.spec.validator.is_valid(value):
-            problem = min(self.spec.validator.iter_errors(value), key=_error_rank)
+        problem = first_schema_error(self.spec.validator, value)
+        if problem is not None:
             message = describe_schema_error(problem, self.spec.schema, self.spec.field_names)
             raise _RejectedLineError("schema_violation", message)
         for name in self.spec.integer_fields:

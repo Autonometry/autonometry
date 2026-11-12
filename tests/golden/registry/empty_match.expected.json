@@ -1,0 +1,10 @@
+{
+  "devices": 0,
+  "file": "empty_match.json",
+  "problems": [
+    "schema_violation: /devices/0/match: must be an object with a number of fields >= 1"
+  ],
+  "sha256": null,
+  "spec_version": "0.3",
+  "valid": false
+}
