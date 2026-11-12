@@ -103,7 +103,8 @@ def check_registry_bytes(data: bytes, file: str, spec_version: str) -> RegistryC
     """Check the bytes of one device registry against definitions.md 6.10.
 
     Problems: more than :data:`MAX_REGISTRY_BYTES` bytes, not UTF-8, not I-JSON, not valid against
-    ``device_registry.schema.json``, or a ``device_id`` that repeats an earlier one.
+    ``device_registry.schema.json``, a ``device_id`` that repeats an earlier one, or a device
+    shadowed by an earlier one whose ``match`` fields it all contains with the same values.
     """
 
     def failed(*problems: str, devices: int = 0) -> RegistryCheck:
@@ -123,7 +124,7 @@ def check_registry_bytes(data: bytes, file: str, spec_version: str) -> RegistryC
         message = describe_schema_error(error, spec.schema, spec.field_names, root="registry")
         return failed(f"schema_violation: {message}")
     devices: list[dict[str, Any]] = value["devices"]
-    repeats = tuple(_repeated_ids(devices))
+    repeats = (*_repeated_ids(devices), *_shadowed_devices(devices))
     if repeats:
         return failed(*repeats, devices=len(devices))
     return RegistryCheck(file, spec_version, len(devices), registry_hash(value), ())
@@ -136,6 +137,19 @@ def _repeated_ids(devices: list[dict[str, Any]]) -> Iterator[str]:
         if earlier != index:
             yield (
                 f"duplicate_device_id: /devices/{index} repeats the device_id of /devices/{earlier}"
+            )
+
+
+def _shadowed_devices(devices: list[dict[str, Any]]) -> Iterator[str]:
+    """Devices that can never be matched: an earlier device's ``match`` fields all appear in
+    theirs with the same values, and the first match wins (definitions.md 6.10)."""
+    for index, device in enumerate(devices):
+        fields = device["match"].items()
+        earlier = next((i for i in range(index) if devices[i]["match"].items() <= fields), None)
+        if earlier is not None:
+            yield (
+                f"shadowed_device: /devices/{index} can never be matched: the match of "
+                f"/devices/{earlier} comes first and covers it"
             )
 
 

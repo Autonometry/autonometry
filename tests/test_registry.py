@@ -61,7 +61,9 @@ def test_registry_hash_is_lower_case_hex__defs_6_10() -> None:
 
 def test_duplicate_device_id_is_an_error__defs_6_10() -> None:
     result = check_registry_bytes(
-        json.dumps({"devices": [_device(), _device(kind="script")]}).encode(), "r.json", SPEC
+        json.dumps({"devices": [_device(), _device(match={"node": "/other"})]}).encode(),
+        "r.json",
+        SPEC,
     )
     assert not result.valid
     assert result.sha256 is None
@@ -69,6 +71,23 @@ def test_duplicate_device_id_is_an_error__defs_6_10() -> None:
     assert result.problems == (
         "duplicate_device_id: /devices/1 repeats the device_id of /devices/0",
     )
+
+
+def test_shadowed_device_is_an_error__defs_6_10() -> None:
+    """First match wins, so a device whose match holds every field of an earlier device's match,
+    with the same values, can never be matched; identical matches included."""
+    first = _device(device_id="a", match={"node": "/n"})
+    assert _check({"devices": [first, _device(device_id="b", match={"node": "/n"})]}) == [
+        "shadowed_device: /devices/1 can never be matched: the match of /devices/0 comes first "
+        "and covers it"
+    ]
+    wider = _device(device_id="b", match={"node": "/n", "host": "h"})
+    assert len(_check({"devices": [first, wider]})) == 1
+    assert _check({"devices": [wider, first]}) == []
+    other = _device(device_id="b", match={"node": "/m", "host": "h"})
+    assert _check({"devices": [first, other]}) == []
+    result = check_registry_bytes(json.dumps({"devices": [first, wider]}).encode(), "r.json", SPEC)
+    assert (result.valid, result.sha256) == (False, None)
 
 
 def test_human_device_needs_a_location__defs_6_10() -> None:
@@ -104,9 +123,10 @@ def test_match_needs_a_known_field__defs_6_10() -> None:
     assert _check({"devices": [_device(match=fields)]}) == []
 
 
-def test_match_values_are_printable_ascii_up_to_256__defs_6_10() -> None:
+def test_match_values_are_1_to_256_printable_ascii__defs_6_10() -> None:
     assert _check({"devices": [_device(match={"host": "~" * 256})]}) == []
-    for bad in ("x" * 257, "tab\there", "café"):
+    assert _check({"devices": [_device(match={"host": " "})]}) == []
+    for bad in ("", "x" * 257, "tab\there", "café"):
         (problem,) = _check({"devices": [_device(match={"host": bad})]})
         assert problem.startswith("schema_violation: /devices/0/match/host: does not match")
 
@@ -184,7 +204,7 @@ def test_any_bytes_give_a_result_never_a_crash__defs_6_10(data: bytes) -> None:
     assert result.valid == (result.sha256 is not None)
 
 
-_observed = st.text(st.characters(min_codepoint=0x20, max_codepoint=0x7E), max_size=20)
+_observed = st.text(st.characters(min_codepoint=0x20, max_codepoint=0x7E), min_size=1, max_size=20)
 _ident = st.from_regex(r"\A[A-Za-z0-9][A-Za-z0-9._:-]{0,10}\Z")
 
 
@@ -193,13 +213,9 @@ def _registries(draw: st.DrawFn) -> dict[str, Any]:
     devices = []
     for device_id in draw(st.lists(_ident, min_size=1, max_size=4, unique=True)):
         kind = draw(st.sampled_from(["human", "ai", "script", "support"]))
-        match = draw(
-            st.dictionaries(
-                st.sampled_from(["host", "node", "topic", "participant"]),
-                _observed,
-                min_size=1,
-            )
-        )
+        # A node unique to each device, so no device shadows another.
+        others = draw(st.dictionaries(st.sampled_from(["host", "topic", "participant"]), _observed))
+        match = others | {"node": f"/{device_id}"}
         device: dict[str, Any] = {"device_id": device_id, "kind": kind, "match": match}
         if kind == "human":
             device["location"] = draw(st.sampled_from(["local", "remote"]))

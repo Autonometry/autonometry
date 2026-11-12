@@ -1,0 +1,11 @@
+{
+  "devices": 5,
+  "file": "shadowed_device.json",
+  "problems": [
+    "shadowed_device: /devices/1 can never be matched: the match of /devices/0 comes first and covers it",
+    "shadowed_device: /devices/3 can never be matched: the match of /devices/2 comes first and covers it"
+  ],
+  "sha256": null,
+  "spec_version": "0.3",
+  "valid": false
+}

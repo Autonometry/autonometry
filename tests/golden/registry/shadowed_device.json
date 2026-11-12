@@ -1,0 +1,47 @@
+{
+  "devices": [
+    {
+      "device_id": "nav2",
+      "kind": "ai",
+      "match": {
+        "node": "/bt_navigator"
+      }
+    },
+    {
+      "device_id": "nav2_remote_view",
+      "kind": "human",
+      "location": "remote",
+      "match": {
+        "node": "/bt_navigator",
+        "host": "station-2.lab"
+      }
+    },
+    {
+      "device_id": "joy",
+      "kind": "human",
+      "location": "local",
+      "match": {
+        "node": "/joy",
+        "topic": "/cmd_vel"
+      }
+    },
+    {
+      "device_id": "joy_copy",
+      "kind": "human",
+      "location": "remote",
+      "match": {
+        "topic": "/cmd_vel",
+        "node": "/joy"
+      }
+    },
+    {
+      "device_id": "joy_other_topic",
+      "kind": "human",
+      "location": "local",
+      "match": {
+        "node": "/joy",
+        "topic": "/cmd_vel_safe"
+      }
+    }
+  ]
+}
