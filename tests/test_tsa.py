@@ -14,6 +14,7 @@ import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
@@ -37,36 +38,65 @@ pytestmark = pytest.mark.filterwarnings("ignore::pytest.PytestUnraisableExceptio
 _HANG_SECONDS = 0.5
 _CLIENT_TIMEOUT = 0.15
 
-# A request's response script step is one of: bytes (200 OK with that body), b"" (drop the
-# connection at once, a fast simulated failure), or None (hang past the client's timeout).
+# A request's response script step is one of: bytes (200 OK with that body), _DROP (drop the
+# connection at once, a fast simulated failure), None (hang past the client's timeout),
+# _Redirect (answer 302) or _Drip (send the body one byte at a time).
 _DROP = b""
 
 
+class _Redirect:
+    pass
+
+
+class _Drip:
+    def __init__(self, body: bytes, interval_s: float) -> None:
+        self.body = body
+        self.interval_s = interval_s
+
+
 class _Handler(http.server.BaseHTTPRequestHandler):
-    script: ClassVar[list[bytes | None]] = []
+    script: ClassVar[list[object]] = []
+    requests: ClassVar[int] = 0
 
     def log_message(self, *args: object) -> None:  # quiet test output
         pass
 
     def do_POST(self) -> None:
+        _Handler.requests += 1
         length = int(self.headers.get("Content-Length", "0"))
         self.rfile.read(length)
         step = _Handler.script.pop(0) if _Handler.script else b"ok"
         if step is None:
             time.sleep(_HANG_SECONDS)
-            return
-        if step == _DROP:
+        elif step == _DROP:
             self.close_connection = True
-            return
+        elif isinstance(step, _Redirect):
+            self.send_response(302)
+            self.send_header("Location", "http://127.0.0.1:1/elsewhere")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        elif isinstance(step, _Drip):
+            self._send_headers(len(step.body))
+            for byte in step.body:
+                self.wfile.write(bytes([byte]))
+                self.wfile.flush()
+                time.sleep(step.interval_s)
+        else:
+            body = step if isinstance(step, bytes) else b""
+            self._send_headers(len(body))
+            self.wfile.write(body)
+
+    def _send_headers(self, length: int) -> None:
         self.send_response(200)
         self.send_header("Content-Type", "application/timestamp-reply")
+        self.send_header("Content-Length", str(length))
         self.end_headers()
-        self.wfile.write(step)
 
 
 @pytest.fixture
 def server() -> Iterator[str]:
     _Handler.script = []
+    _Handler.requests = 0
     httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     httpd.daemon_threads = True
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -113,9 +143,65 @@ def test_post_with_retries_raises_after_exhausting_attempts(server: str) -> None
     time.sleep(_HANG_SECONDS)  # let the hung handler threads finish before the next test runs
 
 
-def test_request_timestamp_refuses_disallowed_scheme() -> None:
+def test_post_once_enforces_a_total_deadline_on_a_slow_drip(server: str) -> None:
+    _Handler.script = [_Drip(b"x" * 40, 0.05)]  # 2 s in total, each byte well inside the timeout
+    started = time.monotonic()
+    with pytest.raises(TimeoutError, match=r"no complete response within 0\.3 s"):
+        tsa._post_once(server, b"request body", timeout=1.0, deadline_s=0.3)
+    assert time.monotonic() - started < 1.5
+    time.sleep(2.2)  # let the dripping handler thread finish before the next test runs
+
+
+def test_request_timestamp_refuses_a_scheme_other_than_http_or_https(server: str) -> None:
+    url = server.replace("http://", "ftp://")
     with pytest.raises(tsa.TsaError, match="only http"):
-        tsa.request_timestamp(b"note", "ftp://example.invalid/tsr", [])
+        tsa.request_timestamp(b"note", url, [])
+    assert _Handler.requests == 0
+
+
+def test_request_timestamp_refuses_a_redirect(server: str) -> None:
+    _Handler.script = [_Redirect()]
+    with pytest.raises(tsa.TsaError, match=r"redirect \(HTTP 302\); refused"):
+        tsa.request_timestamp(b"note", server, [])
+    assert _Handler.requests == 1  # refused at once, not retried
+
+
+def test_request_timestamp_refuses_a_replayed_response(server: str, golden_tsr: bytes) -> None:
+    _Handler.script = [golden_tsr]  # a real token, but for another request: the nonce differs
+    with pytest.raises(tsa.TsaError, match="wrong nonce"):
+        tsa.request_timestamp(b"note", server, [])
+
+
+def test_request_timestamp_refuses_an_undecodable_response(server: str) -> None:
+    _Handler.script = [b"not a timestamp response"]
+    with pytest.raises(tsa.TsaError, match="cannot be decoded"):
+        tsa.request_timestamp(b"note", server, [])
+
+
+def test_check_imprint_accepts_the_matching_sha256(golden_tsr: bytes) -> None:
+    assert tsa.check_imprint(golden_tsr, GOLDEN_NOTE_SHA256) is None
+
+
+def test_check_imprint_rejects_another_sha256(golden_tsr: bytes) -> None:
+    assert tsa.check_imprint(golden_tsr, "0" * 64) == (
+        "timestamp token's message imprint is not its note_sha256"
+    )
+
+
+def test_check_imprint_rejects_an_undecodable_token() -> None:
+    assert (tsa.check_imprint(b"junk", "0" * 64) or "").startswith("timestamp token cannot be")
+
+
+def test_check_imprint_rejects_a_non_sha256_imprint(
+    golden_tsr: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sha512 = x509.ObjectIdentifier("2.16.840.1.101.3.4.2.3")
+    imprint = SimpleNamespace(hash_algorithm=sha512, message=bytes(64))
+    fake = SimpleNamespace(tst_info=SimpleNamespace(message_imprint=imprint))
+    monkeypatch.setattr(tsa.rfc3161, "decode_timestamp_response", lambda _data: fake)
+    assert tsa.check_imprint(golden_tsr, "0" * 64) == (
+        "timestamp token's message imprint is not SHA-256"
+    )
 
 
 # --- Verification against a real, recorded FreeTSA response --------------------------------------

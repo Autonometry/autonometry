@@ -1,337 +1,488 @@
-"""Tests for autonometry.verify (definitions.md v0.2 section 10.6) against the golden sealed log
-and the attacks of research/demo-prototypes/seal.py.
-"""
+"""Tests for autonometry.verify (definitions.md v0.2 section 10.6) on the golden sealed log, its
+attacks (research/demo-prototypes/seal.py) and every evidence, gap and file code."""
 
 import copy
 import hashlib
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
+import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from autonometry.events import Event, LogCheck, Session, SessionVerdict
+from autonometry import verify
+from autonometry.events import Event, LineError, Session, SessionVerdict, VerifyResult
 from autonometry.reader import read_logs
-from autonometry.sealfile import CheckpointLine, SealRecord, TimestampLine
-from autonometry.signednote import format_vkey, parse_vkey
-from autonometry.spec import load_rules
+from autonometry.signednote import checkpoint_body, format_vkey, parse_vkey, sign_note
+from autonometry.spec import Rules, SpecError, load_rules
+from autonometry.timestamps import seconds_to_ns
 from autonometry.tsa import load_tsa_roots
-from autonometry.verify import verify_log
-from sealing_helpers import KEY_NAME, SEED_KEY, checkpoint_records, resealed_sessions, seal_sessions
+from autonometry.verify import timestamp_window, verify_log
+from sealing_helpers import KEY_NAME, SEED_KEY, log_check_of, note_sha256, seal_file, seal_sessions
 
 GOLDEN_LOG = Path(__file__).parent / "golden" / "sealed" / "log.jsonl"
 TSA_FIXTURES = Path(__file__).parent / "fixtures" / "tsa"
 RULES = load_rules("0.2")
 TRUSTED_KEYS = [parse_vkey(format_vkey(KEY_NAME, SEED_KEY.public_key().public_bytes_raw()))]
 GOLDEN = read_logs([GOLDEN_LOG], "0.2")
+SEALED, NOTES = seal_sessions(GOLDEN.sessions)
+S2_FINAL = next(n for n in NOTES if n.startswith("autonometry/r1/s2\n3\n"))
+S1_FINAL = next(n for n in NOTES if n.startswith("autonometry/r1/s1\n4\n"))
+TSR = (TSA_FIXTURES / "golden_checkpoint.tsr").read_bytes()
+TSA_ROOTS = load_tsa_roots((TSA_FIXTURES / "freetsa_root.pem").read_bytes())
 
 
-def _seal_golden() -> tuple[list[Event], list[str]]:
-    return seal_sessions(GOLDEN.sessions)
-
-
-def _verify(
-    sealed_events: list[Event],
-    notes: list[str],
-    anchors: list[SealRecord] | None = None,
+def _run(  # noqa: PLR0913, PLR0917 -- every input of verify_log, each with a default
+    events: Sequence[Any] = SEALED,
+    notes: Sequence[str] | None = NOTES,
+    anchors: Sequence[str] | None = None,
+    stamps: Sequence[tuple[str, bytes]] = (),
+    keys: Sequence[Any] = TRUSTED_KEYS,
     roots: Sequence[x509.Certificate] = (),
-    checkpoints: list[SealRecord] | None = None,
-) -> dict[tuple[str, str], SessionVerdict]:
-    log_check = LogCheck("0.2", tuple(resealed_sessions(sealed_events)), (), (), GOLDEN.counts)
-    records = checkpoints if checkpoints is not None else checkpoint_records(notes)
-    result = verify_log(log_check, records, anchors or [], TRUSTED_KEYS, roots, RULES)
-    return {(v.robot_id, v.session_id): v for v in result.sessions}
+    rules: Rules = RULES,
+    errors: Sequence[LineError] = (),
+) -> VerifyResult:
+    checkpoint_files = [] if notes is None else [seal_file("log.checkpoints.jsonl", notes, stamps)]
+    anchor_files = [] if anchors is None else [seal_file("anchor.jsonl", anchors)]
+    return verify_log(
+        log_check_of(events, errors), checkpoint_files, anchor_files, keys, roots, rules
+    )
 
 
-def test_fully_sealed_without_any_anchor_is_unverified__defs_10_6() -> None:
-    """'No anchors': a valid, trusted, root-matching checkpoint with no anchor is a gap, not a
-    failure (definitions.md 10.5, 10.6 gap code not_anchored)."""
-    sealed_events, notes = _seal_golden()
-    by_key = _verify(sealed_events, notes)
-    for verdict in by_key.values():
+def _by_key(result: VerifyResult) -> dict[str, SessionVerdict]:
+    return {v.session_id: v for v in result.sessions}
+
+
+def _codes(verdict: SessionVerdict) -> set[str]:
+    return {i.code for i in verdict.evidence} | {i.code for i in verdict.gaps}
+
+
+def _raw(events: Sequence[Event]) -> list[dict[str, Any]]:
+    return [{k: v for k, v in e.items() if k not in ("hash", "prev_hash")} for e in events]
+
+
+def _resealed(raw: Sequence[dict[str, Any]]) -> tuple[list[Event], list[str]]:
+    sessions = [
+        Session(
+            "r1",
+            sid,
+            tuple(sorted((e for e in raw if e["session_id"] == sid), key=lambda e: e["seq"])),
+        )  # type: ignore[misc]
+        for sid in ("s1", "s2")
+        if any(e["session_id"] == sid for e in raw)
+    ]
+    return seal_sessions(sessions)
+
+
+# --- The three golden outcomes --------------------------------------------------------------
+
+
+def test_intact_log_with_anchor_file_is_verified__defs_10_6() -> None:
+    result = _run(anchors=NOTES)
+    assert result.verified("L2")
+    for verdict in result.sessions:
+        assert verdict.status == "verified"
+        assert verdict.evidence == ()
+        assert verdict.gaps == ()
+    assert _by_key(result)["s1"].sealed_through_seq == 3
+
+
+def test_sealed_log_without_anchor_is_unverified_not_anchored__defs_10_5() -> None:
+    result = _run()
+    for verdict in result.sessions:
         assert verdict.status == "unverified"
         assert verdict.evidence == ()
-        assert any(g.code == "not_anchored" for g in verdict.gaps)
+        assert _codes(verdict) == {"not_anchored"}
+    assert result.reasons("L2") == ["r1/s1 unverified, below L2", "r1/s2 unverified, below L2"]
+    assert result.verified("L1")
 
 
-def test_fully_sealed_with_anchor_file_is_verified__defs_10_6() -> None:
-    """'Intact': every checkpoint anchored by a copy held outside the log (definitions.md
-    10.5(b))."""
-    sealed_events, notes = _seal_golden()
-    by_key = _verify(sealed_events, notes, anchors=checkpoint_records(notes))
-    for (robot_id, session_id), verdict in by_key.items():
-        assert verdict.status == "verified", verdict
-        assert verdict.evidence == ()
-        last_seq = max(
-            e["seq"]
-            for e in sealed_events
-            if (e["robot_id"], e["session_id"]) == (robot_id, session_id)
-        )
-        assert verdict.sealed_through_seq == last_seq
+def test_valid_anchor_alone_counts_as_anchored_checkpoint__defs_10_6() -> None:
+    result = _run(notes=None, anchors=NOTES)
+    assert {v.status for v in result.sessions} == {"verified"}
 
 
-def test_fully_sealed_with_real_tsa_timestamp_is_verified__defs_10_5() -> None:
-    """A real RFC 3161 token, recorded once from FreeTSA, anchors session s2 (definitions.md
-    10.5(a))."""
-    sealed_events, notes = _seal_golden()
-    s2_note = next(n for n in notes if n.startswith("autonometry/r1/s2\n3\n"))
-    note_sha256 = hashlib.sha256(s2_note.encode("utf-8")).hexdigest()
-    assert note_sha256 == "10a64865168cb368b725f406a6ec1985ab1971f969afc3262927e6177996a372", (
-        "the golden log or sealing code changed: the committed TSA fixture no longer matches; "
-        "see tests/fixtures/tsa/README.md"
-    )
-    tsr = (TSA_FIXTURES / "golden_checkpoint.tsr").read_bytes()
-    roots = load_tsa_roots((TSA_FIXTURES / "freetsa_root.pem").read_bytes())
-    records: list[SealRecord] = [*checkpoint_records(notes), TimestampLine(note_sha256, tsr)]
-    by_key = _verify(sealed_events, notes, checkpoints=records, roots=roots)
-    assert by_key[("r1", "s2")].status == "verified"
-    assert by_key[("r1", "s1")].status == "unverified"  # s1's checkpoints are still unanchored
+def test_sealed_events_after_last_checkpoint_are_partial__defs_10_6() -> None:
+    covered = [n for n in NOTES if n != S2_FINAL]
+    verdict = _by_key(_run(notes=covered, anchors=covered))["s2"]
+    assert verdict.status == "partial"
+    assert verdict.sealed_through_seq == 0
+    assert _codes(verdict) == {"no_checkpoint"}
 
 
-def test_unsealed_tail_is_partial__defs_10_6() -> None:
-    """A session still being recorded: a sealed prefix, then an unsealed tail."""
-
-    s1, s2 = GOLDEN.sessions
-    s2_sealed_events, s2_notes = seal_sessions(
-        [Session(s2.robot_id, s2.session_id, s2.events[:-1])]
-    )
-    tail = dict(s2.events[-1])
-    s1_sealed_events, s1_notes = seal_sessions([s1])
-    sealed_events = [*s1_sealed_events, *s2_sealed_events, tail]
-    notes = s1_notes + s2_notes
-
-    by_key = _verify(sealed_events, notes, anchors=checkpoint_records(notes))
-    assert by_key[("r1", "s1")].status == "verified"
-    s2_verdict = by_key[("r1", "s2")]
-    assert s2_verdict.status == "partial"
-    assert s2_verdict.sealed_through_seq == s2.events[-2]["seq"]
-    assert any(g.code == "no_checkpoint" for g in s2_verdict.gaps)
+def test_real_tsa_timestamp_anchors_its_checkpoint__defs_10_5() -> None:
+    by_key = _by_key(_run(stamps=[(note_sha256(S2_FINAL), TSR)], roots=TSA_ROOTS))
+    assert by_key["s2"].status == "verified"
+    assert by_key["s1"].status == "unverified"
 
 
-# --- Attacks (research/demo-prototypes/seal.py; none may end "verified") -------------------------
+# --- Review findings B1: anchors catch deletion --------------------------------------------
 
 
-def test_attack_edit_without_rehashing__hash_mismatch() -> None:
-    sealed_events, notes = _seal_golden()
-    edited = copy.deepcopy(sealed_events)
-    i = next(i for i, e in enumerate(edited) if e.get("state") == "human_remote")
-    edited[i]["state"] = "ai"  # type: ignore[index]
-    by_key = _verify(edited, notes, anchors=checkpoint_records(notes))
-    assert by_key[("r1", "s1")].status != "verified"
-    assert any(e.code == "hash_mismatch" for e in by_key[("r1", "s1")].evidence)
+def test_deleting_tail_and_its_checkpoint_fails_with_anchor__missing_events() -> None:
+    events = [e for e in SEALED if not (e["session_id"] == "s2" and e["seq"] == 2)]
+    notes = [n for n in NOTES if n != S2_FINAL]
+    verdict = _by_key(_run(events, notes=notes, anchors=NOTES))["s2"]
+    assert verdict.status == "failed"
+    assert "missing_events" in _codes(verdict)
 
 
-def _stripped_and_edited(sealed_events: list[Event]) -> tuple[list[dict], list[dict]]:
-    """Strip hash/prev_hash and flip the one human_remote transition to 'ai'."""
-    raw = [{k: v for k, v in e.items() if k not in ("hash", "prev_hash")} for e in sealed_events]
-    i = next(i for i, e in enumerate(raw) if e.get("state") == "human_remote")
-    raw[i]["state"] = "ai"
-    s1_raw = [e for e in raw if e["session_id"] == "s1"]
-    s2_raw = [e for e in raw if e["session_id"] == "s2"]
-    return s1_raw, s2_raw
+def test_deleting_a_session_and_its_checkpoints_fails_with_anchor__missing_events() -> None:
+    events = [e for e in SEALED if e["session_id"] != "s2"]
+    notes = [n for n in NOTES if "/s2\n" not in n]
+    verdict = _by_key(_run(events, notes=notes, anchors=NOTES))["s2"]
+    assert verdict.status == "failed"
+    assert "missing_events" in _codes(verdict)
 
 
-def test_attack_edit_and_rehash_the_chain__root_mismatch() -> None:
-
-    sealed_events, notes = _seal_golden()
-    s1_raw, s2_raw = _stripped_and_edited(sealed_events)
-    s1 = Session("r1", "s1", tuple(s1_raw))
-    s2 = Session("r1", "s2", tuple(s2_raw))
-    re_sealed, _ = seal_sessions([s1, s2])  # rehashed, but the OLD checkpoints/anchor are kept
-    by_key = _verify(re_sealed, notes, anchors=checkpoint_records(notes))
-    assert by_key[("r1", "s1")].status != "verified"
-    assert any(e.code == "root_mismatch" for e in by_key[("r1", "s1")].evidence)
+def test_stripping_hashes_and_checkpoints_fails_with_anchor__root_mismatch() -> None:
+    result = _run(_raw(SEALED), notes=None, anchors=NOTES)
+    for verdict in result.sessions:
+        assert verdict.status == "failed"
+        assert {i.code for i in verdict.evidence} == {"root_mismatch"}
 
 
-def test_attack_edit_rehash_and_resign__caught_only_by_the_anchor() -> None:
-    """Assert both outcomes: a fabricated-but-self-consistent log passes with no outside copy,
-    and is caught once an anchor (or timestamp) from before the attack exists."""
-
-    sealed_events, notes = _seal_golden()
-    s1_raw, s2_raw = _stripped_and_edited(sealed_events)
-    s1 = Session("r1", "s1", tuple(s1_raw))
-    s2 = Session("r1", "s2", tuple(s2_raw))
-    re_sealed, re_notes = seal_sessions([s1, s2])  # full re-fabrication, same key
-
-    # The attacker also re-anchors their fabrication (an anchor only helps when it predates the
-    # attack): L2 alone cannot then tell the fabrication from the original.
-    self_anchored = _verify(re_sealed, re_notes, anchors=checkpoint_records(re_notes))
-    assert self_anchored[("r1", "s1")].status == "verified"  # the documented limitation
-
-    with_anchor = _verify(re_sealed, re_notes, anchors=checkpoint_records(notes))
-    assert with_anchor[("r1", "s1")].status != "verified"
-    assert any(e.code == "root_mismatch" for e in with_anchor[("r1", "s1")].evidence)
+# --- B2: honest logs are not failed -----------------------------------------------------------
 
 
-def test_attack_truncate_after_a_checkpoint__missing_events() -> None:
-    sealed_events, notes = _seal_golden()
-    kept = [e for e in sealed_events if not (e["session_id"] == "s2" and e["seq"] >= 1)]
-    by_key = _verify(kept, notes, anchors=checkpoint_records(notes))
-    assert by_key[("r1", "s2")].status != "verified"
-    assert any(e.code == "missing_events" for e in by_key[("r1", "s2")].evidence)
+def test_unsealed_log_with_a_lost_line_is_only_unsealed__defs_10_6() -> None:
+    raw = [e for e in _raw(SEALED) if not (e["session_id"] == "s1" and e["seq"] == 1)]
+    lost = LineError("log.jsonl", 2, "invalid_json", "Expecting value at column 1")
+    result = _run(raw, notes=None, errors=[lost])
+    for verdict in result.sessions:
+        assert verdict.status == "unverified"
+        assert _codes(verdict) == {"unsealed"}
+    assert result.reasons("L1") == ["1 rejected line(s)"]
 
 
-def test_attack_delete_tail_add_session_end_and_resign__caught_only_by_the_anchor() -> None:
+def test_timestamped_log_without_vkey_is_unverified_not_failed__defs_10_6() -> None:
+    result = _run(stamps=[(note_sha256(S2_FINAL), TSR)], keys=[], roots=TSA_ROOTS)
+    assert result.file_problems == ()
+    for verdict in result.sessions:
+        assert verdict.status == "unverified"
+        assert _codes(verdict) == {"untrusted_checkpoint", "no_checkpoint"}
 
-    sealed_events, notes = _seal_golden()
-    raw = [
-        {k: v for k, v in e.items() if k not in ("hash", "prev_hash")}
-        for e in sealed_events
-        if not (e["session_id"] == "s2" and e["type"] == "session_end")
-    ]
+
+# --- B3: spec deviations ----------------------------------------------------------------------
+
+
+def test_undecodable_token_is_bad_timestamp_token__defs_10_6() -> None:
+    verdict = _by_key(_run(stamps=[(note_sha256(S2_FINAL), TSR[:40])], anchors=NOTES))["s2"]
+    assert verdict.status == "failed"
+    assert {i.code for i in verdict.evidence} == {"bad_timestamp_token"}
+
+
+def test_token_imprint_not_its_note_sha256_is_bad_timestamp_token__defs_10_6() -> None:
+    # The real token is over s2's note; tied by note_sha256 to s1's checkpoint instead.
+    by_key = _by_key(_run(stamps=[(note_sha256(S1_FINAL), TSR)], anchors=NOTES))
+    assert {i.code for i in by_key["s1"].evidence} == {"bad_timestamp_token"}
+    assert by_key["s2"].status == "verified"
+
+
+def test_token_not_verifying_against_trusted_roots_is_not_anchored__defs_10_5() -> None:
+    verdict = _by_key(_run(stamps=[(note_sha256(S2_FINAL), TSR)]))["s2"]
+    assert verdict.status == "unverified"
+    assert verdict.evidence == ()
+    assert _codes(verdict) == {"not_anchored"}
+    assert any("no trusted TSA root" in gap.detail for gap in verdict.gaps)
+
+
+def test_unsealed_events_after_sealed_ones_are_chain_break__defs_10_6() -> None:
+    events = [*SEALED[:-1], _raw(SEALED[-1:])[0]]
+    verdict = _by_key(_run(events, anchors=NOTES))["s2"]
+    assert verdict.status == "failed"
+    assert "chain_break" in {i.code for i in verdict.evidence}
+
+
+def test_note_with_lines_after_a_blank_line_is_malformed_checkpoint__defs_10_6() -> None:
+    body = checkpoint_body("r1", "s2", 3, bytes(32))
+    forged = sign_note(body + "\nextra line\n", KEY_NAME, SEED_KEY)  # body, blank, extra: signed
+    result = _run(notes=[*NOTES, forged], anchors=NOTES)
+    assert [p.code for p in result.file_problems] == ["malformed_checkpoint"]
+    assert result.file_problems[0].line == len(NOTES) + 1
+    assert {v.status for v in result.sessions} == {"verified"}
+    assert not result.verified("L2")
+    assert result.reasons("L2") == ["1 file problem(s)"]
+
+
+def test_unparseable_note_is_malformed_checkpoint__defs_10_6() -> None:
+    result = _run(notes=[*NOTES, "not a signed note at all"], anchors=NOTES)
+    assert [p.code for p in result.file_problems] == ["malformed_checkpoint"]
+
+
+def test_timestamp_matching_no_checkpoint_is_orphan_timestamp__defs_10_6() -> None:
+    result = _run(stamps=[("a" * 64, TSR)], anchors=NOTES)
+    assert [p.code for p in result.file_problems] == ["orphan_timestamp"]
+    assert {v.status for v in result.sessions} == {"verified"}
+    assert not result.verified("L2")
+
+
+def test_timestamp_for_a_malformed_checkpoint_is_not_an_orphan__defs_10_6() -> None:
+    result = _run(notes=[*NOTES, "garbage"], stamps=[(note_sha256("garbage"), b"x")], anchors=NOTES)
+    assert [p.code for p in result.file_problems] == ["malformed_checkpoint"]
+
+
+# --- Every other code -----------------------------------------------------------------------
+
+
+def test_edit_without_rehash__hash_mismatch() -> None:
+    edited = copy.deepcopy(SEALED)
+    edited[1]["state"] = "ai"  # type: ignore[typeddict-unknown-key]
+    verdict = _by_key(_run(edited, anchors=NOTES))["s1"]
+    assert verdict.status == "failed"
+    assert {"hash_mismatch", "root_mismatch"} <= {i.code for i in verdict.evidence}
+
+
+def test_edit_and_rehash_with_old_anchor__root_mismatch() -> None:
+    raw = _raw(SEALED)
+    raw[1]["state"] = "ai"
+    resealed, _ = _resealed(raw)
+    verdict = _by_key(_run(resealed, anchors=NOTES))["s1"]
+    assert verdict.status == "failed"
+    assert {i.code for i in verdict.evidence} == {"root_mismatch"}
+
+
+def test_edit_rehash_and_resign__caught_only_by_an_older_anchor() -> None:
+    """Both outcomes: a fabrication re-anchored by its author passes; an anchor made before it
+    catches it."""
+    raw = _raw(SEALED)
+    raw[1]["state"] = "ai"
+    resealed, new_notes = _resealed(raw)
+    assert _by_key(_run(resealed, new_notes, anchors=new_notes))["s1"].status == "verified"
+    assert _by_key(_run(resealed, new_notes, anchors=NOTES))["s1"].status == "failed"
+
+
+def test_delete_tail_add_session_end_and_resign__caught_only_by_an_older_anchor() -> None:
+    raw = [e for e in _raw(SEALED) if not (e["session_id"] == "s2" and e["seq"] == 2)]
     raw.append(
-        {
-            "robot_id": "r1",
-            "session_id": "s2",
-            "task_id": None,
-            "seq": 2,
-            "ts": "2026-11-03T15:02:10.000Z",
-            "type": "session_end",
-        }
-    )
-    s1 = Session("r1", "s1", tuple(e for e in raw if e["session_id"] == "s1"))
-    s2_raw = sorted((e for e in raw if e["session_id"] == "s2"), key=lambda e: e["seq"])
-    s2 = Session("r1", "s2", tuple(s2_raw))
-    re_sealed, re_notes = seal_sessions([s1, s2])
-
-    # As above: only an anchor from before the attack catches a fully re-fabricated session.
-    self_anchored = _verify(re_sealed, re_notes, anchors=checkpoint_records(re_notes))
-    assert self_anchored[("r1", "s2")].status == "verified"
-
-    with_anchor = _verify(re_sealed, re_notes, anchors=checkpoint_records(notes))
-    assert with_anchor[("r1", "s2")].status != "verified"
+        {"robot_id": "r1", "session_id": "s2", "task_id": None, "seq": 2,
+         "ts": "2026-11-03T15:02:10.000Z", "type": "session_end"}
+    )  # fmt: skip
+    resealed, new_notes = _resealed(raw)
+    assert _by_key(_run(resealed, new_notes, anchors=new_notes))["s2"].status == "verified"
+    assert _by_key(_run(resealed, new_notes, anchors=NOTES))["s2"].status == "failed"
 
 
-def test_attack_strip_all_hashes__unsealed() -> None:
-    sealed_events, _notes = _seal_golden()
-    stripped = [
-        {k: v for k, v in e.items() if k not in ("hash", "prev_hash")} for e in sealed_events
+def test_truncate_after_a_checkpoint__missing_events() -> None:
+    events = [e for e in SEALED if not (e["session_id"] == "s2" and e["seq"] >= 1)]
+    verdict = _by_key(_run(events, anchors=NOTES))["s2"]
+    assert verdict.status == "failed"
+    assert "missing_events" in _codes(verdict)
+
+
+def test_swap_two_events__chain_break() -> None:
+    swapped = copy.deepcopy(SEALED)
+    swapped[1]["seq"], swapped[2]["seq"] = 2, 1
+    verdict = _by_key(_run(swapped, anchors=NOTES))["s1"]
+    assert verdict.status == "failed"
+    assert "chain_break" in {i.code for i in verdict.evidence}
+
+
+def test_seq_jump__chain_break() -> None:
+    jumped = copy.deepcopy(SEALED)
+    jumped[3]["seq"] = 7
+    assert "chain_break" in _codes(_by_key(_run(jumped))["s1"])
+
+
+def test_replay_a_checkpoint_from_another_session_is_not_verified() -> None:
+    s2_notes = [n for n in NOTES if "/s2\n" in n]
+    verdict = _by_key(_run(notes=s2_notes, anchors=s2_notes))["s1"]
+    assert verdict.status == "unverified"
+    assert _codes(verdict) == {"no_checkpoint"}
+
+
+def test_tampered_trusted_signature__bad_signature() -> None:
+    # Past the first 8 base64 characters, which hold the 4-byte key ID: same key, bad signature.
+    at = S2_FINAL.rindex(" ") + 12
+    flipped = "A" if S2_FINAL[at] != "A" else "B"
+    tampered = S2_FINAL[:at] + flipped + S2_FINAL[at + 1 :]
+    notes = [tampered if n == S2_FINAL else n for n in NOTES]
+    verdict = _by_key(_run(notes=notes, anchors=NOTES))["s2"]
+    assert verdict.status == "failed"
+    assert {i.code for i in verdict.evidence} == {"bad_signature"}
+
+
+def test_checkpoint_from_an_unknown_key__untrusted_checkpoint() -> None:
+    other = Ed25519PrivateKey.generate()
+    _, foreign = seal_sessions(GOLDEN.sessions, key=other, key_name="someone/else")
+    verdict = _by_key(_run(notes=foreign))["s1"]
+    assert verdict.status == "unverified"
+    assert _codes(verdict) == {"untrusted_checkpoint", "no_checkpoint"}
+
+
+def test_reconstructed_events_are_capped_at_l1__reconstructed() -> None:
+    raw = _raw(SEALED)
+    for event in raw:
+        event["x_ts_reconstructed"] = True
+    resealed, new_notes = _resealed(raw)
+    for verdict in _run(resealed, new_notes, anchors=new_notes).sessions:
+        assert verdict.status == "unverified"
+        assert _codes(verdict) == {"reconstructed"}
+
+
+def test_late_token__late_anchor_end_to_end() -> None:
+    sealing = RULES.sealing.model_copy(update={"max_commit_delay_s": 1.0})
+    rules = RULES.model_copy(update={"sealing": sealing})
+    verdict = _by_key(_run(stamps=[(note_sha256(S2_FINAL), TSR)], roots=TSA_ROOTS, rules=rules))[
+        "s2"
     ]
-    # A session that was never sealed also never had a legitimate checkpoint.
-    by_key = _verify(stripped, [])
-    for verdict in by_key.values():
-        assert verdict.status != "verified"
-        assert verdict.evidence == ()
-        assert any(g.code == "unsealed" for g in verdict.gaps)
+    assert verdict.status == "unverified"
+    assert _codes(verdict) == {"late_anchor", "not_anchored"}
 
 
-def test_attack_delete_a_whole_session__missing_events() -> None:
-    sealed_events, notes = _seal_golden()
-    remaining = [e for e in sealed_events if e["session_id"] != "s2"]
-    by_key = _verify(remaining, notes, anchors=checkpoint_records(notes))
-    assert by_key[("r1", "s2")].status == "failed"
-    assert any(e.code == "missing_events" for e in by_key[("r1", "s2")].evidence)
+def test_early_token__clock_skew_end_to_end(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(verify, "timestamp_window", lambda *_: "early")
+    verdict = _by_key(_run(stamps=[(note_sha256(S2_FINAL), TSR)], roots=TSA_ROOTS))["s2"]
+    assert _codes(verdict) == {"clock_skew", "not_anchored"}
 
 
-def test_attack_swap_two_events__chain_break() -> None:
-    # Swap only the seq labels (not the hash-chained content): reordering by seq then puts each
-    # event's content where its stored prev_hash/hash no longer matches its new neighbours.
-    sealed_events, notes = _seal_golden()
-    swapped = copy.deepcopy(sealed_events)
-    i = next(i for i, e in enumerate(swapped) if e["session_id"] == "s1" and e["seq"] == 1)
-    j = next(j for j, e in enumerate(swapped) if e["session_id"] == "s1" and e["seq"] == 2)
-    swapped[i]["seq"], swapped[j]["seq"] = swapped[j]["seq"], swapped[i]["seq"]
-    by_key = _verify(swapped, notes, anchors=checkpoint_records(notes))
-    assert by_key[("r1", "s1")].status != "verified"
+def test_session_absent_from_log_with_no_checkpoint_is_unsealed() -> None:
+    zero = sign_note(
+        checkpoint_body("r1", "s9", 0, hashlib.sha256(b"").digest()), KEY_NAME, SEED_KEY
+    )
+    verdict = _by_key(_run(notes=[*NOTES, zero], anchors=NOTES))["s9"]
+    assert verdict.status == "unverified"
+    assert _codes(verdict) == {"unsealed"}
 
 
-def test_attack_replay_a_checkpoint_from_another_session() -> None:
-    sealed_events, notes = _seal_golden()
-    s2_notes = [n for n in notes if n.startswith("autonometry/r1/s2\n")]
-    by_key = _verify(sealed_events, s2_notes, anchors=checkpoint_records(s2_notes))
-    assert by_key[("r1", "s1")].status != "verified"
+def test_size_zero_checkpoint_matches_the_empty_tree_and_covers_nothing() -> None:
+    zero = sign_note(
+        checkpoint_body("r1", "s1", 0, hashlib.sha256(b"").digest()), KEY_NAME, SEED_KEY
+    )
+    result = _run(notes=[*NOTES, zero], anchors=[*NOTES, zero])
+    assert {v.status for v in result.sessions} == {"verified"}
+    assert all(v.gaps == () for v in result.sessions)
 
 
-# --- Property tests --------------------------------------------------------------------------
+def _heartbeats(n: int, session_id: str = "sX") -> tuple[dict[str, Any], ...]:
+    return tuple(
+        {"robot_id": "r1", "session_id": session_id, "task_id": None, "seq": i,
+         "ts": f"2026-01-01T00:00:{i:02d}.000Z", "type": "heartbeat"}
+        for i in range(n)
+    )  # fmt: skip
+
+
+def test_repeated_codes_list_five_details_and_count_the_rest() -> None:
+    sealed, notes = seal_sessions([Session("r1", "sX", _heartbeats(8))])  # type: ignore[arg-type]
+    for event in sealed:
+        event["type"] = "help_request"
+    issues = [i for i in _run(sealed, notes).sessions[0].evidence if i.code == "hash_mismatch"]
+    assert len(issues) == 5
+    assert issues[-1].detail.endswith("(and 3 more)")
+
+
+def test_rejected_lines_of_seal_files_make_the_result_not_verified() -> None:
+    bad = LineError("anchor.jsonl", 9, "invalid_json", "Expecting value at column 1")
+    files = [seal_file("anchor.jsonl", NOTES, errors=[bad])]
+    result = verify_log(log_check_of(SEALED), [], files, TRUSTED_KEYS, [], RULES)
+    assert {v.status for v in result.sessions} == {"verified"}
+    assert result.rejected_lines == (bad,)
+    assert result.reasons("L2") == ["1 rejected line(s)"]
+    assert result.to_json("L2")["verified"] is False
+
+
+def test_empty_log_is_not_verified() -> None:
+    assert _run([], notes=None).reasons("L1") == ["no session to verify"]
+
+
+def test_file_problems_are_listed_up_to_the_limit_and_counted_exactly() -> None:
+    errors = RULES.errors.model_copy(update={"list_max_per_code": 2})
+    rules = RULES.model_copy(update={"errors": errors})
+    result = _run(stamps=[("a" * 64, b"x")] * 3, anchors=NOTES, rules=rules)
+    assert len(result.file_problems) == 2
+    assert result.file_problems_by_code == {"orphan_timestamp": 3}
+
+
+def test_spec_with_different_sealing_codes_is_refused() -> None:
+    sealing = RULES.sealing.model_copy(update={"gap_codes": ("unsealed",)})
+    with pytest.raises(SpecError, match="gap_codes differ"):
+        _run(rules=RULES.model_copy(update={"sealing": sealing}))
+
+
+def test_json_summary_carries_verdict_rejects_and_problems() -> None:
+    payload = _run(stamps=[("a" * 64, b"x")], anchors=NOTES).to_json("L2")
+    assert payload["verified"] is False
+    assert payload["reasons"] == ["1 file problem(s)"]
+    assert payload["file_problems"][0]["code"] == "orphan_timestamp"
+    assert payload["counts"]["file_problems_by_code"] == {"orphan_timestamp": 1}
+    assert [s["status"] for s in payload["sessions"]] == ["verified", "verified"]
+
+
+# --- The 10.5 window ---------------------------------------------------------------------------
+
+LAST = seconds_to_ns(1_000_000.0)
+
+
+@pytest.mark.parametrize(
+    ("offset_s", "expected"),
+    [
+        (0.0, "inside"),
+        (3600.0, "inside"),
+        (3600.001, "late"),
+        (-1.0, "inside"),
+        (-1.001, "early"),
+    ],
+)
+def test_timestamp_window__defs_10_5(offset_s: float, expected: str) -> None:
+    assert timestamp_window(LAST + seconds_to_ns(offset_s), LAST, 3600.0, 1.0) == expected
+
+
+# --- Properties ------------------------------------------------------------------------------
 
 
 @given(st.integers(min_value=1, max_value=6))
-@settings(
-    max_examples=15, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
-)
+@settings(max_examples=15, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 def test_seal_then_verify_with_anchor_is_always_verified__defs_10_6(n: int) -> None:
-
     key = Ed25519PrivateKey.generate()
-    key_name = "autonometry/prop-test"
     events = tuple(
-        {
-            "robot_id": "r1",
-            "session_id": "sX",
-            "task_id": None,
-            "seq": i,
-            "ts": f"2026-01-01T00:00:{i:02d}.000Z",
-            "type": "session_start" if i == 0 else ("session_end" if i == n - 1 else "heartbeat"),
-            **(
-                {
-                    "scopes": ["whole_robot"],
-                    "initial_states": {"whole_robot": "ai"},
-                    "heartbeat_interval_s": 1.0,
-                    "hint_policy": "hint_as_shared",
-                    "task_registry_hash": "0" * 64,
-                    "plan_hash": "0" * 64,
-                }
-                if i == 0
-                else {}
-            ),
-        }
+        {"robot_id": "r1", "session_id": "sX", "task_id": None, "seq": i,
+         "ts": f"2026-01-01T00:00:{i:02d}.000Z", "type": "heartbeat"}
         for i in range(n)
-    )
-    session = Session("r1", "sX", events)
-    sealed_events, notes = seal_sessions([session], key=key, key_name=key_name)
-    keys = [parse_vkey(format_vkey(key_name, key.public_key().public_bytes_raw()))]
-    log_check = LogCheck("0.2", tuple(resealed_sessions(sealed_events)), (), (), GOLDEN.counts)
-    result = verify_log(
-        log_check, checkpoint_records(notes), checkpoint_records(notes), keys, [], RULES
-    )
-    assert len(result.sessions) == 1
-    assert result.sessions[0].status == "verified"
+    )  # fmt: skip
+    sealed, notes = seal_sessions([Session("r1", "sX", events)], key=key, key_name="k/p")  # type: ignore[arg-type]
+    keys = [parse_vkey(format_vkey("k/p", key.public_key().public_bytes_raw()))]
+    result = _run(sealed, notes, anchors=notes, keys=keys)
+    assert result.verified("L2")
 
 
-def _mutate(
-    events: list[Event], notes: list[str], rng_choice: int
-) -> tuple[list[Event], list[str]]:
-    """Apply one of a few structural mutations, chosen by ``rng_choice % 4``."""
-    choice = rng_choice % 4
-    events = copy.deepcopy(events)
-    notes = list(notes)
-    if choice == 0 and events:
-        events[0]["hash"] = "0" * 64  # type: ignore[index]
-    elif choice == 1 and len(events) > 1:
-        events.pop()
-    elif choice == 2 and notes:
-        # Flip a character in the last (full-coverage) checkpoint's signature: still parseable,
-        # still the same trusted key name and ID, but the signature itself no longer verifies.
-        last = notes[-1]
-        sig_start = last.rindex(" ") + 1
-        flipped = "A" if last[sig_start] != "A" else "B"
-        notes[-1] = last[:sig_start] + flipped + last[sig_start + 1 :]
-    elif choice == 3 and events:
-        events[-1]["seq"] = events[-1]["seq"] + 5  # type: ignore[index]
-    return events, notes
+def _mutate(choice: int) -> tuple[list[Any], list[str], list[str]]:
+    """One mutation of the sealed log, its checkpoint file or its anchor file."""
+    events: list[Any] = copy.deepcopy(SEALED)
+    notes, anchors = list(NOTES), list(NOTES)
+    index = choice // 8 % len(events)
+    match choice % 8:
+        case 0:
+            events[index]["hash"] = "0" * 64
+        case 1:
+            del events[index]
+        case 2:
+            events[index]["ts"] = "2026-11-03T15:00:01.000Z"
+        case 3:
+            events[index]["seq"] += 50
+        case 4:
+            del events[index]["prev_hash"]
+        case 5:
+            notes[index % len(notes)] = notes[index % len(notes)].replace("\n", "\n\n", 1)
+        case 6:
+            anchors[index % len(anchors)] = anchors[index % len(anchors)][:-3] + "AA\n"
+        case _:
+            events[index]["x_note"] = "added"
+    return events, notes, anchors
 
 
-@given(st.integers(min_value=0, max_value=1000))
-@settings(
-    max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
-)
+@given(st.integers(min_value=0, max_value=10_000))
+@settings(max_examples=60, deadline=None)
 def test_any_single_mutation_is_never_verified__defs_10_6(choice: int) -> None:
-    sealed_events, notes = _seal_golden()
-    anchors = checkpoint_records(notes)
-    mutated_events, mutated_notes = _mutate(sealed_events, notes, choice)
-    by_key = _verify(mutated_events, mutated_notes, anchors=anchors)
-    # A mutation may target only one session; the log as a whole must never come back clean.
-    assert not all(v.status == "verified" for v in by_key.values())
+    events, notes, anchors = _mutate(choice)
+    assert not _run(events, notes, anchors=anchors).verified("L2")
 
 
-@given(st.binary(min_size=0, max_size=200))
-@settings(
-    max_examples=30, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
-)
-def test_random_bytes_as_checkpoint_note_never_crash(data: bytes) -> None:
-    sealed_events, notes = _seal_golden()
-    garbage_note = data.decode("utf-8", errors="replace")
-    records: list[SealRecord] = [*checkpoint_records(notes), CheckpointLine(garbage_note)]
-    by_key = _verify(sealed_events, [], anchors=records)
-    assert by_key  # must not raise
+@given(st.binary(max_size=300))
+@settings(max_examples=40, deadline=None)
+def test_random_bytes_in_checkpoint_and_anchor_files_never_crash(data: bytes) -> None:
+    garbage = data.decode("utf-8", errors="replace")
+    result = _run(notes=[*NOTES, garbage], stamps=[(garbage[:64], data)], anchors=[garbage])
+    assert len(result.sessions) >= 2

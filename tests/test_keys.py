@@ -29,13 +29,28 @@ def test_generate_then_load_round_trip(tmp_path: Path) -> None:
 
 
 @posix_only
-def test_generate_sets_private_permissions(tmp_path: Path) -> None:
-    out = tmp_path / "sub" / "robot.key"
+def test_generate_sets_key_0600_vkey_0644_and_created_folders_0700(tmp_path: Path) -> None:
+    out = tmp_path / "a" / "b" / "robot.key"
     keys.generate("autonometry/r1", out)
-    mode = stat.S_IMODE(out.stat().st_mode)
-    assert mode == 0o600
-    dir_mode = stat.S_IMODE(out.parent.stat().st_mode)
-    assert dir_mode == 0o700
+    assert stat.S_IMODE(out.stat().st_mode) == 0o600
+    assert stat.S_IMODE(out.with_name("robot.key.vkey").stat().st_mode) == 0o644
+    assert stat.S_IMODE((tmp_path / "a").stat().st_mode) == 0o700
+    assert stat.S_IMODE((tmp_path / "a" / "b").stat().st_mode) == 0o700
+
+
+@posix_only
+def test_generate_never_changes_an_existing_folder(tmp_path: Path) -> None:
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    shared.chmod(0o755)
+    keys.generate("autonometry/r1", shared / "robot.key")
+    assert stat.S_IMODE(shared.stat().st_mode) == 0o755
+
+
+def test_generate_creates_missing_folders(tmp_path: Path) -> None:
+    out = tmp_path / "x" / "y" / "robot.key"
+    keys.generate("autonometry/r1", out)
+    assert out.exists()
 
 
 def test_generate_never_overwrites(tmp_path: Path) -> None:

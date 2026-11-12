@@ -16,6 +16,8 @@ from autonometry.signednote import (
     is_valid_key_name,
     key_id,
     parse_checkpoint_body,
+    parse_note,
+    parse_signed_checkpoint,
     parse_vkey,
     sign_note,
     verify_note,
@@ -164,3 +166,72 @@ def test_verify_note_requires_trailing_newline() -> None:
     vkey = parse_vkey(format_vkey("robot/r1", public_key))
     with pytest.raises(SignedNoteError, match="newline"):
         verify_note("no blank line or signature", [vkey])
+
+
+# --- Parse errors: every malformed input is a one-line SignedNoteError ---------------------
+
+_KEY = Ed25519PrivateKey.generate()
+_VKEY_BODY = base64.b64encode(b"\x01" + _KEY.public_key().public_bytes_raw()).decode()
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        (f"bad name+deadbeef+{_VKEY_BODY}", "vkey name"),
+        (f"a/b+DEADBEEF+{_VKEY_BODY}", "8 lower-case hex digits"),
+        ("a/b+deadbeef+!!!!", "not valid base64"),
+        ("a/b+deadbeef+AR==", "not canonical base64"),  # decodes to 0x01, re-encodes as AQ==
+    ],
+)
+def test_malformed_vkey_is_rejected__c2sp_signed_note(text: str, message: str) -> None:
+    with pytest.raises(SignedNoteError, match=message):
+        parse_vkey(text)
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("a\nb\n", "no blank line"),
+        ("\n— k AAAAAA==\n", "signed note text is empty"),
+        ("a\n\n", "no signature lines"),
+        ("a\n\nxx k AAAAAA==\n", "does not start with"),
+        ("a\n\n— k\n", "malformed signature line"),
+        ("a\n\n— k AAA=\n", "shorter than its 4-byte key id"),
+        ("a\n\n— k AAAAAB==\n", "not canonical base64"),
+        ("a\x1b\n\n— k AAAAAA==\n", "control character"),
+    ],
+)
+def test_malformed_note_is_rejected__c2sp_signed_note(text: str, message: str) -> None:
+    with pytest.raises(SignedNoteError, match=message):
+        parse_note(text)
+
+
+def test_sign_note_rejects_bad_key_name() -> None:
+    with pytest.raises(SignedNoteError, match="key name"):
+        sign_note("hello\n", "bad name", _KEY)
+
+
+def test_checkpoint_body_rejects_negative_size_and_short_root() -> None:
+    with pytest.raises(SignedNoteError, match="negative"):
+        checkpoint_body("r1", "s1", -1, bytes(32))
+    with pytest.raises(SignedNoteError, match="32 bytes"):
+        checkpoint_body("r1", "s1", 1, bytes(10))
+
+
+def test_parse_signed_checkpoint_reads_the_body_from_the_signed_text__defs_10_3() -> None:
+    note = sign_note(checkpoint_body("r1", "s1", 2, bytes(32)), "k/1", _KEY)
+    body, signed = parse_signed_checkpoint(note)
+    assert body == CheckpointBody("r1", "s1", 2, bytes(32))
+    assert signed.text == checkpoint_body("r1", "s1", 2, bytes(32))
+
+
+def test_parse_signed_checkpoint_rejects_lines_after_a_blank_line__defs_10_3() -> None:
+    body = checkpoint_body("r1", "s1", 2, bytes(32))
+    with pytest.raises(SignedNoteError, match="exactly 3"):
+        parse_signed_checkpoint(sign_note(body + "\nextra\n", "k/1", _KEY))
+
+
+def test_checkpoint_origin_must_use_safe_identifiers__defs_8() -> None:
+    root = base64.b64encode(bytes(32)).decode()
+    with pytest.raises(SignedNoteError, match="origin"):
+        parse_checkpoint_body(f"autonometry/r 1/s1\n1\n{root}\n")

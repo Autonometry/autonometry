@@ -269,6 +269,19 @@ def test_code_in_flags_and_errors_fails_consistency__defs_8(spec_copy: Path) -> 
         spec.check_consistency("0.2")
 
 
+def test_file_code_shared_with_a_gap_code_fails_consistency__defs_10_6(spec_copy: Path) -> None:
+    _edit_rules(spec_copy, '"orphan_timestamp"]', '"orphan_timestamp", "unsealed"]')
+    with pytest.raises(spec.SpecError, match="file_codes"):
+        spec.load_rules("0.2")
+
+
+def test_rules_sealing_table__defs_10() -> None:
+    sealing = spec.load_rules("0.2").sealing
+    assert sealing.checkpoint_every_events == 1000
+    assert sealing.max_commit_delay_s == 3600.0
+    assert sealing.file_codes == ("malformed_checkpoint", "orphan_timestamp")
+
+
 def test_known_version_normalises() -> None:
     assert spec.known_version("v0.2") == "0.2"
     with pytest.raises(spec.SpecError, match="unknown spec version"):

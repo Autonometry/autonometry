@@ -15,7 +15,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from autonometry.events import Counts, Event, LogCheck, Session
-from autonometry.sealfile import CheckpointLine
+from autonometry.sealfile import CheckpointLine, SealFile
 from autonometry.sealing import Checkpoint, Sealer
 from autonometry.signednote import checkpoint_body, format_vkey, parse_vkey, sign_note
 from autonometry.spec import load_rules
@@ -89,9 +89,10 @@ def _verify(sealed_events: list[Event], checkpoints: list[Checkpoint]) -> str:
         flags_by_code={},
     )
     log_check = LogCheck("0.2", (session,), (), (), counts)
-    records = [CheckpointLine(n) for n in notes]
+    records = tuple(CheckpointLine(i, n) for i, n in enumerate(notes, 1))
+    files = [SealFile("perf.checkpoints.jsonl", records, (), {})]
     trusted_keys = [parse_vkey(format_vkey(KEY_NAME, SEED_KEY.public_key().public_bytes_raw()))]
-    result = verify_log(log_check, records, records, trusted_keys, [], RULES)
+    result = verify_log(log_check, files, files, trusted_keys, [], RULES)
     return result.sessions[0].status
 
 

@@ -6,10 +6,12 @@ import shutil
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
+from typer.testing import CliRunner, Result
 
 from autonometry import cli, tsa
+from autonometry.sealfile import encode_timestamp_line
 from autonometry.signednote import parse_vkey
+from autonometry.spec import SpecError
 
 runner = CliRunner()
 GOLDEN_LOG = Path(__file__).parent / "golden" / "sealed" / "log.jsonl"
@@ -292,3 +294,123 @@ def test_key_name_fails_when_vkey_has_no_lines(key: Path) -> None:
     )
     assert result.exit_code == 1
     assert "no vkey line" in result.output
+
+
+@pytest.fixture
+def sealed(key: Path, golden_copy: Path, tmp_path: Path) -> tuple[Path, Path, Path]:
+    """A sealed golden log, its checkpoint file and a vkey file trusting its key."""
+    out = tmp_path / "sealed.jsonl"
+    result = runner.invoke(
+        cli.app, ["seal", str(golden_copy), "--key", str(key), "--out", str(out)]
+    )
+    assert result.exit_code == 0, result.output
+    vkeys = tmp_path / "trusted.vkeys"
+    vkeys.write_text(key.with_name("r1.key.vkey").read_text(encoding="utf-8"), encoding="utf-8")
+    return out, tmp_path / "sealed.checkpoints.jsonl", vkeys
+
+
+def _verify(*args: str) -> Result:
+    return runner.invoke(cli.app, ["verify", *args])
+
+
+def test_verify_text_ends_with_result_verified(sealed: tuple[Path, Path, Path]) -> None:
+    log, checkpoints, vkeys = sealed
+    result = _verify(str(log), "--vkey", str(vkeys), "--anchor", str(checkpoints))
+    assert result.exit_code == 0, result.output
+    assert result.output.strip().splitlines()[-1] == "result: verified"
+
+
+def test_verify_lists_rejected_lines_of_a_checkpoint_file(
+    sealed: tuple[Path, Path, Path], tmp_path: Path
+) -> None:
+    """Review finding B4: a malformed checkpoint-file line made verify print every session as
+    verified and exit 1 with no reason."""
+    log, checkpoints, vkeys = sealed
+    anchor = tmp_path / "anchor.jsonl"
+    anchor.write_bytes(checkpoints.read_bytes())
+    with checkpoints.open("ab") as handle:
+        handle.write(b"this line is not json\n")
+    result = _verify(str(log), "--vkey", str(vkeys), "--anchor", str(anchor))
+    assert result.exit_code == 1
+    lines = result.output.strip().splitlines()
+    assert "rejected lines:" in lines
+    assert "  invalid_json (1)" in lines
+    assert any(line.startswith(f"    {checkpoints}:5: ") for line in lines)
+    assert lines[-1] == "result: NOT verified: 1 rejected line(s)"
+
+
+def test_verify_lists_file_problems(sealed: tuple[Path, Path, Path], tmp_path: Path) -> None:
+    log, checkpoints, vkeys = sealed
+    anchor = tmp_path / "anchor.jsonl"
+    anchor.write_bytes(checkpoints.read_bytes())
+    with checkpoints.open("ab") as handle:
+        handle.write(encode_timestamp_line("a" * 64, b"x"))
+    result = _verify(str(log), "--vkey", str(vkeys), "--anchor", str(anchor))
+    assert result.exit_code == 1
+    lines = result.output.strip().splitlines()
+    assert "file problems:" in lines
+    assert "  orphan_timestamp (1)" in lines
+    assert lines[-1] == "result: NOT verified: 1 file problem(s)"
+
+
+def test_verify_json_has_verified_rejected_lines_and_file_problems(
+    sealed: tuple[Path, Path, Path], tmp_path: Path
+) -> None:
+    log, checkpoints, vkeys = sealed
+    anchor = tmp_path / "anchor.jsonl"
+    anchor.write_bytes(checkpoints.read_bytes() + b"[1]\n")
+    with checkpoints.open("ab") as handle:
+        handle.write(encode_timestamp_line("a" * 64, b"x"))
+    result = _verify(str(log), "--vkey", str(vkeys), "--anchor", str(anchor), "--json")
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["verified"] is False
+    assert payload["require"] == "L2"
+    assert [e["code"] for e in payload["rejected_lines"]] == ["not_an_object"]
+    assert payload["rejected_lines"][0]["file"] == str(anchor)
+    assert [p["code"] for p in payload["file_problems"]] == ["orphan_timestamp"]
+    assert payload["reasons"] == ["1 rejected line(s)", "1 file problem(s)"]
+
+
+def test_verify_reports_failed_sessions_in_the_result_line(
+    sealed: tuple[Path, Path, Path], tmp_path: Path
+) -> None:
+    log, checkpoints, vkeys = sealed
+    anchor = tmp_path / "anchor.jsonl"
+    anchor.write_bytes(checkpoints.read_bytes())
+    lines = log.read_text(encoding="utf-8").splitlines()
+    log.write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")  # drop s2's last event
+    result = _verify(str(log), "--vkey", str(vkeys), "--anchor", str(anchor), "--require", "L1")
+    assert result.exit_code == 1
+    assert result.output.strip().splitlines()[-1] == "result: NOT verified: r1/s2 failed"
+
+
+def test_timestamp_refuses_a_checkpoint_file_with_rejected_lines(
+    sealed: tuple[Path, Path, Path], tmp_path: Path
+) -> None:
+    _, checkpoints, _ = sealed
+    with checkpoints.open("ab") as handle:
+        handle.write(b"not json\n")
+    root = tmp_path / "root.pem"
+    root.write_bytes((Path(__file__).parent / "fixtures" / "tsa" / "freetsa_root.pem").read_bytes())
+    result = runner.invoke(
+        cli.app,
+        ["timestamp", str(checkpoints), "--tsa-url", "https://example.invalid/tsr",
+         "--tsa-root", str(root)],
+    )  # fmt: skip
+    assert result.exit_code == 1
+    assert "1 rejected line(s); refusing" in result.output
+
+
+def test_verify_refuses_a_spec_with_different_sealing_codes(
+    sealed: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    log, _, _ = sealed
+
+    def refuse(*_args: object) -> None:
+        raise SpecError("spec 0.2: its [sealing] gap_codes differ")
+
+    monkeypatch.setattr("autonometry.verify.check_sealing_codes", refuse)
+    result = _verify(str(log))
+    assert result.exit_code == 1
+    assert "gap_codes differ" in result.output
