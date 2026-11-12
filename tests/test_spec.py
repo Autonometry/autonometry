@@ -187,6 +187,7 @@ def test_file_hashes_are_sha256_of_the_files() -> None:
     assert list(hashes) == [
         "checkpoint.schema.json",
         "definitions.md",
+        "device_registry.schema.json",
         "event.schema.json",
         "rules.toml",
     ]
@@ -286,3 +287,93 @@ def test_known_version_normalises() -> None:
     assert spec.known_version("v0.3") == "0.3"
     with pytest.raises(spec.SpecError, match="unknown spec version"):
         spec.known_version("9.9")
+
+
+def _session_start(**fields: Any) -> dict[str, Any]:
+    return {
+        "robot_id": "r01",
+        "session_id": "s01",
+        "task_id": None,
+        "seq": 0,
+        "ts": "2026-11-12T08:00:00.000Z",
+        "type": "session_start",
+        "scopes": ["whole_robot"],
+        "initial_states": {"whole_robot": "idle"},
+        "heartbeat_interval_s": 1.0,
+        "hint_policy": "hint_as_shared",
+        "task_registry_hash": "0" * 64,
+        "plan_hash": "0" * 64,
+        "simulated": False,
+    } | fields
+
+
+def _event(type_: str, **fields: Any) -> dict[str, Any]:
+    base = {"robot_id": "r01", "session_id": "s01", "task_id": None, "seq": 1}
+    return base | {"ts": "2026-11-12T08:00:01.000Z", "type": type_} | fields
+
+
+def _valid(event: dict[str, Any]) -> bool:
+    return spec.compile_schema("0.3", spec.load_schema("0.3")).is_valid(event)
+
+
+def test_session_start_requires_simulated__defs_8() -> None:
+    assert _valid(_session_start())
+    assert _valid(_session_start(simulated=True))
+    without = _session_start()
+    del without["simulated"]
+    assert not _valid(without)
+    assert not _valid(_session_start(simulated="no"))
+
+
+def test_unobserved_lists_unique_signal_classes__defs_8() -> None:
+    assert _valid(_session_start(unobserved=[]))
+    assert _valid(_session_start(unobserved=["safety_stops", "human_inputs", "tasks"]))
+    assert not _valid(_session_start(unobserved=["tasks", "tasks"]))
+    assert not _valid(_session_start(unobserved=["video"]))
+
+
+def test_heartbeat_clock_status__defs_8() -> None:
+    for source in ("ntp", "ptp", "gnss", "none", "unknown"):
+        assert _valid(_event("heartbeat", clock_source=source, clock_max_error_s=0.0))
+    assert not _valid(_event("heartbeat", clock_source="gps"))
+    assert not _valid(_event("heartbeat", clock_max_error_s=-0.1))
+
+
+def test_support_events__defs_6_15() -> None:
+    for type_ in ("support_start", "support_end"):
+        assert _valid(_event(type_))
+        assert _valid(_event(type_, scope="legs", device_id="gantry_hoist"))
+        assert not _valid(_event(type_, scope="bad scope"))
+
+
+def test_rules_v0_3_params_and_flags__defs_9() -> None:
+    rules = spec.load_rules("0.3")
+    assert rules.params.goal_release_s == 1.0
+    assert rules.params.contention_window_s == 1.0
+    assert {"clock_unsynced", "attribution_inferred"} <= set(rules.flags.codes)
+
+
+def test_person_started_states__defs_6_7_and_6_13() -> None:
+    rules = spec.load_rules("0.3")
+    assert rules.interventions.person_started_states == ("safety_stop", "scripted")
+
+
+def test_unknown_person_started_state_fails_consistency__defs_3(spec_copy: Path) -> None:
+    _edit_rules(
+        spec_copy,
+        'person_started_states = ["safety_stop", "scripted"]',
+        'person_started_states = ["estop", "scripted"]',
+    )
+    with pytest.raises(
+        spec.SpecConsistencyError,
+        match=r"interventions\.person_started_states names unknown state 'estop'",
+    ):
+        spec.check_consistency("0.3")
+
+
+def test_registry_schema_loads_as_draft_2020_12__defs_6_10(spec_copy: Path) -> None:
+    schema = spec.load_registry_schema("0.3")
+    assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+    (spec_copy / "device_registry.schema.json").write_text("[]", encoding="utf-8")
+    with pytest.raises(spec.SpecError, match=r"device_registry\.schema\.json of spec 0\.3"):
+        spec.load_registry_schema("0.3")
