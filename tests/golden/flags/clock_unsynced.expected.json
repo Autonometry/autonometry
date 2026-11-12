@@ -16,7 +16,7 @@
   "flags": [
     {
       "code": "clock_unsynced",
-      "detail": "2 of 4 heartbeat(s) without a synchronised clock (clock_source none, unknown or missing, or clock_max_error_s above 1 s)",
+      "detail": "2 of 4 heartbeat(s) without a synchronised clock (clock_source none, unknown or missing, or clock_max_error_s missing or above 1 s)",
       "robot_id": "r01",
       "seq": 2,
       "session_id": "s01"

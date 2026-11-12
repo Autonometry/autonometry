@@ -218,8 +218,8 @@ def test_clock_unsynced__defs_8() -> None:
     ) == [
         (
             2,
-            "2 of 4 heartbeat(s) without a synchronised clock "
-            "(clock_source none, unknown or missing, or clock_max_error_s above 1 s)",
+            "2 of 4 heartbeat(s) without a synchronised clock (clock_source none, unknown or "
+            "missing, or clock_max_error_s missing or above 1 s)",
         )
     ]
 
@@ -238,10 +238,18 @@ def test_clock_error_above_tolerance_is_unsynced__defs_8() -> None:
     assert _clock_flags(_event(1, 1, clock_max_error_s=tolerance + 0.001)) == [
         (
             1,
-            "1 of 1 heartbeat(s) without a synchronised clock "
-            "(clock_source none, unknown or missing, or clock_max_error_s above 1 s)",
+            "1 of 1 heartbeat(s) without a synchronised clock (clock_source none, unknown or "
+            "missing, or clock_max_error_s missing or above 1 s)",
         )
     ]
+
+
+def test_heartbeat_without_clock_error_is_unsynced__defs_8() -> None:
+    """A synchronised source without clock_max_error_s counts as unsynced, like a missing source."""
+    for source in ("ntp", "ptp", "gnss"):
+        bare = _event(1, 1, clock_source=source)
+        del bare["clock_max_error_s"]  # type: ignore[misc]
+        assert _clock_flags(bare)[0][0] == 1
 
 
 def test_heartbeat_without_clock_source_is_unknown__defs_8() -> None:

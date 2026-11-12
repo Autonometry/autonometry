@@ -4,6 +4,7 @@ Pure functions over validated events in ``seq`` order. A flag is a warning: the 
 later stages turn the problem into ``unknown`` time where the spec says so.
 """
 
+import math
 from collections.abc import Iterator, Mapping
 from itertools import pairwise
 from typing import Any, cast
@@ -74,8 +75,8 @@ def _marked(events: tuple[Event, ...]) -> Iterator[tuple[int, FlagCode, str]]:
 
 def _clock(events: tuple[Event, ...], tolerance_s: float) -> tuple[int, FlagCode, str] | None:
     """``clock_unsynced`` when any heartbeat reports ``clock_source`` ``none`` or ``unknown``,
-    reports none at all, or reports ``clock_max_error_s`` above ``tolerance_s`` seconds; also when
-    no heartbeat reports the clock (definitions.md 8, Time)."""
+    reports no source, or reports ``clock_max_error_s`` above ``tolerance_s`` seconds or not at
+    all; also when no heartbeat reports the clock (definitions.md 8, Time)."""
     heartbeats = [e for e in events if e["type"] == "heartbeat"]
     if not heartbeats:
         return events[0]["seq"], "clock_unsynced", "no heartbeat reports the clock status"
@@ -83,13 +84,14 @@ def _clock(events: tuple[Event, ...], tolerance_s: float) -> tuple[int, FlagCode
         e["seq"]
         for e in heartbeats
         if e.get("clock_source", "unknown") in _UNSYNCED_SOURCES
-        or e.get("clock_max_error_s", 0.0) > tolerance_s
+        or e.get("clock_max_error_s", math.inf) > tolerance_s
     ]
     if not unsynced:
         return None
     detail = (
         f"{len(unsynced)} of {len(heartbeats)} heartbeat(s) without a synchronised clock "
-        f"(clock_source none, unknown or missing, or clock_max_error_s above {tolerance_s:g} s)"
+        f"(clock_source none, unknown or missing, or clock_max_error_s missing or above "
+        f"{tolerance_s:g} s)"
     )
     return unsynced[0], "clock_unsynced", detail
 
