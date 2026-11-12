@@ -259,7 +259,7 @@ def test_delete_tail_add_session_end_and_resign__caught_only_by_an_older_anchor(
     raw = [e for e in _raw(SEALED) if not (e["session_id"] == "s2" and e["seq"] == 2)]
     raw.append(
         {"robot_id": "r1", "session_id": "s2", "task_id": None, "seq": 2,
-         "ts": "2026-11-03T15:02:10.000Z", "type": "session_end"}
+         "ts": "2026-11-12T07:52:10.000Z", "type": "session_end"}
     )  # fmt: skip
     resealed, new_notes = _resealed(raw)
     assert _by_key(_run(resealed, new_notes, anchors=new_notes))["s2"].status == "verified"
@@ -459,7 +459,7 @@ def _mutate(choice: int) -> tuple[list[Any], list[str], list[str]]:
         case 1:
             del events[index]
         case 2:
-            events[index]["ts"] = "2026-11-03T15:00:01.000Z"
+            events[index]["ts"] = "2026-11-12T07:50:01.000Z"
         case 3:
             events[index]["seq"] += 50
         case 4:

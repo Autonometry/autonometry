@@ -27,7 +27,7 @@ from sealing_helpers import KEY_NAME, SEED_KEY, seal_sessions
 
 FIXTURES = Path(__file__).parent / "fixtures" / "tsa"
 GOLDEN_LOG = Path(__file__).parent / "golden" / "sealed" / "log.jsonl"
-GOLDEN_NOTE_SHA256 = "10a64865168cb368b725f406a6ec1985ab1971f969afc3262927e6177996a372"
+GOLDEN_NOTE_SHA256 = "45cdf5b9e003a3c741ba60ccfa1899006fa4bebb8e2384c1d0282ebd0abd79ec"
 
 # A background HTTPServer thread can close its socket after a test has already moved on (seen
 # with dropped connections and the deliberate timeout below); pytest then attributes the resulting
@@ -233,7 +233,7 @@ def test_verify_token_against_real_freetsa_response(
 ) -> None:
     result = tsa.verify_token(golden_tsr, golden_note, freetsa_root)
     assert result.ok
-    assert result.gen_time == datetime(2026, 11, 3, 15, 11, 28, tzinfo=UTC)
+    assert result.gen_time == datetime(2026, 11, 12, 7, 55, 15, tzinfo=UTC)
 
 
 def test_verify_token_rejects_flipped_byte(
