@@ -4,7 +4,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from autonometry.timestamps import ns_to_seconds, seconds_to_ns, ts_to_ns
+from autonometry.timestamps import ns_to_seconds, ns_to_ts, seconds_to_ns, ts_to_ns
 
 
 def test_epoch_and_fraction_digits__defs_3() -> None:
@@ -83,3 +83,9 @@ def test_seconds_conversions() -> None:
     assert seconds_to_ns(3.0) == 3_000_000_000
     assert seconds_to_ns(0.1) == 100_000_000
     assert ns_to_seconds(1_500_000_000) == pytest.approx(1.5)
+
+
+def test_ns_to_ts_round_trips_with_nine_fraction_digits__defs_3() -> None:
+    assert ns_to_ts(0) == "1970-01-01T00:00:00.000000000Z"
+    assert ns_to_ts(1_794_470_400_123_456_789) == "2026-11-12T08:00:00.123456789Z"
+    assert ts_to_ns(ns_to_ts(1_794_470_400_123_456_789)) == 1_794_470_400_123_456_789

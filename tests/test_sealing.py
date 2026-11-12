@@ -154,3 +154,26 @@ def test_sealer_is_rebuildable_by_replaying_sealed_events__defs_10_3() -> None:
     assert rebuilt.size == sealer.size
     assert len(original_checkpoints) >= 2
     assert rebuilt_checkpoints == original_checkpoints
+
+
+def test_checkpoint_now_commits_every_event_so_far__defs_10_3() -> None:
+    sealer = Sealer("autonometry/chain-v1", "r1", "s1", 1000, 600.0)
+    assert sealer.checkpoint_now() is None
+    events = [
+        {
+            "robot_id": "r1",
+            "session_id": "s1",
+            "task_id": None,
+            "seq": seq,
+            "type": "heartbeat",
+            "ts": "2026-11-12T08:00:00.000Z",
+        }
+        for seq in range(3)
+    ]
+    hashes = [sealer.add(event)[0]["hash"] for event in events]
+    checkpoint = sealer.checkpoint_now()
+    assert checkpoint is not None
+    assert checkpoint.size == 3
+    assert checkpoint.root == root_of(leaf_hash(bytes.fromhex(h)) for h in hashes)
+    assert sealer.checkpoint_now() is None
+    assert sealer.finish() is None

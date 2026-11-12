@@ -11,6 +11,7 @@ from pathlib import Path
 
 PRIVATE_FILE_MODE = 0o600
 PUBLIC_FILE_MODE = 0o644
+PRIVATE_DIR_MODE = 0o700
 _POSIX = sys.platform != "win32"
 # Without O_BINARY, os.open on Windows translates "\n" into "\r\n".
 _BINARY = getattr(os, "O_BINARY", 0)
@@ -25,6 +26,22 @@ def fsync_directory(path: Path) -> None:
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def make_private_dirs(folder: Path) -> None:
+    """Create ``folder`` and any missing parents, each 0700, fsyncing each new entry into its
+    parent; existing folders are left as they are (changing, say, /tmp to 0700 would lock other
+    users out)."""
+    missing: list[Path] = []
+    current = folder
+    while not current.exists():
+        missing.append(current)
+        current = current.parent
+    for path in reversed(missing):
+        os.mkdir(path, PRIVATE_DIR_MODE)
+        if _POSIX:
+            os.chmod(path, PRIVATE_DIR_MODE)  # mkdir's mode is subject to umask.
+        fsync_directory(path.parent)
 
 
 def atomic_write(path: Path, data: bytes, mode: int = PRIVATE_FILE_MODE) -> None:

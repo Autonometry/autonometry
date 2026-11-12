@@ -44,7 +44,10 @@ class LogReadError(Exception):
     """A log file cannot be opened or read. The message is one line."""
 
 
-class _RejectedLineError(Exception):
+class RejectedEventError(Exception):
+    """A line or value is not one valid event; ``code`` is a ``rules.toml`` ``[errors]`` code and
+    ``message`` names the place, never the contents."""
+
     def __init__(self, code: ErrorCode, message: str) -> None:
         super().__init__(message)
         self.code: ErrorCode = code
@@ -246,7 +249,7 @@ class _Reader:
             else:
                 try:
                     self._keep(self._event(content))
-                except _RejectedLineError as exc:
+                except RejectedEventError as exc:
                     self._reject(name, number, exc.code, exc.message)
 
     def _reject(self, name: str, number: int, code: ErrorCode, message: str) -> None:
@@ -261,37 +264,19 @@ class _Reader:
         try:
             value = strictjson.parse(content.decode("utf-8"))
         except UnicodeDecodeError as exc:
-            raise _RejectedLineError(
+            raise RejectedEventError(
                 "invalid_utf8", f"byte {exc.start + 1} is not valid UTF-8"
             ) from None
         except strictjson.StrictJsonError as exc:
-            raise _RejectedLineError(cast(ErrorCode, exc.code), exc.message) from None
-        if not isinstance(value, dict):
-            raise _RejectedLineError(
-                "not_an_object", f"line is {_json_kind(value)}, not a JSON object"
-            )
-        problem = first_schema_error(self.spec.validator, value)
-        if problem is not None:
-            message = describe_schema_error(problem, self.spec.schema, self.spec.field_names)
-            raise _RejectedLineError("schema_violation", message)
-        for name in self.spec.integer_fields:
-            if isinstance(value.get(name), float):
-                message = f"/{name}: must be written as an integer"
-                raise _RejectedLineError("schema_violation", message)
-        try:
-            ts_to_ns(value["ts"])
-        except ValueError:
-            raise _RejectedLineError(
-                "invalid_timestamp", "ts is not a possible UTC date and time"
-            ) from None
-        return cast(Event, value)
+            raise RejectedEventError(cast(ErrorCode, exc.code), exc.message) from None
+        return _checked(value, self.spec)
 
     def _keep(self, event: Event) -> None:
         """Add the event to its session; a seq already used there is rejected."""
         events = self.sessions.setdefault((event["robot_id"], event["session_id"]), {})
         if event["seq"] in events:
             message = f"seq {event['seq']} is already used in this session"
-            raise _RejectedLineError("duplicate_seq", message)
+            raise RejectedEventError("duplicate_seq", message)
         previous = next(reversed(events.values()), None)
         events[event["seq"]] = self._shared(event, previous)
 
@@ -331,6 +316,41 @@ class _Reader:
             flags_by_code=_tally(f.code for f in flags),
         )
         return LogCheck(self.spec.rules.spec_version, sessions, tuple(errors), tuple(flags), counts)
+
+
+def _checked(value: Any, spec: _Spec) -> Event:
+    """Return an already parsed I-JSON value as a validated event (definitions.md 8): an object,
+    valid against the event schema, integer fields written as integers, a possible ``ts``."""
+    if not isinstance(value, dict):
+        raise RejectedEventError("not_an_object", f"line is {_json_kind(value)}, not a JSON object")
+    problem = first_schema_error(spec.validator, value)
+    if problem is not None:
+        message = describe_schema_error(problem, spec.schema, spec.field_names)
+        raise RejectedEventError("schema_violation", message)
+    for name in spec.integer_fields:
+        if isinstance(value.get(name), float):
+            raise RejectedEventError("schema_violation", f"/{name}: must be written as an integer")
+    try:
+        ts_to_ns(value["ts"])
+    except ValueError:
+        raise RejectedEventError(
+            "invalid_timestamp", "ts is not a possible UTC date and time"
+        ) from None
+    return cast(Event, value)
+
+
+def check_event(value: Any, spec_version: str) -> Event:
+    """Check one parsed I-JSON value exactly as :func:`read_logs` checks a line once parsed
+    (definitions.md 8): a JSON object valid against the event schema, integer fields written as
+    integers and a possible ``ts``. The recorder uses it so every event it writes passes
+    ``validate``.
+
+    Raises:
+        RejectedEventError: with code ``not_an_object``, ``schema_violation`` or
+            ``invalid_timestamp``.
+        SpecError: the spec version is unknown or unusable.
+    """
+    return _checked(value, _load_spec(spec_version))
 
 
 def _tally(codes: Iterable[str]) -> Mapping[str, int]:

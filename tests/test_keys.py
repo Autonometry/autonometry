@@ -131,3 +131,16 @@ def test_load_vkeys_skips_blanks_and_comments(tmp_path: Path) -> None:
 def test_load_vkeys_missing_file(tmp_path: Path) -> None:
     with pytest.raises(keys.SigningKeyError, match="cannot read"):
         keys.load_vkeys(tmp_path / "missing.vkey")
+
+
+def test_load_key_name_reads_the_vkey_beside_the_key(tmp_path: Path) -> None:
+    key = tmp_path / "r1.key"
+    keys.generate("autonometry/r1", key)
+    assert keys.load_key_name(key) == "autonometry/r1"
+    vkey = keys.vkey_path(key)
+    vkey.write_text("# only a comment\n", encoding="utf-8")
+    with pytest.raises(keys.SigningKeyError, match="has no vkey line"):
+        keys.load_key_name(key)
+    vkey.write_text("not a vkey\n", encoding="utf-8")
+    with pytest.raises(keys.SigningKeyError, match="vkey must have the form"):
+        keys.load_key_name(key)
