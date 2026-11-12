@@ -52,7 +52,7 @@
           "takeover": 2
         },
         "by_reason": {
-          "none": 2
+          "human_initiated": 2
         },
         "episodes": [
           {
@@ -62,7 +62,7 @@
             "human_s": 10.0,
             "intervention": 0,
             "kind": "takeover",
-            "reason": null,
+            "reason": "human_initiated",
             "scope": "whole_robot",
             "seq": 4,
             "start": "2026-11-12T08:00:10.000000000Z",
@@ -76,7 +76,7 @@
             "human_s": 10.0,
             "intervention": 1,
             "kind": "takeover",
-            "reason": null,
+            "reason": "human_initiated",
             "scope": "whole_robot",
             "seq": 6,
             "start": "2026-11-12T08:00:30.000000000Z",
@@ -89,7 +89,7 @@
           {
             "actor_id": "ai:policy",
             "kind": "takeover",
-            "reason": null,
+            "reason": "human_initiated",
             "scopes": [
               "whole_robot"
             ],
@@ -100,7 +100,7 @@
           {
             "actor_id": "ai:policy",
             "kind": "takeover",
-            "reason": null,
+            "reason": "human_initiated",
             "scopes": [
               "whole_robot"
             ],

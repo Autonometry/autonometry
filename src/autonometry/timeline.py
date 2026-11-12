@@ -22,15 +22,22 @@ How each rule is applied, in event (``seq``) order:
   (``undeclared_device``); an initial state in those states has no named source and is
   ``human_remote`` too.
 - Reasons (3): ``ai_requested_help`` without a ``help_request`` on the same scope within
-  ``help_latency_max_s`` and ``planned`` without its plan item become ``human_initiated``.
+  ``help_latency_max_s`` and ``planned`` without its plan item become ``human_initiated``, on
+  transitions, approvals and hints; a transition the registry makes human without a reason takes
+  ``human_initiated`` (6.10).
+- Approval waits (6.1): an ``ai_requested_help`` approval more than ``approval_wait_max_s`` after
+  the latest help request, with no transition or seq gap on its scope in between, turns the
+  scope's ``ai`` time since the request into ``shared`` (``approval_wait_recoded``).
 - Holds (6.8): ``idle`` while a task is open is ``unknown`` (``idle_in_task``).
-- Interventions (3, 6.1, 6.2, 6.6, 6.7, 6.13), safety stops (6.7), tasks (5), resets (6.3),
-  supervision (6.4), several humans (6.5), support (6.15).
+- Interventions (3, 6.1, 6.2, 6.6, 6.7, 6.13): a run of ``unknown`` and ``safety_stop`` between
+  AI control and human control does not hide one; an approval or hint inside an episode belongs
+  to it. Safety stops (6.7), tasks (5; unplanned human time before a task makes it not
+  autonomous), resets (6.3), supervision (6.4), several humans (6.5), support (6.15).
 """
 
 import bisect
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from fractions import Fraction
 from itertools import pairwise
 from types import MappingProxyType
@@ -49,6 +56,8 @@ RegistryStatus = Literal["matched", "missing"]
 CHECKED_STATES: Final = frozenset({"ai", "scripted", "human_local", "human_remote", "shared"})
 _HUMAN_STAR: Final = frozenset({"human_local", "human_remote"})
 _RESET_FROM: Final = frozenset({"idle", "unknown"})
+#: States a scope passes through without leaving the state it held before (definitions.md 3).
+_PASS_THROUGH: Final = frozenset({"unknown", "safety_stop"})
 _LOCATION_STATE: Final = MappingProxyType({"local": "human_local", "remote": "human_remote"})
 _KIND_STATE: Final = MappingProxyType({"ai": "ai", "script": "scripted"})
 _WHOLE_ROBOT: Final = "whole_robot"
@@ -206,10 +215,12 @@ class Intervention:
 
 @dataclass(frozen=True, slots=True)
 class DiscreteIntervention:
-    """An approval (6.1) or a discrete hint (6.2). ``dwell_ns`` is the logged ``dwell_s`` or
-    ``None``; ``human_ns`` is ``max(dwell, min_dwell)`` with the default minimum. The dwell sits
-    on ``[ts - human_ns, ts)``; ``moved_ns`` is its overlap with the scope's ``ai`` time and
-    ``whole_robot_moved_ns`` with whole-robot ``ai`` time (6.1)."""
+    """An approval (6.1) or a discrete hint (6.2). ``reason`` is after the checks of Section 3.
+    ``dwell_ns`` is the logged ``dwell_s`` or ``None``; ``human_ns`` is ``max(dwell, min_dwell)``
+    with the default minimum. The dwell sits on ``[ts - human_ns, ts)``; ``moved_ns`` is its
+    overlap with the scope's ``ai`` time and ``whole_robot_moved_ns`` with whole-robot ``ai``
+    time (6.1). ``in_episode``: its scope was inside an intervention episode, to which it belongs;
+    it is not counted again (3)."""
 
     type: DiscreteType
     scope: str
@@ -223,14 +234,17 @@ class DiscreteIntervention:
     human_ns: int
     moved_ns: int
     whole_robot_moved_ns: int
+    in_episode: bool = False
 
 
 @dataclass(frozen=True, slots=True)
 class SafetyStop:
     """A transition into ``safety_stop`` from another state (definitions.md 6.7). It was
-    triggered by a person when ``actor_id`` is set. ``takeover_seq`` is the first transition of
-    the scope into a human state within ``takeover_window_s``, before it returned to ``ai`` or to
-    ``scripted`` no person started; ``whole_robot`` indexes the whole-robot stop count."""
+    triggered by a person when ``actor_id`` is set. ``from_state`` is the state the scope held
+    before, looking through a run of ``unknown`` and ``safety_stop`` (3). ``takeover_seq`` is
+    the first transition of the scope into a human state within ``takeover_window_s``, before it
+    returned to ``ai`` or to ``scripted`` no person started or the task ended; ``whole_robot``
+    indexes the whole-robot stop count."""
 
     scope: str
     ts_ns: int
@@ -249,7 +263,8 @@ class Task:
     """One task instance (definitions.md 1, 5, 6.3, 7).
 
     ``outcome`` is ``unknown`` when the task was not closed by its ``task_end``. ``autonomous``:
-    no scope in a human state and no intervention inside (5). ``contains_unknown``: some scope
+    no scope in a human state, no intervention, approval or hint inside, and no unplanned human
+    time attributed to it (5, 6.3). ``contains_unknown``: some scope
     has ``unknown`` time inside. ``human_ns`` is whole-robot human time inside;
     ``dwell_moved_ns`` the whole-robot dwell moved from AI by its approvals and hints;
     ``unplanned_reset_ns`` the unplanned reset time since the previous task (6.3).
@@ -352,14 +367,19 @@ class Timeline:
         return self.whole_robot.observed_ns
 
     @property
+    def counted_discrete(self) -> tuple[DiscreteIntervention, ...]:
+        """Approvals and hints that count as interventions: those outside an episode (3)."""
+        return tuple(d for d in self.discrete if not d.in_episode)
+
+    @property
     def interventions_per_scope(self) -> int:
-        """Episodes on every scope plus approvals and hints (definitions.md 6.6)."""
-        return len(self.episodes) + len(self.discrete)
+        """Episodes on every scope plus counted approvals and hints (definitions.md 3, 6.6)."""
+        return len(self.episodes) + len(self.counted_discrete)
 
     @property
     def interventions_whole_robot(self) -> int:
-        """Whole-robot interventions plus approvals and hints (definitions.md 6.6)."""
-        return len(self.interventions) + len(self.discrete)
+        """Whole-robot interventions plus counted approvals and hints (definitions.md 3, 6.6)."""
+        return len(self.interventions) + len(self.counted_discrete)
 
     def to_json(self) -> dict[str, Any]:
         """A JSON-serialisable form: durations in seconds, times as RFC 3339 strings with nine
@@ -440,6 +460,7 @@ class _ScopeState:
     start_ns: int
     episode: int | None = None
     watch: int | None = None
+    held: str | None = None
 
 
 @dataclass(slots=True)
@@ -490,6 +511,20 @@ class _Discrete:
     reason: str | None
     dwell_ns: int | None
     task_index: int | None
+    in_episode: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _Repair:
+    """An approval wait logged as ``ai``: ``[start_ns, end_ns)`` of ``scope`` becomes ``shared``
+    with reason ``ai_requested_help`` (6.1)."""
+
+    scope: str
+    start_ns: int
+    end_ns: int
+    seq: int
+    actor_id: str | None
+    device_id: str | None
 
 
 class _Builder:
@@ -504,6 +539,7 @@ class _Builder:
         self.silence_ns = seconds_to_ns(heartbeat_s + params.gap_tolerance_s)
         self.help_ns = seconds_to_ns(params.help_latency_max_s)
         self.takeover_ns = seconds_to_ns(params.takeover_window_s)
+        self.wait_ns = seconds_to_ns(params.approval_wait_max_s)
         self.flags: list[tuple[int, TimelineFlagCode, str]] = []
         self.spans: dict[str, list[Span]] = {}
         self.scopes: dict[str, _ScopeState] = {}
@@ -517,6 +553,8 @@ class _Builder:
         self.support: list[tuple[int, int]] = []
         self.distance_m: float | None = None
         self.help: dict[str, int] = {}
+        self.quiet_since_help: dict[str, bool] = {}
+        self.repairs: list[_Repair] = []
         self.idle_flagged: set[tuple[str, int]] = set()
 
     # flags and spans
@@ -540,6 +578,20 @@ class _Builder:
         if scope.state == "idle" and self.task is not None:
             return self.rules.holds.idle_in_open_task_becomes
         return scope.state
+
+    def hold(self, scope: _ScopeState) -> None:
+        """Remember the counted state the scope is about to leave unless it is ``unknown`` or
+        ``safety_stop`` (idle inside an open task counts as unknown) (3)."""
+        state = self.effective(scope)
+        if state not in _PASS_THROUGH:
+            scope.held = state
+
+    def origin(self, scope: _ScopeState, previous: str) -> str:
+        """The state a transition leaves for Section 3 cases a, c, d and 6.7: through a run of
+        ``unknown`` and ``safety_stop``, the counted state held before it."""
+        if previous in _PASS_THROUGH and scope.held is not None:
+            return scope.held
+        return previous
 
     def _task_id(self) -> str | None:
         return None if self.task is None else self.tasks[self.task].task_id
@@ -597,7 +649,11 @@ class _Builder:
     def gap(self, before_ns: int, now_ns: int, seq: int, lost: bool) -> None:
         """Unknown time for a silence or a gap in seq (2, rule 2)."""
         cut = before_ns if lost else before_ns + self.silence_ns
+        if lost:
+            self.quiet_since_help = dict.fromkeys(self.quiet_since_help, False)
         for name, scope in self.scopes.items():
+            if lost:
+                self.hold(scope)
             self.split(name, cut)
             if now_ns > cut:
                 self.spans[name].append(
@@ -668,9 +724,11 @@ class _Builder:
             )
         return state
 
-    def recoded_reason(self, event: Event, now_ns: int) -> str | None:
-        """``ai_requested_help`` without a recent help request and ``planned`` without its plan
-        item become ``human_initiated`` (3)."""
+    def recoded_reason(self, event: Event, now_ns: int, state: str | None = None) -> str | None:
+        """The reason of a transition, approval or hint after Section 3: ``ai_requested_help``
+        without a recent help request and ``planned`` without its plan item become
+        ``human_initiated``; so does no reason on a transition into ``state`` ``human_local`` or
+        ``human_remote``, which only the registry can give (6.10)."""
         reason = event.get("reason")
         seq = event["seq"]
         asked = self.help.get(event["scope"])
@@ -693,6 +751,8 @@ class _Builder:
                     f"plan item {item!r} {problem}; recoded as human_initiated",
                 )
                 return "human_initiated"
+        if reason is None and state in _HUMAN_STAR:
+            return "human_initiated"
         return reason
 
     def transition(self, event: Event, now_ns: int) -> None:
@@ -700,14 +760,17 @@ class _Builder:
         scope = self.scopes[name]
         seq = event["seq"]
         state = self.mapped_state(seq, name, event["state"], event.get("device_id"))
-        reason = self.recoded_reason(event, now_ns)
+        reason = self.recoded_reason(event, now_ns, state)
         actor = event.get("actor_id")
         previous = self.effective(scope)
+        origin = self.origin(scope, previous)
+        self.quiet_since_help[name] = False
         self.watch_stop(scope, state, reason, actor, previous, now_ns, seq)
-        self.episode_change(name, scope, previous, state, reason, actor, now_ns, seq)
+        self.episode_change(name, scope, (previous, origin), state, reason, actor, now_ns, seq)
         if state == "safety_stop" and previous != "safety_stop":
             scope.watch = len(self.stops)
-            self.stops.append(_OpenStop(name, now_ns, seq, previous, actor, self.task))
+            self.stops.append(_OpenStop(name, now_ns, seq, origin, actor, self.task))
+        self.hold(scope)
         self.split(name, now_ns)
         scope.state, scope.reason, scope.actor_id = state, reason, actor
         scope.device_id, scope.seq = event.get("device_id"), seq
@@ -773,20 +836,23 @@ class _Builder:
         self,
         name: str,
         scope: _ScopeState,
-        previous: str,
+        left: tuple[str, str],
         state: str,
         reason: str | None,
         actor: str | None,
         now_ns: int,
         seq: int,
     ) -> None:
-        """Open or close an intervention episode (3, cases a, c and d; 6.7; 6.13)."""
+        """Open or close an intervention episode (3, cases a, c and d; 6.7; 6.13). ``left`` is
+        the state just before and the state held before a run of unknown and stops; the first
+        decides resets (6.3), the second whether the scope left ``ai`` or ``scripted``."""
         if scope.episode is not None:
             if self.returns(state, reason):
                 self.close_episode(scope, now_ns, seq)
             return
+        previous, origin = left
         rules = self.rules.interventions
-        if previous not in rules.from_states:
+        if origin not in rules.from_states:
             return
         kind: InterventionKind | None = None
         if state in rules.into_states:
@@ -826,6 +892,8 @@ class _Builder:
         seq = event["seq"]
         self.end_task(now_ns, seq, "unknown", False)
         self.split_all(now_ns)
+        for scope in self.scopes.values():
+            self.hold(scope)
         definition = event.get("task_definition_id", "")
         known = self.registries.task_definitions
         if known is None or definition not in known:
@@ -848,19 +916,45 @@ class _Builder:
     # other events
 
     def discrete_event(self, event: Event, now_ns: int) -> None:
+        """An approval or hint: its reason checked (3), whether it falls inside an episode (3),
+        and an approval wait logged as ``ai`` repaired (6.1)."""
         kind = cast(DiscreteType, event["type"])
+        name = event["scope"]
         dwell = event.get("dwell_s")
+        reason = self.recoded_reason(event, now_ns)
+        scope = self.scopes.get(name)
+        if kind == "approval" and reason == "ai_requested_help" and scope is not None:
+            self.wait_repair(event, name, now_ns)
         self.discrete.append(
             _Discrete(
                 kind,
-                event["scope"],
+                name,
                 now_ns,
                 event["seq"],
                 event.get("actor_id"),
-                event.get("reason"),
+                reason,
                 None if dwell is None else seconds_to_ns(dwell),
                 self.task,
+                scope is not None and scope.episode is not None,
             )
+        )
+
+    def wait_repair(self, event: Event, name: str, now_ns: int) -> None:
+        """A wait longer than ``approval_wait_max_s`` with no transition or seq gap since the
+        help request becomes ``shared`` (6.1)."""
+        asked = self.help.get(name)
+        if asked is None or now_ns - asked <= self.wait_ns or not self.quiet_since_help[name]:
+            return
+        seq = event["seq"]
+        self.repairs.append(
+            _Repair(name, asked, now_ns, seq, event.get("actor_id"), event.get("device_id"))
+        )
+        self.flag(
+            seq,
+            "approval_wait_recoded",
+            f"approval {ns_to_seconds(now_ns - asked):.3f} s after the help_request on scope "
+            f"{name!r} (limit {self.rules.params.approval_wait_max_s:g} s); the ai time since "
+            "the help_request counted as shared with reason ai_requested_help",
         )
 
     def support_event(self, event: Event, now_ns: int) -> None:
@@ -878,6 +972,7 @@ class _Builder:
             self.discrete_event(event, now_ns)
         elif kind == "help_request":
             self.help[event["scope"]] = now_ns
+            self.quiet_since_help[event["scope"]] = True
         elif kind == "task_start":
             self.task_start(event, now_ns)
         elif kind == "task_end":
@@ -1149,7 +1244,7 @@ def _assemble(  # noqa: PLR0913, PLR0917 -- one place that puts the timeline tog
     log_flags: Iterable[Flag],
 ) -> Timeline:
     human = frozenset(s for s, rule in rules.states.items() if rule.category == "human")
-    spans = {name: tuple(scope_spans) for name, scope_spans in b.spans.items()}
+    spans = {name: _repaired(scope_spans, b.repairs) for name, scope_spans in b.spans.items()}
     all_spans = tuple(span for scope_spans in spans.values() for span in scope_spans)
     whole = _whole_spans(spans, rules, human)
     per_scope = {name: _totals_int(scope_spans, rules) for name, scope_spans in spans.items()}
@@ -1236,6 +1331,42 @@ def _assemble(  # noqa: PLR0913, PLR0917 -- one place that puts the timeline tog
     )
 
 
+def _repaired(spans: Sequence[Span], repairs: Sequence[_Repair]) -> tuple[Span, ...]:
+    """The scope's spans with the ``ai`` time of each approval wait made ``shared`` (6.1)."""
+    out = list(spans)
+    for repair in repairs:
+        if not out or repair.scope != out[0].scope:
+            continue
+        pieces: list[Span] = []
+        for span in out:
+            if (
+                span.state != "ai"
+                or span.end_ns <= repair.start_ns
+                or span.start_ns >= repair.end_ns
+            ):
+                pieces.append(span)
+                continue
+            low, high = max(span.start_ns, repair.start_ns), min(span.end_ns, repair.end_ns)
+            if span.start_ns < low:
+                pieces.append(replace(span, end_ns=low))
+            pieces.append(
+                replace(
+                    span,
+                    start_ns=low,
+                    end_ns=high,
+                    state="shared",
+                    reason="ai_requested_help",
+                    actor_id=repair.actor_id,
+                    device_id=repair.device_id,
+                    seq=repair.seq,
+                )
+            )
+            if high < span.end_ns:
+                pieces.append(replace(span, start_ns=high))
+        out = pieces
+    return tuple(out)
+
+
 def _end(episode: _OpenEpisode) -> int:
     return episode.start_ns if episode.end_ns is None else episode.end_ns
 
@@ -1294,6 +1425,7 @@ def _discrete(  # noqa: PLR0913, PLR0917 -- the pieces dwell placement needs
                 length,
                 overlap_ns(scope_ai.get(d.scope, []), low, d.ts_ns) if d.scope in scopes else 0,
                 overlap_ns(whole_ai, low, d.ts_ns),
+                d.in_episode,
             )
         )
     return tuple(out)
@@ -1335,6 +1467,8 @@ def _tasks(  # noqa: PLR0913, PLR0917 -- every fact a task needs
         end_ns = task.end_ns if task.end_ns is not None else task.start_ns
         inside = states[index]
         signals = own_discrete[index]
+        counted = [d for d in signals if not d.in_episode]
+        reset = overlap_ns(unplanned, previous_end, task.start_ns)
         out.append(
             Task(
                 task.task_id,
@@ -1346,13 +1480,13 @@ def _tasks(  # noqa: PLR0913, PLR0917 -- every fact a task needs
                 task.end_seq,
                 task.outcome if task.closed else "unknown",
                 task.closed,
-                not (inside & human) and not own_episodes[index] and not signals,
+                not (inside & human) and not own_episodes[index] and not signals and not reset,
                 "unknown" in inside,
                 human_ns[index],
                 sum(d.whole_robot_moved_ns for d in signals),
-                own_episodes[index] + len(signals),
-                own_groups[index] + len(signals),
-                overlap_ns(unplanned, previous_end, task.start_ns),
+                own_episodes[index] + len(counted),
+                own_groups[index] + len(counted),
+                reset,
             )
         )
         previous_end = end_ns
@@ -1453,8 +1587,8 @@ def _timeline_json(t: Timeline) -> dict[str, Any]:
     shift = dwell_shift(
         t, ns_to_seconds(t.approval_min_dwell_ns), ns_to_seconds(t.hint_min_dwell_ns)
     )
-    whole_kinds = [i.kind for i in t.interventions] + [d.type for d in t.discrete]
-    whole_reasons = [i.reason for i in t.interventions] + [d.reason for d in t.discrete]
+    whole_kinds = [i.kind for i in t.interventions] + [d.type for d in t.counted_discrete]
+    whole_reasons = [i.reason for i in t.interventions] + [d.reason for d in t.counted_discrete]
     return {
         "robot_id": t.robot_id,
         "session_id": t.session_id,
@@ -1559,6 +1693,7 @@ def _discrete_json(d: DiscreteIntervention) -> dict[str, Any]:
         "moved_from_ai_s": _s(d.moved_ns),
         "whole_robot_moved_from_ai_s": _s(d.whole_robot_moved_ns),
         "task_id": d.task_id,
+        "in_episode": d.in_episode,
     }
 
 

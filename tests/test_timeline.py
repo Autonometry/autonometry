@@ -8,6 +8,7 @@ from autonometry.events import Flag
 from autonometry.timeline import (
     DiscreteIntervention,
     Registries,
+    Timeline,
     dwell_human_ns,
     dwell_shift,
     overlap_ns,
@@ -417,7 +418,13 @@ def test_takeover_window_ends_at_task_end__defs_6_7() -> None:
     log = Log().add(0, "task_start").ai(0).tr(1, "safety_stop", "safety").add(2, "task_end")
     timeline = log.human(3).end(4).build()
     assert timeline.safety_stops[0].takeover_seq is None
-    assert timeline.episodes == ()
+    # not joined to the stop; the scope left ai through the stop, so a takeover of its own (3)
+    (episode,) = timeline.episodes
+    assert (at(timeline, episode.start_ns), episode.reason, episode.task_id) == (
+        3,
+        "human_initiated",
+        None,
+    )
 
 
 # --- 6.8: holds ----------------------------------------------------------------------------------
@@ -553,3 +560,171 @@ def test_flags_from_the_reader_and_timeline_are_sorted() -> None:
     reader_flag = Flag("r01", "s01", 0, "clock_unsynced", "no heartbeat")
     timeline = log.build(flags=[reader_flag])
     assert codes(timeline) == [(0, "clock_unsynced"), (1, "undeclared_device")]
+
+
+# --- rules from the M4a review (spec v0.3 changes 13 to 20) ------------------------------------
+
+
+def _offset(timeline: Timeline, ns: int) -> int:
+    assert timeline.start_ns is not None
+    return ns - timeline.start_ns
+
+
+@pytest.mark.parametrize("between", ["unknown", "idle", "seq_gap"])
+def test_unknown_between_ai_and_human_does_not_hide_a_takeover__defs_3(between: str) -> None:
+    log = Log().add(0, "task_start").ai(2)
+    if between == "seq_gap":
+        log.skip().add(10, "heartbeat")
+    else:
+        log.tr(10, between)
+    timeline = log.human(10.001).ai(20).end(21).build()
+    (episode,) = timeline.episodes
+    assert episode.kind == "takeover"
+    assert _offset(timeline, episode.start_ns) == 10_001_000_000
+    assert timeline.interventions_per_scope == timeline.interventions_whole_robot == 1
+
+
+def test_human_long_after_an_automatic_stop_is_a_takeover__defs_3_6_7() -> None:
+    log = Log().add(0, "task_start").ai(0).tr(10, "safety_stop", "safety")
+    timeline = log.add(40, "heartbeat").human(71.5).ai(80).end(81).build()
+    (episode,) = timeline.episodes
+    assert (_offset(timeline, episode.start_ns), episode.reason) == (
+        71_500_000_000,
+        "human_initiated",
+    )
+    (stop,) = timeline.safety_stops
+    assert (stop.triggered_by, stop.from_state, stop.takeover_seq) == ("automatic", "ai", None)
+
+
+def test_takeover_within_the_window_is_counted_once_with_the_stop__defs_3_6_7() -> None:
+    log = Log().add(0, "task_start").ai(0).tr(10, "safety_stop", "safety")
+    timeline = log.human(30).ai(40).end(41).build()
+    (episode,) = timeline.episodes
+    assert (at(timeline, episode.start_ns), episode.reason, episode.takeover_seq) == (
+        10,
+        "safety",
+        4,
+    )
+
+
+def test_shared_after_an_automatic_stop_joins_it__defs_6_7() -> None:
+    log = Log().add(0, "task_start").ai(0).tr(10, "safety_stop", "safety").human(20, "shared")
+    timeline = log.ai(30).end(31).build()
+    assert timeline.safety_stops[0].takeover_seq == 4
+    assert [e.reason for e in timeline.episodes] == ["safety"]
+
+
+def test_task_started_under_human_control_has_no_intervention__defs_3() -> None:
+    log = Log().human(1).add(2, "task_start").tr(3, "unknown").human(4)
+    timeline = log.end(5).build()
+    assert timeline.episodes == ()
+    assert timeline.interventions_per_scope == 0
+
+
+def test_human_from_idle_between_tasks_is_a_reset__defs_6_3() -> None:
+    timeline = Log().ai(0).tr(1, "idle").human(2, "human_local").end(3).build()
+    assert timeline.episodes == ()
+    assert seconds(timeline.reset_unplanned_ns) == 1
+
+
+def test_approval_inside_an_episode_is_not_counted_again__defs_3() -> None:
+    log = Log().add(0, "task_start").ai(0).add(5, "help_request", scope="whole_robot")
+    log.human(5.1, "shared", "ai_requested_help")
+    log.add(20, "approval", scope="whole_robot", actor_id="op_b", reason="ai_requested_help")
+    timeline = log.ai(20.1).add(21, "task_end").end(22).build()
+    assert timeline.discrete[0].in_episode
+    assert timeline.interventions_per_scope == timeline.interventions_whole_robot == 1
+    assert timeline.tasks[0].interventions == timeline.tasks[0].interventions_whole_robot == 1
+    assert timeline.to_json()["interventions"]["approvals"][0]["in_episode"] is True
+    assert "approval_wait_recoded" not in {code for _, code in codes(timeline)}
+
+
+def _waited(approval_at: float, *, help_at: float = 5.0, between: bool = False) -> Timeline:
+    log = Log(heartbeat_s=200).add(0, "task_start").ai(0)
+    log.add(help_at, "help_request", scope="whole_robot")
+    if between:
+        log.tr(help_at + 1, "ai", actor="ai:other", device="policy")
+    log.add(
+        approval_at, "approval", scope="whole_robot", actor_id="op_b", reason="ai_requested_help"
+    )
+    return log.add(approval_at + 10, "task_end").end(approval_at + 10).build()
+
+
+def test_approval_wait_logged_as_ai_is_repaired__defs_6_1() -> None:
+    timeline = _waited(20)
+    assert _states(timeline.whole_robot) == {"ai": 15, "shared": 15}
+    repaired = [s for s in timeline.spans if s.state == "shared"]
+    assert [(at(timeline, s.start_ns), at(timeline, s.end_ns), s.reason) for s in repaired] == [
+        (5, 20, "ai_requested_help")
+    ]
+    assert codes(timeline) == [(4, "approval_wait_recoded")]
+    assert timeline.interventions_per_scope == timeline.interventions_whole_robot == 1
+    assert seconds(timeline.tasks[0].human_ns) == 15
+
+
+@pytest.mark.parametrize(
+    ("approval_at", "help_at", "between"),
+    [(12, 5, False), (20, 5, True)],
+    ids=["within_approval_wait_max", "transition_in_between"],
+)
+def test_approval_wait_is_not_repaired_otherwise__defs_6_1(
+    approval_at: float, help_at: float, between: bool
+) -> None:
+    timeline = _waited(approval_at, help_at=help_at, between=between)
+    assert timeline.whole_robot.states["shared"] == 0
+    assert timeline.flags == ()
+
+
+def test_approval_long_after_its_help_request_is_recoded_not_repaired__defs_3_6_1() -> None:
+    timeline = _waited(135)
+    assert timeline.discrete[0].reason == "human_initiated"
+    assert codes(timeline) == [(4, "help_reason_recoded")]
+    assert timeline.whole_robot.states["shared"] == 0
+
+
+def test_seq_gap_after_a_help_request_prevents_the_repair__defs_6_1() -> None:
+    log = Log().add(0, "task_start").ai(0).add(5, "help_request", scope="whole_robot").skip()
+    log.add(10, "heartbeat").ai(11)
+    log.add(20, "approval", scope="whole_robot", actor_id="op_b", reason="ai_requested_help")
+    assert log.end(21).build().whole_robot.states["shared"] == 0
+
+
+@pytest.mark.parametrize(
+    ("reason", "autonomous", "reset"),
+    [("human_initiated", False, 4), ("planned", True, 0)],
+)
+def test_unplanned_human_time_before_a_task_makes_it_not_autonomous__defs_5_6_3(
+    reason: str, autonomous: bool, reset: float
+) -> None:
+    extra = {"plan_item_id": "reset_scene"} if reason == "planned" else {}
+    log = Log().human(1, "human_local", reason, **extra).tr(5, "idle")
+    timeline = log.add(6, "task_start").ai(6).add(10, "task_end").end(11).build()
+    (task,) = timeline.tasks
+    assert (task.autonomous, seconds(task.unplanned_reset_ns)) == (autonomous, reset)
+
+
+def test_registry_made_human_without_reason_takes_human_initiated__defs_6_10() -> None:
+    log = Log().add(0, "task_start").ai(0).tr(5, "ai", None, "ai:x", "rogue").ai(8)
+    (episode,) = log.end(9).build().episodes
+    assert (episode.kind, episode.reason) == ("takeover", "human_initiated")
+
+
+def test_approval_and_hint_reasons_are_checked__defs_3() -> None:
+    log = Log().ai(0)
+    log.add(1, "approval", scope="whole_robot", actor_id="op_b", reason="planned",
+            plan_item_id="other")  # fmt: skip
+    log.add(2, "hint", scope="whole_robot", actor_id="op_b", reason="ai_requested_help")
+    timeline = log.end(3).build()
+    assert [d.reason for d in timeline.discrete] == ["human_initiated", "human_initiated"]
+    assert codes(timeline) == [(2, "unplanned"), (3, "help_reason_recoded")]
+
+
+def test_approval_wait_repair_changes_only_ai_time_of_its_scope__defs_6_1() -> None:
+    # waited 12 s > approval_wait_max_s; silence from 3 s to 9 s is unknown beyond 6 s
+    log = Log(["a", "b"], heartbeat_s=1.0).ai(0, "a").ai(0, "b").add(2, "help_request", scope="a")
+    log.add(3, "heartbeat").add(9, "heartbeat").add(11, "heartbeat")
+    log.add(14, "approval", scope="a", actor_id="op_b", reason="ai_requested_help")
+    timeline = log.add(15, "heartbeat").end(16).build()
+    pieces = [(at(timeline, s.start_ns), s.state) for s in timeline.spans if s.scope == "a"]
+    assert pieces == [(0, "ai"), (2, "shared"), (6, "unknown"), (9, "shared"), (14, "ai")]
+    assert _states(timeline.per_scope["b"]) == {"ai": 13, "unknown": 3}

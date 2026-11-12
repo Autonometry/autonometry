@@ -103,7 +103,7 @@
           "unplanned_reset_s": 0.0
         },
         {
-          "autonomous": true,
+          "autonomous": false,
           "closed": true,
           "contains_unknown": false,
           "definition_known": true,

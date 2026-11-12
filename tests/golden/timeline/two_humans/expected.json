@@ -37,6 +37,7 @@
             "actor_id": "op_c",
             "dwell_s": 4.0,
             "human_s": 4.0,
+            "in_episode": true,
             "moved_from_ai_s": 0.0,
             "reason": "ai_requested_help",
             "scope": "left_arm",
@@ -47,11 +48,9 @@
           }
         ],
         "by_kind": {
-          "approval": 1,
           "takeover": 2
         },
         "by_reason": {
-          "ai_requested_help": 1,
           "human_initiated": 2
         },
         "episodes": [
@@ -109,8 +108,8 @@
             "task_id": "t1"
           }
         ],
-        "per_scope": 3,
-        "whole_robot": 3
+        "per_scope": 2,
+        "whole_robot": 2
       },
       "registries": {
         "devices": "matched",
@@ -161,8 +160,8 @@
           "end": "2026-11-12T08:00:40.000000000Z",
           "end_seq": 11,
           "human_s": 20.0,
-          "interventions": 3,
-          "interventions_whole_robot": 3,
+          "interventions": 2,
+          "interventions_whole_robot": 2,
           "outcome": "success",
           "start": "2026-11-12T08:00:02.000000000Z",
           "start_seq": 2,

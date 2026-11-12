@@ -33,9 +33,10 @@
       "interventions": {
         "approvals": [],
         "by_kind": {
-          "takeover": 1
+          "takeover": 2
         },
         "by_reason": {
+          "human_initiated": 1,
           "safety": 1
         },
         "episodes": [
@@ -52,6 +53,20 @@
             "start": "2026-11-12T08:00:10.000000000Z",
             "takeover_seq": 5,
             "task_id": "t1"
+          },
+          {
+            "actor_id": "op_b",
+            "end": "2026-11-12T08:01:56.000000000Z",
+            "end_seq": 13,
+            "human_s": 10.0,
+            "intervention": 1,
+            "kind": "takeover",
+            "reason": "human_initiated",
+            "scope": "whole_robot",
+            "seq": 12,
+            "start": "2026-11-12T08:01:46.000000000Z",
+            "takeover_seq": null,
+            "task_id": "t1"
           }
         ],
         "hints": [],
@@ -66,10 +81,21 @@
             "seq": 4,
             "start": "2026-11-12T08:00:10.000000000Z",
             "task_id": "t1"
+          },
+          {
+            "actor_id": "op_b",
+            "kind": "takeover",
+            "reason": "human_initiated",
+            "scopes": [
+              "whole_robot"
+            ],
+            "seq": 12,
+            "start": "2026-11-12T08:01:46.000000000Z",
+            "task_id": "t1"
           }
         ],
-        "per_scope": 1,
-        "whole_robot": 1
+        "per_scope": 2,
+        "whole_robot": 2
       },
       "registries": {
         "devices": "matched",
@@ -149,8 +175,8 @@
           "end": "2026-11-12T08:02:00.000000000Z",
           "end_seq": 14,
           "human_s": 20.0,
-          "interventions": 1,
-          "interventions_whole_robot": 1,
+          "interventions": 2,
+          "interventions_whole_robot": 2,
           "outcome": "success",
           "start": "2026-11-12T08:00:02.000000000Z",
           "start_seq": 2,

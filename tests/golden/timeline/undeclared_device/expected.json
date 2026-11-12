@@ -47,7 +47,7 @@
           "takeover": 1
         },
         "by_reason": {
-          "none": 1
+          "human_initiated": 1
         },
         "episodes": [
           {
@@ -57,7 +57,7 @@
             "human_s": 20.0,
             "intervention": 0,
             "kind": "takeover",
-            "reason": null,
+            "reason": "human_initiated",
             "scope": "whole_robot",
             "seq": 4,
             "start": "2026-11-12T08:00:10.000000000Z",
@@ -70,7 +70,7 @@
           {
             "actor_id": "ai:planner",
             "kind": "takeover",
-            "reason": null,
+            "reason": "human_initiated",
             "scopes": [
               "whole_robot"
             ],
