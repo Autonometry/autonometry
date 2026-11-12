@@ -1,6 +1,7 @@
 {
-  "devices": 0,
+  "entries": 0,
   "file": "unknown_field.json",
+  "kind": "devices",
   "problems": [
     "schema_violation: /devices/0: has a field the schema does not define (extensions start with x_)"
   ],

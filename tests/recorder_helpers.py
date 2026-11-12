@@ -59,7 +59,9 @@ def write_inputs(folder: Path) -> dict[str, Path]:
     tasks = folder / "tasks.json"
     tasks.write_text(json.dumps({"tasks": [{"task_definition_id": "dock_v1"}]}), encoding="utf-8")
     plan = folder / "plan.json"
-    plan.write_text(json.dumps({"items": [{"plan_item_id": "reset_scene"}]}), encoding="utf-8")
+    plan.write_text(
+        json.dumps({"items": [{"plan_item_id": "reset_scene", "kind": "reset"}]}), encoding="utf-8"
+    )
     devices = folder / "devices.json"
     shutil.copyfile(REGISTRY, devices)
     return {"key_path": key, "task_registry": tasks, "plan": plan, "device_registry": devices}

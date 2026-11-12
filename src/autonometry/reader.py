@@ -24,7 +24,16 @@ import jsonschema_rs
 
 from autonometry import strictjson
 from autonometry.checks import check_session
-from autonometry.events import Counts, ErrorCode, Event, FlagCode, LineError, LogCheck, Session
+from autonometry.events import (
+    Counts,
+    ErrorCode,
+    Event,
+    FlagCode,
+    LineError,
+    LogCheck,
+    Session,
+    TimelineFlagCode,
+)
 from autonometry.spec import (
     Rules,
     SpecError,
@@ -71,8 +80,8 @@ def _load_spec(version: str) -> _Spec:
     problems = find_inconsistencies(version, schema, rules)
     if set(get_args(ErrorCode)) != set(rules.errors.codes):
         problems.append("its [errors] codes differ from the ones this reader reports")
-    if not set(get_args(FlagCode)) <= set(rules.flags.codes):
-        problems.append("its [flags] codes lack ones this reader reports")
+    if set(get_args(FlagCode)) | set(get_args(TimelineFlagCode)) != set(rules.flags.codes):
+        problems.append("its [flags] codes differ from the ones the reader and timeline report")
     if problems:
         raise SpecError(f"spec {version} cannot be used: " + "; ".join(problems))
     # Patterns follow ECMA-262, as JSON Schema requires, so "$" does not accept a trailing newline.
@@ -236,6 +245,8 @@ class _Reader:
     error_counts: Counter[ErrorCode] = field(default_factory=Counter)
     sessions: dict[tuple[str, str], dict[int, Event]] = field(default_factory=dict)
     field_names: dict[str, str] = field(default_factory=dict)
+    first_file: dict[tuple[str, str], str] = field(default_factory=dict)
+    start_file: dict[tuple[str, str], tuple[int, str]] = field(default_factory=dict)
 
     def read(self, name: str, stream: IO[bytes]) -> None:
         self.files += 1
@@ -248,7 +259,7 @@ class _Reader:
                 self.blank_lines += 1
             else:
                 try:
-                    self._keep(self._event(content))
+                    self._keep(self._event(content), name)
                 except RejectedEventError as exc:
                     self._reject(name, number, exc.code, exc.message)
 
@@ -271,14 +282,25 @@ class _Reader:
             raise RejectedEventError(cast(ErrorCode, exc.code), exc.message) from None
         return _checked(value, self.spec)
 
-    def _keep(self, event: Event) -> None:
-        """Add the event to its session; a seq already used there is rejected."""
-        events = self.sessions.setdefault((event["robot_id"], event["session_id"]), {})
+    def _keep(self, event: Event, name: str) -> None:
+        """Add the event to its session; a seq already used there is rejected. Remember the file
+        of the session's first event and of its earliest ``session_start``."""
+        key = (event["robot_id"], event["session_id"])
+        events = self.sessions.setdefault(key, {})
         if event["seq"] in events:
             message = f"seq {event['seq']} is already used in this session"
             raise RejectedEventError("duplicate_seq", message)
         previous = next(reversed(events.values()), None)
         events[event["seq"]] = self._shared(event, previous)
+        self.first_file.setdefault(key, name)
+        if event["type"] == "session_start":
+            earliest = self.start_file.get(key)
+            if earliest is None or event["seq"] < earliest[0]:
+                self.start_file[key] = (event["seq"], name)
+
+    def _file_of(self, key: tuple[str, str]) -> str:
+        start = self.start_file.get(key)
+        return start[1] if start is not None else self.first_file[key]
 
     def _shared(self, event: Event, previous: Event | None) -> Event:
         """Return an equal event that reuses field names of earlier events and string values of
@@ -294,7 +316,12 @@ class _Reader:
 
     def finish(self) -> LogCheck:
         sessions = tuple(
-            Session(robot_id, session_id, tuple(events[seq] for seq in sorted(events)))
+            Session(
+                robot_id,
+                session_id,
+                tuple(events[seq] for seq in sorted(events)),
+                self._file_of((robot_id, session_id)),
+            )
             for (robot_id, session_id), events in sorted(self.sessions.items())
         )
         flags = sorted(

@@ -23,8 +23,8 @@ ErrorCode = Literal[
     "duplicate_seq",
 ]
 
-# The rules.toml [flags] codes checked when a log is read. help_reason_recoded, idle_in_task and
-# undeclared_device need the state timeline and are added there.
+# The rules.toml [flags] codes checked when a log is read. The others need the state timeline and
+# the registries, and are raised by autonometry.timeline (TimelineFlagCode).
 FlagCode = Literal[
     "no_session_start",
     "no_session_end",
@@ -42,6 +42,17 @@ FlagCode = Literal[
     "event_outside_session",
     "clock_unsynced",
     "attribution_inferred",
+]
+
+# The rules.toml [flags] codes raised while building a timeline (definitions.md 3, 5, 6.8, 6.10, 8).
+TimelineFlagCode = Literal[
+    "help_reason_recoded",
+    "idle_in_task",
+    "undeclared_device",
+    "registry_mismatch",
+    "registry_missing",
+    "unknown_task_definition",
+    "unplanned",
 ]
 
 # Codes of rules.toml [sealing] evidence_codes and gap_codes (definitions.md section 10.6).
@@ -132,17 +143,23 @@ class Flag:
     robot_id: str
     session_id: str
     seq: int
-    code: FlagCode
+    code: FlagCode | TimelineFlagCode
     detail: str
 
 
 @dataclass(frozen=True, slots=True)
 class Session:
-    """The valid events of one ``(robot_id, session_id)``, ordered by ``seq``; never empty."""
+    """The valid events of one ``(robot_id, session_id)``, ordered by ``seq``; never empty.
+
+    ``file`` names, as given, the file that holds the session's first ``session_start`` (else its
+    first event read); its folder is the session folder (definitions.md 8, Registries). ``None``
+    when the session was not read from a named file.
+    """
 
     robot_id: str
     session_id: str
     events: tuple[Event, ...]
+    file: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,6 +1,7 @@
 {
-  "devices": 5,
+  "entries": 5,
   "file": "turtlebot4.json",
+  "kind": "devices",
   "problems": [],
   "sha256": "b0fc90294a313b073fb5376f58a967b260b73435fe288c5150873c21d20ba480",
   "spec_version": "0.3",

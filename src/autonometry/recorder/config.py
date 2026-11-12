@@ -7,7 +7,6 @@ config points to (signing key, registries, plan, TSA roots) so that a recorder r
 with one line, before it writes anything.
 """
 
-import hashlib
 import math
 import tomllib
 import urllib.parse
@@ -17,7 +16,6 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Annotated, Any, Literal, Self
 
-import rfc8785
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pydantic import (
@@ -31,9 +29,9 @@ from pydantic import (
     model_validator,
 )
 
-from autonometry import keys, strictjson, tsa
+from autonometry import keys, tsa
 from autonometry.registry import MAX_REGISTRY_BYTES, check_registry_bytes
-from autonometry.spec import Rules, SpecError, available_versions, load_rules
+from autonometry.spec import RegistryKind, Rules, SpecError, available_versions, load_rules
 
 #: Largest config file read, in bytes.
 MAX_CONFIG_BYTES = 1 << 20
@@ -192,23 +190,6 @@ def read_input(path: Path) -> bytes:
     return data
 
 
-def json_hash(data: bytes, path: Path) -> str:
-    """Return the lower-case hex SHA-256 of a JSON file's RFC 8785 canonical form, the value of
-    ``session_start.task_registry_hash`` and ``plan_hash`` (definitions.md 1 and 3). The file must
-    be I-JSON; ``path`` only names it in errors.
-
-    Raises:
-        ConfigError: the bytes are not UTF-8 I-JSON.
-    """
-    try:
-        value = strictjson.parse(data.decode("utf-8").removeprefix("﻿"))
-    except UnicodeDecodeError as exc:
-        raise ConfigError(f"{path}: byte {exc.start + 1} is not valid UTF-8") from None
-    except strictjson.StrictJsonError as exc:
-        raise ConfigError(f"{path}: {exc.code}: {exc.message}") from None
-    return hashlib.sha256(rfc8785.dumps(value)).hexdigest()
-
-
 @dataclass(frozen=True, slots=True)
 class Prepared:
     """A config with everything it points to loaded and checked: the spec rules, the signing key
@@ -254,13 +235,27 @@ def _newest_spec() -> str:
     return versions[-1]
 
 
-def _device_registry_hash(data: bytes, path: Path, spec_version: str) -> str:
+_REGISTRY_NAMES: Mapping[RegistryKind, str] = {
+    "devices": "device registry",
+    "tasks": "task registry",
+    "plan": "plan",
+}
+
+
+def registry_file_hash(data: bytes, path: Path, spec_version: str, kind: RegistryKind) -> str:
+    """Check a device registry, task registry or plan against its schema and return the SHA-256
+    of its RFC 8785 form, the value of ``session_start.device_registry_hash``,
+    ``task_registry_hash`` or ``plan_hash`` (definitions.md 1, 3, 6.10 and 8).
+
+    Raises:
+        ConfigError: the file is not a valid registry of that kind; the message is one line.
+    """
     try:
-        check = check_registry_bytes(data, str(path), spec_version)
+        check = check_registry_bytes(data, str(path), spec_version, kind)
     except SpecError as exc:
         raise ConfigError(str(exc)) from None
     if check.sha256 is None:
-        raise ConfigError(f"device registry {path} is not valid: {check.problems[0]}")
+        raise ConfigError(f"{_REGISTRY_NAMES[kind]} {path} is not valid: {check.problems[0]}")
     return check.sha256
 
 
@@ -300,9 +295,11 @@ def prepare(config: RecorderConfig) -> Prepared:
         rules=rules,
         key=key,
         key_name=key_name,
-        task_registry_hash=json_hash(tasks, config.task_registry),
-        plan_hash=json_hash(plan, config.plan),
-        device_registry_hash=_device_registry_hash(devices, config.device_registry, version),
+        task_registry_hash=registry_file_hash(tasks, config.task_registry, version, "tasks"),
+        plan_hash=registry_file_hash(plan, config.plan, version, "plan"),
+        device_registry_hash=registry_file_hash(
+            devices, config.device_registry, version, "devices"
+        ),
         tsa_roots=_tsa_roots(config.tsa_roots),
         inputs=MappingProxyType({DEVICES_COPY: devices, TASKS_COPY: tasks, PLAN_COPY: plan}),
     )

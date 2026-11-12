@@ -1,6 +1,7 @@
 {
-  "devices": 0,
+  "entries": 0,
   "file": "non_printable_match.json",
+  "kind": "devices",
   "problems": [
     "schema_violation: /devices/0/match/node: does not match the pattern ^[\\u0020-\\u007E]{1,256}$"
   ],

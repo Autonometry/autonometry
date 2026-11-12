@@ -9,11 +9,11 @@ import pytest
 from autonometry.recorder.config import (
     MAX_CONFIG_BYTES,
     ConfigError,
-    json_hash,
     load_config,
     parse_config,
     prepare,
     read_input,
+    registry_file_hash,
 )
 from recorder_helpers import make_config, write_inputs
 
@@ -138,10 +138,11 @@ def test_prepare_loads_tsa_roots(tmp_path: Path) -> None:
     assert len(prepare(config).tsa_roots) >= 1
 
 
-def test_task_registry_hash_is_sha256_of_rfc8785_form(tmp_path: Path) -> None:
+def test_task_registry_hash_is_sha256_of_rfc8785_form__defs_8(tmp_path: Path) -> None:
     path = tmp_path / "tasks.json"
-    path.write_text('﻿{ "b": 1, "a": [1.0, "x"] }', encoding="utf-8")
-    assert json_hash(read_input(path), path) == hashlib.sha256(b'{"a":[1,"x"],"b":1}').hexdigest()
+    path.write_text('﻿{ "x_n": 1.0, "tasks": [{"task_definition_id": "a"}] }', encoding="utf-8")
+    expected = hashlib.sha256(b'{"tasks":[{"task_definition_id":"a"}],"x_n":1}').hexdigest()
+    assert registry_file_hash(read_input(path), path, "0.3", "tasks") == expected
 
 
 def test_prepare_refuses_unusable_inputs(tmp_path: Path) -> None:
@@ -150,6 +151,16 @@ def test_prepare_refuses_unusable_inputs(tmp_path: Path) -> None:
     duplicate = tmp_path / "dup.json"
     duplicate.write_text('{"a": 1, "a": 2}', encoding="utf-8")
     cases.append(({"task_registry": str(duplicate)}, "duplicate_key"))
+    no_tasks = tmp_path / "no_tasks.json"
+    no_tasks.write_text(json.dumps({"tasks": []}), encoding="utf-8")
+    cases.append(({"task_registry": str(no_tasks)}, "task registry .* is not valid"))
+    no_kind = tmp_path / "no_kind.json"
+    no_kind.write_text(json.dumps({"items": [{"plan_item_id": "p"}]}), encoding="utf-8")
+    cases.append(({"plan": str(no_kind)}, "plan .* is not valid: schema_violation"))
+    twice = tmp_path / "twice.json"
+    item = {"plan_item_id": "p", "kind": "reset"}
+    twice.write_text(json.dumps({"items": [item, item]}), encoding="utf-8")
+    cases.append(({"plan": str(twice)}, "duplicate_plan_item_id"))
     latin1 = tmp_path / "latin1.json"
     latin1.write_bytes(b'{"a": "\xe9"}')
     cases.append(({"plan": str(latin1)}, "not valid UTF-8"))

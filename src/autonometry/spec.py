@@ -16,7 +16,7 @@ from importlib.resources.abc import Traversable
 from itertools import combinations
 from pathlib import Path
 from types import MappingProxyType
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Final, Literal
 
 import jsonschema_rs
 from pydantic import (
@@ -37,8 +37,18 @@ _VERSION_RE = re.compile(r"v?([0-9]{1,4})\.([0-9]{1,4})")
 _FOLDER_RE = re.compile(r"v([0-9]{1,4})\.([0-9]{1,4})")
 _SCHEMA_FILE = "event.schema.json"
 _CHECKPOINT_SCHEMA_FILE = "checkpoint.schema.json"
-_REGISTRY_SCHEMA_FILE = "device_registry.schema.json"
 _RULES_FILE = "rules.toml"
+
+#: Kinds of registry declared before a session (definitions.md 1, 3, 6.10 and 8, Registries).
+RegistryKind = Literal["devices", "tasks", "plan"]
+#: The schema file of each kind of registry.
+REGISTRY_SCHEMA_FILES: Final[Mapping[RegistryKind, str]] = MappingProxyType(
+    {
+        "devices": "device_registry.schema.json",
+        "tasks": "task_registry.schema.json",
+        "plan": "plan.schema.json",
+    }
+)
 
 
 class SpecError(Exception):
@@ -312,9 +322,10 @@ def load_checkpoint_schema(version: str) -> dict[str, Any]:
     return _load_json_schema(version, _CHECKPOINT_SCHEMA_FILE)
 
 
-def load_registry_schema(version: str) -> dict[str, Any]:
-    """Load ``device_registry.schema.json`` (definitions.md 6.10) and check it is draft 2020-12."""
-    return _load_json_schema(version, _REGISTRY_SCHEMA_FILE)
+def load_registry_schema(version: str, kind: RegistryKind = "devices") -> dict[str, Any]:
+    """Load the schema of one kind of registry and check it is draft 2020-12: devices
+    (definitions.md 6.10), tasks (1, Task) or the plan (3, reason ``planned``)."""
+    return _load_json_schema(version, REGISTRY_SCHEMA_FILES[kind])
 
 
 def load_rules(version: str) -> Rules:

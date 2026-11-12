@@ -5,7 +5,7 @@ import tracemalloc
 from collections.abc import Iterator
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 from hypothesis import HealthCheck, assume, given, settings
@@ -13,7 +13,7 @@ from hypothesis import strategies as st
 from jsonschema import Draft202012Validator  # reference implementation, tests only
 
 from autonometry import reader, spec
-from autonometry.events import Event, LogCheck
+from autonometry.events import Event, LogCheck, TimelineFlagCode
 from autonometry.reader import (
     LogReadError,
     RejectedEventError,
@@ -168,7 +168,7 @@ def test_golden_fixture__defs_8(path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 def test_every_code_has_a_golden_fixture__defs_8() -> None:
     rules = spec.load_rules(SPEC)
     assert {p.stem for p in GOLDEN.glob("errors/*.jsonl")} == set(rules.errors.codes)
-    timeline_flags = {"help_reason_recoded", "idle_in_task", "undeclared_device"}
+    timeline_flags = set(get_args(TimelineFlagCode))
     assert {p.stem for p in GOLDEN.glob("flags/*.jsonl")} == set(rules.flags.codes) - timeline_flags
 
 
@@ -328,10 +328,18 @@ def test_spec_without_a_reader_error_code_is_refused__defs_8(spec_copy: Path) ->
         read_streams([], SPEC)
 
 
-def test_spec_without_a_reader_flag_code_is_refused__defs_8(spec_copy: Path) -> None:
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [('"seq_gap", ', ""), ('"unplanned",', '"unplanned", "made_up",'), ('"unplanned",', "")],
+    ids=["reader_code_missing", "unknown_code", "timeline_code_missing"],
+)
+def test_spec_whose_flag_codes_differ_is_refused__defs_8(
+    spec_copy: Path, old: str, new: str
+) -> None:
     text = (spec_copy / "rules.toml").read_text(encoding="utf-8")
-    (spec_copy / "rules.toml").write_text(text.replace('"seq_gap", ', ""), "utf-8")
-    with pytest.raises(spec.SpecError, match=r"\[flags\] codes lack"):
+    assert old in text
+    (spec_copy / "rules.toml").write_text(text.replace(old, new), "utf-8")
+    with pytest.raises(spec.SpecError, match=r"\[flags\] codes differ"):
         read_streams([], SPEC)
 
 

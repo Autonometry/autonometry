@@ -67,7 +67,7 @@ def test_duplicate_device_id_is_an_error__defs_6_10() -> None:
     )
     assert not result.valid
     assert result.sha256 is None
-    assert result.devices == 2
+    assert result.entries == 2
     assert result.problems == (
         "duplicate_device_id: /devices/1 repeats the device_id of /devices/0",
     )
