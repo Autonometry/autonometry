@@ -17,7 +17,7 @@
       "code": "invalid_utf8",
       "file": "invalid_utf8.jsonl",
       "line": 2,
-      "message": "byte 120 is not valid UTF-8"
+      "message": "byte 167 is not valid UTF-8"
     },
     {
       "code": "invalid_utf8",

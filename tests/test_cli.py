@@ -30,6 +30,7 @@ def test_spec_show_prints_names_with_hashes__defs_8() -> None:
     assert [name for _, name in lines] == [
         "checkpoint.schema.json",
         "definitions.md",
+        "device_registry.schema.json",
         "event.schema.json",
         "rules.toml",
     ]
@@ -110,7 +111,7 @@ def test_validate_clean_log_exits_0__defs_8() -> None:
     result = _validate(str(GOLDEN / "valid" / "multi_robot.jsonl"))
     assert result.exit_code == 0
     assert result.output.splitlines() == [
-        "spec 0.3: 1 file(s), 28 line(s), 28 event(s) in 3 session(s), "
+        "spec 0.3: 1 file(s), 30 line(s), 30 event(s) in 3 session(s), "
         "0 blank, 0 rejected, 0 flag(s)"
     ]
 

@@ -42,6 +42,8 @@ def _event(
         "ts": _ts(second),
         "type": type_,
     }
+    if type_ == "heartbeat":
+        event |= {"clock_source": "ntp", "clock_max_error_s": 0.001}
     return event | fields
 
 
@@ -57,6 +59,7 @@ def _start(seq: int = 0, second: float = 0.0, **fields: Any) -> dict[str, Any]:
             hint_policy="hint_as_shared",
             task_registry_hash=ZERO_HASH,
             plan_hash=ZERO_HASH,
+            simulated=False,
         )
         | fields
     )
@@ -594,7 +597,15 @@ def _human_input(reasons: list[str]) -> st.SearchStrategy[dict[str, Any]]:
 
 
 _FIELDS_BY_TYPE: dict[str, st.SearchStrategy[dict[str, Any]]] = {
-    "heartbeat": st.just({}),
+    "heartbeat": st.fixed_dictionaries(
+        {},
+        optional={
+            "clock_source": st.sampled_from(["ntp", "ptp", "gnss", "none", "unknown"]),
+            "clock_max_error_s": _nonneg,
+        },
+    ),
+    "support_start": st.fixed_dictionaries({}, optional={"scope": _scope, "device_id": _id}),
+    "support_end": st.fixed_dictionaries({}, optional={"scope": _scope, "device_id": _id}),
     "session_end": st.just({}),
     "help_request": st.fixed_dictionaries({"scope": _scope}),
     "transition": _transition(),
@@ -624,7 +635,13 @@ _FIELDS_BY_TYPE: dict[str, st.SearchStrategy[dict[str, Any]]] = {
             "hint_policy": st.sampled_from(["hint_as_shared", "hint_as_event"]),
             "task_registry_hash": _sha,
             "plan_hash": _sha,
-        }
+            "simulated": st.booleans(),
+        },
+        optional={
+            "unobserved": st.lists(
+                st.sampled_from(["safety_stops", "human_inputs", "tasks"]), unique=True
+            )
+        },
     ),
 }
 

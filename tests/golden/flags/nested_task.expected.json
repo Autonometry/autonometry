@@ -2,13 +2,13 @@
   "counts": {
     "blank_lines": 0,
     "errors_by_code": {},
-    "events": 6,
+    "events": 7,
     "files": 1,
     "flags": 1,
     "flags_by_code": {
       "nested_task": 1
     },
-    "lines": 6,
+    "lines": 7,
     "rejected_lines": 0,
     "sessions": 1
   },
@@ -24,9 +24,9 @@
   ],
   "sessions": [
     {
-      "events": 6,
+      "events": 7,
       "first_seq": 0,
-      "last_seq": 5,
+      "last_seq": 6,
       "robot_id": "r01",
       "session_id": "s01"
     }

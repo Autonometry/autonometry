@@ -23,7 +23,8 @@ def check_session(session: Session, rules: Rules) -> list[Flag]:
     ``time_gap`` (2 rule 2; silence longer than the session's ``heartbeat_interval_s`` plus
     ``gap_tolerance_s``, in seconds); ``ts_regression`` (3, ``ts``); ``nested_task``,
     ``task_end_without_start``, ``task_not_closed`` (1, task; 5); ``distance_regression`` (8,
-    ``distance_m`` in metres); ``ts_reconstructed`` (8, Time; one flag per session with the count).
+    ``distance_m`` in metres); ``ts_reconstructed`` (8, Time) and ``attribution_inferred`` (6.12),
+    one flag per session with the count; ``clock_unsynced`` (8, Time; one flag per session).
     """
 
     def flag(seq: int, code: FlagCode, detail: str) -> Flag:
@@ -47,11 +48,50 @@ def check_session(session: Session, rules: Rules) -> list[Flag]:
     flags += [flag(seq, code, detail) for seq, code, detail in _sequence(events, max_silence_ns)]
     flags += [flag(seq, code, detail) for seq, code, detail in _per_event(events, scopes)]
     flags += [flag(seq, code, detail) for seq, code, detail in _tasks(events)]
-    reconstructed = [e["seq"] for e in events if _extension(e, "x_ts_reconstructed") is True]
-    if reconstructed:
-        detail = f"{_events(len(reconstructed))} with x_ts_reconstructed: true"
-        flags.append(flag(reconstructed[0], "ts_reconstructed", detail))
+    flags += [flag(seq, code, detail) for seq, code, detail in _marked(events)]
+    clock = _clock(events, rules.sealing.clock_tolerance_s)
+    if clock is not None:
+        flags.append(flag(*clock))
     return flags
+
+
+_MARKERS: tuple[tuple[str, FlagCode], ...] = (
+    ("x_ts_reconstructed", "ts_reconstructed"),
+    ("x_attribution_inferred", "attribution_inferred"),
+)
+
+_UNSYNCED_SOURCES = frozenset({"none", "unknown"})
+
+
+def _marked(events: tuple[Event, ...]) -> Iterator[tuple[int, FlagCode, str]]:
+    """Events rebuilt after the fact (definitions.md 8, Time) or whose source was inferred
+    (6.12): one flag per marker at its first event, with the count."""
+    for field, code in _MARKERS:
+        found = [e["seq"] for e in events if _extension(e, field) is True]
+        if found:
+            yield found[0], code, f"{_events(len(found))} with {field}: true"
+
+
+def _clock(events: tuple[Event, ...], tolerance_s: float) -> tuple[int, FlagCode, str] | None:
+    """``clock_unsynced`` when any heartbeat reports ``clock_source`` ``none`` or ``unknown``,
+    reports none at all, or reports ``clock_max_error_s`` above ``tolerance_s`` seconds; also when
+    no heartbeat reports the clock (definitions.md 8, Time)."""
+    heartbeats = [e for e in events if e["type"] == "heartbeat"]
+    if not heartbeats:
+        return events[0]["seq"], "clock_unsynced", "no heartbeat reports the clock status"
+    unsynced = [
+        e["seq"]
+        for e in heartbeats
+        if e.get("clock_source", "unknown") in _UNSYNCED_SOURCES
+        or e.get("clock_max_error_s", 0.0) > tolerance_s
+    ]
+    if not unsynced:
+        return None
+    detail = (
+        f"{len(unsynced)} of {len(heartbeats)} heartbeat(s) without a synchronised clock "
+        f"(clock_source none, unknown or missing, or clock_max_error_s above {tolerance_s:g} s)"
+    )
+    return unsynced[0], "clock_unsynced", detail
 
 
 def _events(count: int) -> str:
