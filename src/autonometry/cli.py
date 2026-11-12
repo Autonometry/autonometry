@@ -4,9 +4,11 @@ import hashlib
 import json
 import logging
 import sys
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
+from fractions import Fraction
 from pathlib import Path
-from typing import Annotated, NoReturn, cast
+from typing import Annotated, Any, NoReturn, cast
 
 import rfc8785
 import typer
@@ -18,10 +20,17 @@ from autonometry import verify as verify_
 from autonometry.events import LogCheck, Session, TrustLevel, VerifyResult
 from autonometry.fileio import append_durably, atomic_write
 from autonometry.reader import LogReadError, read_logs
-from autonometry.registry import RegistryReadError, check_registry
+from autonometry.registry import (
+    LAYOUTS,
+    RegistryCheck,
+    RegistryReadError,
+    check_registry,
+    hash_problem,
+)
 from autonometry.sealfile import SealFile
 from autonometry.signednote import SignedNoteError, VerifierKey
 from autonometry.spec import (
+    RegistryKind,
     Rules,
     SpecError,
     available_versions,
@@ -29,6 +38,7 @@ from autonometry.spec import (
     load_rules,
     spec_file_hashes,
 )
+from autonometry.timeline import Registries, StateTotals, Timeline, build_timeline
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +56,7 @@ spec_app = typer.Typer(
 )
 app.add_typer(spec_app, name="spec")
 registry_app = typer.Typer(
-    help="Check device registries (definitions.md 6.10).",
+    help="Check device registries, task registries and plans (definitions.md 1, 3, 6.10, 8).",
     no_args_is_help=True,
     pretty_exceptions_enable=False,
 )
@@ -186,18 +196,34 @@ def validate(
         raise typer.Exit(1)
 
 
+_ENTRY_NAMES: Mapping[RegistryKind, str] = {
+    "devices": "device(s)",
+    "tasks": "task(s)",
+    "plan": "plan item(s)",
+}
+
+
+def _registry_kind(kind: str) -> RegistryKind:
+    if kind not in LAYOUTS:
+        raise typer.BadParameter("must be 'devices', 'tasks' or 'plan'", param_hint="'--kind'")
+    return cast(RegistryKind, kind)
+
+
 @registry_app.command("check")
 def registry_check(
     path: Annotated[
         Path,
         typer.Argument(
-            help="Device registry JSON file.",
+            help="Registry JSON file.",
             exists=True,
             dir_okay=False,
             readable=True,
             show_default=False,
         ),
     ],
+    kind: Annotated[
+        str, typer.Option("--kind", help="Kind of registry: devices, tasks or plan.")
+    ] = "devices",
     as_json: Annotated[
         bool, typer.Option("--json", help="Print the result as JSON instead of a summary.")
     ] = False,
@@ -208,20 +234,22 @@ def registry_check(
         ),
     ] = None,
 ) -> None:
-    """Check a device registry and print its hash for session_start.device_registry_hash.
+    """Check a device registry, task registry or plan and print its hash for session_start
+    (device_registry_hash, task_registry_hash or plan_hash).
 
     Exit status: 0 when the registry is valid, 1 when it is not (or cannot be read), 2 on bad
     usage. Values from the file are never printed.
     """
+    registry_kind = _registry_kind(kind)
     version = _spec_version(spec)
     try:
-        result = check_registry(path, version)
+        result = check_registry(path, version, registry_kind)
     except (SpecError, RegistryReadError) as exc:
         _fail(str(exc))
     if as_json:
         typer.echo(json.dumps(result.to_json(), indent=2, sort_keys=True))
     elif result.sha256 is not None:
-        typer.echo(f"spec {version}: {result.devices} device(s), valid")
+        typer.echo(f"spec {version}: {result.entries} {_ENTRY_NAMES[registry_kind]}, valid")
         typer.echo(f"sha256 {result.sha256}")
     else:
         typer.echo(f"spec {version}: NOT valid")
@@ -280,6 +308,261 @@ def _grouped[Item](
         lines += [f"    {describe(item)}" for item in shown]
         if total > len(shown):
             lines.append(f"    ... and {total - len(shown)} more")
+    return lines
+
+
+def _registries_for(
+    session: Session,
+    given: Mapping[RegistryKind, Path | None],
+    version: str,
+    cache: dict[tuple[str, RegistryKind], RegistryCheck],
+) -> tuple[Registries, list[str]]:
+    """The registries of one session (definitions.md 8, Registries): the files the user named,
+    else the copies in the session folder; each must match its hash in ``session_start``.
+    Returns the matching registries (``None`` for a missing one) and one line per problem."""
+    start = next((e for e in session.events if e["type"] == "session_start"), None)
+    folder = Path(session.file).parent if session.file is not None else None
+    documents: dict[RegistryKind, Mapping[str, Any] | None] = {}
+    problems: list[str] = []
+    for kind, layout in LAYOUTS.items():
+        documents[kind] = None
+        path = given[kind]
+        if path is None and folder is not None and (folder / layout.copy_name).is_file():
+            path = folder / layout.copy_name
+        if path is None or start is None:
+            continue
+        key = (str(path), kind)
+        try:
+            check = cache[key] if key in cache else check_registry(path, version, kind)
+        except RegistryReadError as exc:
+            problems.append(str(exc))
+            continue
+        cache[key] = check
+        problem = hash_problem(check, cast(Mapping[str, Any], start).get(layout.hash_field))
+        if problem is None:
+            documents[kind] = check.document
+        else:
+            problems.append(problem)
+    registries = Registries.from_documents(
+        documents["devices"], documents["tasks"], documents["plan"]
+    )
+    return registries, problems
+
+
+def _seconds(ns: float) -> str:
+    return f"{ns / 1e9:.3f} s"
+
+
+def _states_text(totals: StateTotals[int] | StateTotals[Fraction]) -> str:
+    states = ", ".join(
+        f"{state} {_seconds(float(value))}" for state, value in totals.states.items() if value
+    )
+    return (
+        f"active {_seconds(float(totals.active_ns))}, idle {_seconds(float(totals.idle_ns))}, "
+        f"unknown {_seconds(float(totals.unknown_ns))}" + (f"; {states}" if states else "")
+    )
+
+
+def _counts_text(counts: Mapping[str, int]) -> str:
+    return ", ".join(f"{name} {count}" for name, count in counts.items()) or "none"
+
+
+def timeline_lines(timeline: Timeline) -> list[str]:
+    """Return the human summary of one session's timeline (README, "Read a timeline")."""
+    data = timeline.to_json()
+    name = f"{timeline.robot_id}/{timeline.session_id}"
+    if timeline.start_ns is None:
+        return [f"{name}: no session_start, nothing observed"]
+    closed = "closed" if timeline.session_end_seq is not None else "no session_end"
+    lines = [
+        f"{name}: observed {_seconds(timeline.observed_ns)} from {data['start']} ({closed})",
+        f"  whole robot: {_states_text(timeline.whole_robot)}",
+        f"  scope-weighted: {_states_text(timeline.scope_weighted)}",
+    ]
+    if len(timeline.scopes) > 1:
+        lines += [
+            f"  scope {scope}: {_states_text(totals)}"
+            for scope, totals in timeline.per_scope.items()
+        ]
+    interventions = data["interventions"]
+    stops = data["safety_stops"]
+    lines += [
+        f"  interventions: {interventions['per_scope']} per scope, "
+        f"{interventions['whole_robot']} whole robot; by kind: "
+        f"{_counts_text(interventions['by_kind'])}; by reason: "
+        f"{_counts_text(interventions['by_reason'])}",
+        f"  safety stops: {stops['per_scope']} per scope, {stops['whole_robot']} whole robot "
+        f"({stops['human_triggered']} human-triggered, {stops['automatic']} automatic, "
+        f"{stops['joined_by_takeover']} joined by a takeover)",
+        f"  tasks: {len(timeline.tasks)} "
+        f"({sum(1 for task in timeline.tasks if task.autonomous)} autonomous)",
+    ]
+    for task in timeline.tasks[:_SHOWN_PER_CODE]:
+        known = "" if task.definition_known else ", definition not in the registry"
+        lines.append(
+            f"    {task.task_id} ({task.task_definition_id}{known}): {task.outcome}, "
+            f"{'autonomous' if task.autonomous else 'not autonomous'}"
+            f"{', contains unknown time' if task.contains_unknown else ''}, "
+            f"human {_seconds(task.human_ns)}, {task.interventions} intervention(s)"
+        )
+    if len(timeline.tasks) > _SHOWN_PER_CODE:
+        lines.append(f"    ... and {len(timeline.tasks) - _SHOWN_PER_CODE} more")
+    supervision = timeline.supervision
+    ratio = "n/a" if supervision.ratio is None else f"{supervision.ratio:.3f}"
+    per_hour = supervision.supervisor_hours_per_robot_hour
+    distance = "n/a" if timeline.distance_m is None else f"{timeline.distance_m:.3f} m"
+    lines += [
+        f"  resets: planned {_seconds(timeline.reset_planned_ns)}, "
+        f"unplanned {_seconds(timeline.reset_unplanned_ns)}",
+        f"  supervision: ratio {ratio}, supervisor-hours per robot-hour "
+        f"{'n/a' if per_hour is None else f'{per_hour:.3f}'}",
+        f"  humans: {timeline.distinct_human_actors} distinct, "
+        f"{_seconds(timeline.human_actor_ns)} actor-time; supported "
+        f"{_seconds(timeline.supported_ns)}; distance {distance}",
+    ]
+    return lines
+
+
+@app.command("timeline")
+def timeline_cmd(  # noqa: PLR0913, PLR0917 -- matches the timeline CLI's documented options
+    logs: Annotated[
+        list[Path],
+        typer.Argument(
+            help="JSON Lines event log files.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            show_default=False,
+        ),
+    ],
+    devices: Annotated[
+        Path | None,
+        typer.Option(
+            "--devices",
+            help="Device registry for every session. Default: devices.json beside each log.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+    tasks: Annotated[
+        Path | None,
+        typer.Option(
+            "--tasks",
+            help="Task registry for every session. Default: tasks.json beside each log.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+    plan: Annotated[
+        Path | None,
+        typer.Option(
+            "--plan",
+            help="Plan for every session. Default: plan.json beside each log.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Print the result as JSON instead of a summary.")
+    ] = False,
+    spec: Annotated[
+        str | None, typer.Option("--spec", help="Spec version, for example 0.3.")
+    ] = None,
+) -> None:
+    """Build each session's timeline (definitions.md 1 to 8): time per state, interventions,
+    safety stops, tasks, resets, supervision and flags.
+
+    Registries come from --devices/--tasks/--plan or from devices.json, tasks.json and plan.json
+    beside the log; each must match its hash in session_start. Exit status: 0; 1 when a registry
+    does not match its hash (that session gets no timeline) or lines were rejected; 2 on bad
+    usage. Identifiers from the log are printed; other event contents never are.
+    """
+    version = _spec_version(spec)
+    try:
+        result = read_logs(logs, version)
+        rules = load_rules(version)
+    except (SpecError, LogReadError) as exc:
+        _fail(str(exc))
+    given: dict[RegistryKind, Path | None] = {"devices": devices, "tasks": tasks, "plan": plan}
+    cache: dict[tuple[str, RegistryKind], RegistryCheck] = {}
+    timelines: list[Timeline] = []
+    registry_errors: list[tuple[Session, str]] = []
+    for session in result.sessions:
+        registries, problems = _registries_for(session, given, version, cache)
+        if problems:
+            registry_errors += [(session, problem) for problem in problems]
+            continue
+        own_flags = [
+            f
+            for f in result.flags
+            if (f.robot_id, f.session_id) == (session.robot_id, session.session_id)
+        ]
+        timelines.append(build_timeline(session, registries, rules, own_flags))
+    if as_json:
+        report = _timeline_report(result, timelines, registry_errors)
+        typer.echo(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        for line in _timeline_summary(result, timelines, registry_errors):
+            typer.echo(line)
+    if result.errors or registry_errors:
+        raise typer.Exit(1)
+
+
+def _timeline_report(
+    result: LogCheck, timelines: Sequence[Timeline], errors: Sequence[tuple[Session, str]]
+) -> dict[str, Any]:
+    return {
+        "spec_version": result.spec_version,
+        "counts": {
+            "files": result.counts.files,
+            "events": result.counts.events,
+            "sessions": result.counts.sessions,
+            "rejected_lines": result.counts.rejected_lines,
+            "registry_errors": len(errors),
+        },
+        "rejected_lines": [
+            {"file": e.file, "line": e.line, "code": e.code, "message": e.message}
+            for e in result.errors
+        ],
+        "registry_errors": [
+            {"robot_id": s.robot_id, "session_id": s.session_id, "problem": problem}
+            for s, problem in errors
+        ],
+        "sessions": [timeline.to_json() for timeline in timelines],
+    }
+
+
+def _timeline_summary(
+    result: LogCheck, timelines: Sequence[Timeline], errors: Sequence[tuple[Session, str]]
+) -> list[str]:
+    counts = result.counts
+    lines = [
+        f"spec {result.spec_version}: {counts.sessions} session(s), {counts.events} event(s), "
+        f"{counts.rejected_lines} rejected line(s), {len(errors)} registry error(s)"
+    ]
+    for timeline in timelines:
+        lines += timeline_lines(timeline)
+    flags = [flag for timeline in timelines for flag in timeline.flags]
+    lines += _grouped(
+        "flags (warnings)",
+        flags,
+        Counter(flag.code for flag in flags),
+        code=lambda f: f.code,
+        describe=lambda f: f"robot {f.robot_id} session {f.session_id} seq {f.seq}: {f.detail}",
+    )
+    if errors:
+        lines.append("registry errors:")
+        lines += [f"  {s.robot_id}/{s.session_id}: {problem}" for s, problem in errors]
+    lines += _grouped(
+        "rejected lines",
+        result.errors,
+        counts.errors_by_code,
+        code=lambda e: e.code,
+        describe=lambda e: f"{e.file}:{e.line}: {e.message}",
+    )
     return lines
 
 
