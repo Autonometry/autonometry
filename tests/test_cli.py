@@ -32,7 +32,9 @@ def test_spec_show_prints_names_with_hashes__defs_8() -> None:
         "definitions.md",
         "device_registry.schema.json",
         "event.schema.json",
+        "plan.schema.json",
         "rules.toml",
+        "task_registry.schema.json",
     ]
     assert all(len(digest) == 64 for digest, _ in lines)
 

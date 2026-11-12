@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autonometry.github.io/spec/v0.3/plan.schema.json",
+  "title": "Autonometry plan (v0.3)",
+  "description": "The pre-registered human actions of a session (definitions.md v0.3 section 3, reason planned). A plan_item_id must not repeat; the list may be empty. Its SHA-256 in RFC 8785 canonical form is session_start.plan_hash. Fields starting with x_ are extensions.",
+  "type": "object",
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "item": {
+      "type": "object",
+      "properties": {
+        "plan_item_id": { "$ref": "#/$defs/id" },
+        "kind": { "type": "string", "enum": ["reset", "calibration", "demonstration", "approval_gate"] },
+        "description": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["plan_item_id", "kind"],
+      "patternProperties": { "^x_[a-z0-9_]+$": {} },
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "items": { "type": "array", "items": { "$ref": "#/$defs/item" } }
+  },
+  "required": ["items"],
+  "patternProperties": { "^x_[a-z0-9_]+$": {} },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "items": [
+        { "plan_item_id": "reset_scene", "kind": "reset", "description": "Put the cubes back in bin A." },
+        { "plan_item_id": "gate_grasp", "kind": "approval_gate" }
+      ]
+    }
+  ]
+}
