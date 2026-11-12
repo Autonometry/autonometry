@@ -27,7 +27,12 @@ def test_spec_show_prints_names_with_hashes__defs_8() -> None:
     result = runner.invoke(cli.app, ["spec", "show", "0.2"])
     assert result.exit_code == 0
     lines = [line.split("  ") for line in result.output.strip().splitlines()]
-    assert [name for _, name in lines] == ["definitions.md", "event.schema.json", "rules.toml"]
+    assert [name for _, name in lines] == [
+        "checkpoint.schema.json",
+        "definitions.md",
+        "event.schema.json",
+        "rules.toml",
+    ]
     assert all(len(digest) == 64 for digest, _ in lines)
 
 

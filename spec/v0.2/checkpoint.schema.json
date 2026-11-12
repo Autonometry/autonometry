@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autonometry.github.io/spec/v0.2/checkpoint.schema.json",
+  "title": "Autonometry checkpoint or timestamp record (v0.2)",
+  "description": "One line of a <name>.checkpoints.jsonl or anchor file (definitions.md v0.2 section 10.4). One JSON object per line (JSON Lines).",
+  "type": "object",
+  "oneOf": [
+    {
+      "properties": {
+        "type": { "const": "checkpoint" },
+        "note": {
+          "type": "string",
+          "maxLength": 8192,
+          "description": "A C2SP signed-note checkpoint (https://c2sp.org/tlog-checkpoint)."
+        }
+      },
+      "required": ["type", "note"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "type": { "const": "timestamp" },
+        "note_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Hex SHA-256 of the checkpoint's signed note, UTF-8 encoded."
+        },
+        "tsr": {
+          "type": "string",
+          "maxLength": 32768,
+          "description": "Base64 of the DER-encoded RFC 3161 TimeStampResp."
+        }
+      },
+      "required": ["type", "note_sha256", "tsr"],
+      "additionalProperties": false
+    }
+  ]
+}

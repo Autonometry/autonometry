@@ -37,3 +37,11 @@ def seconds_to_ns(seconds: float) -> int:
 def ns_to_seconds(ns: int) -> float:
     """Return integer nanoseconds as float seconds (for display and reports only)."""
     return ns / _NS_PER_S
+
+
+def datetime_to_ns(instant: datetime) -> int:
+    """Return a timezone-aware ``datetime`` as integer nanoseconds since the Unix epoch.
+
+    Exact: ``datetime`` has microsecond resolution, so the conversion never rounds.
+    """
+    return ((instant.astimezone(UTC) - _EPOCH) // timedelta(microseconds=1)) * 1000

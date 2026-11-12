@@ -184,7 +184,12 @@ def test_missing_spec_root_is_a_spec_error(tmp_path: Path, monkeypatch: pytest.M
 
 def test_file_hashes_are_sha256_of_the_files() -> None:
     hashes = spec.spec_file_hashes("0.2")
-    assert list(hashes) == ["definitions.md", "event.schema.json", "rules.toml"]
+    assert list(hashes) == [
+        "checkpoint.schema.json",
+        "definitions.md",
+        "event.schema.json",
+        "rules.toml",
+    ]
     expected = hashlib.sha256((REPO_SPEC / "v0.2" / "rules.toml").read_bytes()).hexdigest()
     assert hashes["rules.toml"] == expected
 
@@ -262,6 +267,19 @@ def test_code_in_flags_and_errors_fails_consistency__defs_8(spec_copy: Path) -> 
     _edit_rules(spec_copy, '"duplicate_seq"]', '"duplicate_seq", "seq_gap"]')
     with pytest.raises(spec.SpecConsistencyError, match="'seq_gap' is both a flag and an error"):
         spec.check_consistency("0.2")
+
+
+def test_file_code_shared_with_a_gap_code_fails_consistency__defs_10_6(spec_copy: Path) -> None:
+    _edit_rules(spec_copy, '"orphan_timestamp"]', '"orphan_timestamp", "unsealed"]')
+    with pytest.raises(spec.SpecError, match="file_codes"):
+        spec.load_rules("0.2")
+
+
+def test_rules_sealing_table__defs_10() -> None:
+    sealing = spec.load_rules("0.2").sealing
+    assert sealing.checkpoint_every_events == 1000
+    assert sealing.max_commit_delay_s == 3600.0
+    assert sealing.file_codes == ("malformed_checkpoint", "orphan_timestamp")
 
 
 def test_known_version_normalises() -> None:
