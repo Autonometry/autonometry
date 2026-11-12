@@ -48,7 +48,8 @@ reported as synchronised within `clock_tolerance_s` is flagged `clock_unsynced`.
 `registry check` validates a device registry, the JSON file that declares every source that can
 command the robot (people's input devices with their location, AI controllers, scripts, hoists;
 definitions.md 6.10), and prints its SHA-256, which goes into `session_start.device_registry_hash`.
-It exits 1 for an invalid registry and never prints values from the file.
+It exits 1 for an invalid registry, including a repeated `device_id` or a device that an earlier
+one shadows (the first match wins), and never prints values from the file.
 
 ## Sealing and verification
 
