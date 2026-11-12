@@ -53,6 +53,7 @@ TimelineFlagCode = Literal[
     "registry_missing",
     "unknown_task_definition",
     "unplanned",
+    "approval_wait_recoded",
 ]
 
 # Codes of rules.toml [sealing] evidence_codes and gap_codes (definitions.md section 10.6).
