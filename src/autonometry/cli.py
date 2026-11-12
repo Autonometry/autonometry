@@ -309,17 +309,10 @@ def keys_generate(
 
 
 def _key_name(key_path: Path) -> str:
-    vkey_path = key_path.with_name(f"{key_path.name}.vkey")
     try:
-        lines = keys.load_vkeys(vkey_path)
+        return keys.load_key_name(key_path)
     except keys.SigningKeyError as exc:
         _fail(str(exc))
-    if not lines:
-        _fail(f"{vkey_path} has no vkey line")
-    try:
-        return signednote.parse_vkey(lines[0]).name
-    except SignedNoteError as exc:
-        _fail(f"{vkey_path}: {exc}")
 
 
 def _sign_checkpoint(
@@ -626,6 +619,39 @@ def verify_cmd(  # noqa: PLR0913, PLR0917 -- matches the verify CLI's documented
             typer.echo(line)
     if not result.verified(level):
         raise typer.Exit(1)
+
+
+@app.command("record")
+def record(
+    config: Annotated[
+        Path,
+        typer.Option(
+            "--config", help="Recorder config (TOML).", dir_okay=False, show_default=False
+        ),
+    ],
+) -> None:
+    """Record a robot's control events into a sealed, crash-safe log (Linux and macOS).
+
+    Receives events from connectors on a local Unix datagram socket until SIGTERM or SIGINT.
+    Exit status: 0 after a clean stop, 1 on a failure while recording (restarting continues the
+    same session), 2 when it cannot start (bad config, key or registry; socket or folder in use).
+    Operational messages go to stderr and never contain event contents.
+    """
+    if sys.platform == "win32":
+        typer.echo("error: the recorder runs on Linux and macOS only", err=True)
+        raise typer.Exit(2)
+    from autonometry.recorder.config import ConfigError, load_config, prepare  # noqa: PLC0415
+    from autonometry.recorder.service import serve  # noqa: PLC0415 -- POSIX-only modules
+
+    try:
+        prepared = prepare(load_config(config))
+    except ConfigError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from None
+    recorder_logger = logging.getLogger("autonometry.recorder")
+    if recorder_logger.getEffectiveLevel() > logging.INFO:
+        recorder_logger.setLevel(logging.INFO)
+    raise typer.Exit(serve(prepared))
 
 
 def main() -> None:
