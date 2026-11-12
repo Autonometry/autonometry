@@ -233,7 +233,7 @@ All parameters MUST be printed in the report; changing a default is allowed but 
 
 **10.5 Anchors.** A checkpoint is anchored when either (a) a timestamp record for it holds a granted RFC 3161 response for the signed note that verifies against a TSA root certificate the verifier trusts, with a time at most `max_commit_delay_s` after and at most `clock_tolerance_s` before the `ts` of the last event the checkpoint covers; or (b) the verifier holds the same checkpoint (origin, size, root, valid signature) in an anchor file: a copy kept outside the log, such as the customer's or a witness's.
 
-**10.6 Verification.** A verifier recomputes every event hash from the event and every root from the events; it never trusts a stored value. A span of events is trust level L2 when every event in it is sealed and it is covered by a checkpoint with a valid signature from a trusted key, a matching root and an anchor. Everything else is L1, and so are sessions holding events with `x_ts_reconstructed: true` (Section 8). Each session gets one status:
+**10.6 Verification.** A verifier recomputes every event hash from the event and every root from the events; it never trusts a stored value. Anchors are checked against the events exactly like checkpoints, and a valid anchor counts as an anchored checkpoint. A span of events is trust level L2 when every event in it is sealed and it is covered by a checkpoint with a valid signature from a trusted key, a matching root and an anchor. Everything else is L1, and so are sessions holding events with `x_ts_reconstructed: true` (Section 8). Each session gets one status:
 - `verified`: L2 up to the last event;
 - `partial`: L2 up to `sealed_through_seq`, L1 after it;
 - `unverified`: no L2 span, and nothing contradicts the log;
@@ -241,11 +241,11 @@ All parameters MUST be printed in the report; changing a default is allowed but 
 
 Evidence codes; any one makes the status `failed`:
 - `hash_mismatch`: a stored `hash` differs from the recomputed one.
-- `chain_break`: a `prev_hash` or `seq` does not follow, or only some events are sealed.
+- `chain_break`: in a session with any sealed event, an event is not sealed, or a `prev_hash` or `seq` does not follow.
 - `bad_signature`: a signature line with a trusted key's name and key ID does not verify.
 - `root_mismatch`: a checkpoint or anchor root differs from the events.
 - `missing_events`: a checkpoint or anchor covers more events than the log holds (including a session absent from the log).
-- `bad_timestamp_token`: a timestamp record that cannot be decoded, whose message imprint is not its `note_sha256`, or whose `note_sha256` matches no checkpoint.
+- `bad_timestamp_token`: a timestamp record for one of the session's checkpoints whose token cannot be decoded, or whose message imprint is not the SHA-256 given in its `note_sha256`.
 
 Gap codes; they never raise the level:
 - `unsealed`: no event is sealed.
@@ -254,5 +254,7 @@ Gap codes; they never raise the level:
 - `not_anchored`: a valid checkpoint without an anchor, including when its token does not verify against the trusted TSA roots or no TSA root is trusted.
 - `late_anchor`, `clock_skew`: a verified token outside the window of 10.5.
 - `reconstructed`: events carry `x_ts_reconstructed: true`.
+
+**File problems.** A record that cannot be tied to one session is reported for its file: `malformed_checkpoint` (a checkpoint note that is not a well-formed signed checkpoint) and `orphan_timestamp` (a timestamp record whose `note_sha256` matches no checkpoint record in the same file). File problems, like rejected lines, make the result not verified whatever the sessions' statuses.
 
 A verifier MUST NOT report L2 for a span it did not prove, and MUST report a log with rejected lines as not verified.

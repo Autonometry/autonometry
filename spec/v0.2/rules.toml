@@ -122,3 +122,4 @@ gap_codes = [
   "unsealed", "no_checkpoint", "untrusted_checkpoint", "not_anchored", "late_anchor",
   "clock_skew", "reconstructed",
 ]
+file_codes = ["malformed_checkpoint", "orphan_timestamp"]
