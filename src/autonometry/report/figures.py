@@ -184,31 +184,48 @@ def time_share(groups: Mapping[str, Json]) -> str | None:
         return _svg(figure, "share", "Time autonomy share with intervals, bounds and variants")
 
 
+#: Units of the gap axis by size: name and hours per unit; the first whose span reaches 1 wins.
+_TIME_UNITS: Final = (("h", 1.0), ("min", 1 / 60), ("s", 1 / 3600))
+
+
+def time_unit(largest_hours: float) -> tuple[str, float]:
+    """The unit an axis of durations up to ``largest_hours`` reads best in: hours from one
+    hour, minutes from one minute, else seconds; with its size in hours."""
+    for name, size in _TIME_UNITS:
+        if largest_hours >= size:
+            return name, size
+    return _TIME_UNITS[-1]
+
+
 def gaps_km(curves: Mapping[str, Json | None]) -> str | None:
     """Kaplan-Meier curve of the gaps between interventions (active hours) with its pointwise
     band, one panel per group."""
     present = [(g, curve) for g in sorted(curves) if (curve := curves[g]) is not None]
     if not present:
         return None
+    unit, size = time_unit(max(max(curve["times"]) for _, curve in present))
     with _style():
         figure = _figure(0.4 + 1.9 * len(present))
         panels = figure.subplots(len(present), 1, squeeze=False)[:, 0]
         for axes, (name, curve) in zip(panels, present, strict=True):
+            times = [t / size for t in curve["times"]]
             axes.fill_between(
-                curve["times"],
+                times,
                 curve["lower"],
                 curve["upper"],
                 step="post",
                 color=OUTER_COLOUR,
                 linewidth=0,
             )
-            axes.step(curve["times"], curve["survival"], where="post", color=INK, linewidth=1.5)
+            axes.step(times, curve["survival"], where="post", color=INK, linewidth=1.5)
             axes.axhline(0.5, color=MUTED, linewidth=0.6, linestyle=":")
             axes.set_ylim(0.0, 1.02)
             axes.set_xlim(left=0.0)
             axes.set_ylabel("S(t)")
             axes.set_title(f"{name}: gap without an intervention", loc="left", fontsize=9)
-        panels[-1].set_xlabel("active hours since the previous intervention (band: pointwise CI)")
+        panels[-1].set_xlabel(
+            f"active time since the previous intervention, {unit} (band: pointwise CI)"
+        )
         return _svg(figure, "gaps", "Kaplan-Meier curve of the gaps between interventions")
 
 

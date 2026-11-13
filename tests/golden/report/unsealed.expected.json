@@ -127,6 +127,7 @@
     },
     "state_seconds": {
       "real": {
+        "moved_s": 3.0,
         "observed_s": 370.0,
         "states_s": {
           "ai": 321.0,
@@ -140,6 +141,7 @@
         }
       },
       "simulated": {
+        "moved_s": 3.0,
         "observed_s": 50.0,
         "states_s": {
           "ai": 50.0,
@@ -348,11 +350,11 @@
               },
               "human_minutes_per_task": {
                 "ci": [
-                  -0.31219653093347033,
+                  0.0,
                   0.10716938160001255
                 ],
                 "estimate": 0.07222222222222222,
-                "interval_method": "cluster_bootstrap_t(session)",
+                "interval_method": "cluster_bootstrap_t(session), clipped at 0",
                 "n": 6,
                 "n_clusters": 3
               },
@@ -620,7 +622,7 @@
         },
         "human_minutes_per_task": {
           "ci": [
-            -0.31219653093347033,
+            0.0,
             0.10716938160001255
           ],
           "ci_bootstrap_percentile": [
@@ -630,22 +632,22 @@
           "cluster": "session",
           "definition": "mean over tasks of (human time + unplanned reset + moved dwell) in minutes",
           "estimate": 0.07222222222222222,
-          "interval_method": "cluster_bootstrap_t(session)",
+          "interval_method": "cluster_bootstrap_t(session), clipped at 0",
           "median": 0.04166666666666667,
           "n": 6,
           "n_clusters": 3,
           "outer_interval": [
-            -0.31219653093347033,
+            0.0,
             0.3955386670602625
           ],
           "share_tasks_zero_human": 0.16666666666666666,
           "unknown_as_ai": {
             "ci": [
-              -0.31219653093347033,
+              0.0,
               0.10716938160001255
             ],
             "estimate": 0.07222222222222222,
-            "interval_method": "cluster_bootstrap_t(session)",
+            "interval_method": "cluster_bootstrap_t(session), clipped at 0",
             "n": 6
           },
           "unknown_as_human": {
@@ -1799,6 +1801,8 @@
       "hint_ttl_s": 60.0,
       "idle_threshold_s": 30.0,
       "max_commit_delay_s": 3600.0,
+      "min_clusters": 2,
+      "rare_rate_events": 5,
       "simultaneity_window_s": 0.5,
       "takeover_window_s": 60.0,
       "unknown_share_max": 0.05
@@ -1828,11 +1832,11 @@
     },
     "spec_files": {
       "checkpoint.schema.json": "df303f5e55b38a51baad7a02aabf3b7a83a8db2b1dd32c64577bd7e455f70a9c",
-      "definitions.md": "66ce3f4c80365b20cda3edb01fc4184ba9bf878530a2ea9c4ff4f3f8eb672081",
+      "definitions.md": "4632505af2f8f403cf17e51bd2ad2b25339d359f23b8132b0406a4d49620b00a",
       "device_registry.schema.json": "8e452d7fcb97f250e55a7113e71e984336628add214b722c9e636e497e881998",
       "event.schema.json": "952aed101cfe58104fb753901754affd86df2e2a36b4017a474aed84b448c15c",
       "plan.schema.json": "6028e9e8c31acfec5e10f054a7fb565dfd075035739361c77b3ff9ed950204a6",
-      "rules.toml": "83010a363918198736dcc3e82ffcafe8dddcdaf1ee78a3fdceddfa20d115f8c6",
+      "rules.toml": "0984b0ad41b1e3af6a118a6e0c34e704e2bfce1750ec66e3caf9f026c93b355d",
       "task_registry.schema.json": "98319a3b90bf272ae787cdb51ec1dfd8329df3ee72e04d577e08a0f844dcc1c1"
     },
     "spec_version": "0.3",
@@ -2183,13 +2187,13 @@
       "real": {
         "human_minutes_per_task": {
           "ci": [
-            -0.31219653093347033,
+            0.0,
             0.10716938160001255
           ],
           "estimate": 0.07222222222222222,
-          "interval_method": "cluster_bootstrap_t(session)",
+          "interval_method": "cluster_bootstrap_t(session), clipped at 0",
           "outer_interval": [
-            -0.31219653093347033,
+            0.0,
             0.3955386670602625
           ]
         },

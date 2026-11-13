@@ -4,7 +4,8 @@ blocks of one group (:mod:`autonometry.stats.metrics`). Needs the ``report`` ext
 from collections.abc import Mapping
 from typing import Any, Final
 
-from autonometry.stats.intervals import MIN_SPREAD, garwood_upper
+from autonometry.spec import ReportRules
+from autonometry.stats.intervals import garwood_upper
 
 Json = dict[str, Any]
 
@@ -28,8 +29,7 @@ RATES: Final = (
     "hints_per_active_hour",
     "takeovers_per_active_hour",
 )
-#: Fewer events than this make a rare rate (11.6, 4), and its one-sided confidence level.
-RARE_EVENTS: Final = 5
+#: One-sided confidence level of a rare rate's upper bound (11.6, 4).
 RARE_LEVEL: Final = 0.95
 
 
@@ -92,12 +92,12 @@ def _data_quality(group: str, metrics: Json) -> list[Json]:
     return out
 
 
-def _single_cluster(group: str, metrics: Json) -> list[Json]:
+def _single_cluster(group: str, metrics: Json, min_clusters: int) -> list[Json]:
     out = []
     for name in CLUSTERED:
         block = metrics[name]
         clusters = block.get("n_clusters")
-        if block.get("estimate") is None or clusters is None or clusters >= MIN_SPREAD:
+        if block.get("estimate") is None or clusters is None or clusters >= min_clusters:
             continue
         out.append(
             _statement(
@@ -111,12 +111,12 @@ def _single_cluster(group: str, metrics: Json) -> list[Json]:
     return out
 
 
-def _rare(group: str, metrics: Json) -> list[Json]:
+def _rare(group: str, metrics: Json, rare_events: int) -> list[Json]:
     out = []
     for name in RATES:
         block = metrics[name]
         count, hours = block.get("count"), block.get("active_hours")
-        if count is None or hours is None or count >= RARE_EVENTS:
+        if count is None or hours is None or count >= rare_events:
             continue
         upper = garwood_upper(count, hours, RARE_LEVEL)
         if upper is None:
@@ -126,7 +126,7 @@ def _rare(group: str, metrics: Json) -> list[Json]:
                 group,
                 "rare_events",
                 [name],
-                f"Fewer than {RARE_EVENTS} events ({count}): the one-sided 95 % upper bound "
+                f"Fewer than {rare_events} events ({count}): the one-sided 95 % upper bound "
                 "(exact Poisson, Garwood) is shown beside the two-sided interval.",
                 count=count,
                 level=RARE_LEVEL,
@@ -155,14 +155,19 @@ def _unobserved(group: str, metrics: Json, depends_on: Mapping[str, tuple[str, .
     return out
 
 
-def statements(groups: Mapping[str, Json], depends_on: Mapping[str, tuple[str, ...]]) -> list[Json]:
-    """Every statement of 11.6 for every group, in group order then in the order of 11.6."""
+def statements(
+    groups: Mapping[str, Json],
+    depends_on: Mapping[str, tuple[str, ...]],
+    thresholds: ReportRules,
+) -> list[Json]:
+    """Every statement of 11.6 for every group, in group order then in the order of 11.6; the
+    thresholds come from ``rules.toml`` ``[report]``."""
     out: list[Json] = []
     for group in sorted(groups):
         metrics = groups[group]
         out += _no_worst_case(group, metrics)
         out += _data_quality(group, metrics)
-        out += _single_cluster(group, metrics)
-        out += _rare(group, metrics)
+        out += _single_cluster(group, metrics, thresholds.min_clusters)
+        out += _rare(group, metrics, thresholds.rare_rate_events)
         out += _unobserved(group, metrics, depends_on)
     return out

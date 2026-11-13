@@ -23,11 +23,11 @@ p, li { max-width: 48rem; }
 .about { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--soft);
   padding: .75rem 1rem; border-radius: 4px; }
 .verdict { border: 3px solid var(--warn); border-radius: 6px; padding: 1rem 1.25rem; margin: 1rem 0; }
-.verdict.verified { border-color: var(--ok); }
+.verdict.clean { border-color: var(--ok); }
 .verdict.failed { border-color: var(--bad); }
-.verdict .status { font-size: 1.4rem; font-weight: 700; margin: 0 0 .25rem; }
+.verdict .status { font-size: 1.4rem; font-weight: 700; margin: 0 0 .25rem; color: var(--warn); }
 .verdict.failed .status { color: var(--bad); }
-.verdict.verified .status { color: var(--ok); }
+.verdict.clean .status { color: var(--ok); }
 .tag { display: inline-block; padding: 0 .45rem; border-radius: 3px; font-weight: 600;
   border: 1px solid currentColor; font-size: .85rem; }
 .pass { color: var(--ok); } .fail { color: var(--bad); } .not_checked, .not_available { color: var(--warn); }
@@ -37,8 +37,12 @@ th, td { text-align: left; vertical-align: top; padding: .3rem .5rem; border-bot
 th { background: var(--soft); font-weight: 600; }
 td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 table.narrow { width: auto; min-width: 50%; }
-.method { color: var(--muted); font-size: .78rem; white-space: normal; overflow-wrap: anywhere;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: right; }
+tr.metric td { border-bottom: none; padding-bottom: .1rem; }
+tr.method td { color: var(--muted); font-size: .78rem; padding-top: 0; overflow-wrap: normal;
+  word-break: keep-all; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+th.notes, td.notes { min-width: 11rem; }
+td.label { min-width: 8.5rem; }
+.metrics-table { font-size: .84rem; }
 code, .id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .85em;
   overflow-wrap: anywhere; }
 svg.figure { width: 100%; height: auto; display: block; margin: .5rem 0 1rem; }
@@ -57,10 +61,10 @@ ul.notes { padding-left: 1.2rem; }
 <body>
 <header id="top">
 <h1>{{ r.title or "Autonometry report" }}</h1>
-<p class="muted">Spec {{ p.spec_version }} · {{ p.software.name }} {{ p.software.version }} · generated {{ p.generated_at }}</p>
+<p class="muted">Spec {{ p.spec_version }} · {{ p.software.name }} {{ p.software.version }} · generated {{ p.generated_at | instant }}</p>
 </header>
 
-<section id="verdict" class="verdict {{ v.status }}" aria-label="Verdict">
+<section id="verdict" class="verdict {{ verdict_class }}" aria-label="Verdict">
 <p class="status">Trust: {{ status_text }} · level {{ v.level }} · {{ v.completeness }}</p>
 {% if v.status == "failed" %}
 <p><strong>FAILED: at least one log contradicts its own seals (tampering or corruption).</strong> Failed sessions stay in the metrics below; see Trust.</p>
@@ -70,7 +74,7 @@ ul.notes { padding-left: 1.2rem; }
 <p>Not a clean report:</p>
 <ul>{% for reason in v.reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
 {% else %}
-<p>Clean: verified at L2, complete, no census gap, nothing left out.</p>
+<p>Clean: verified at L2, complete, no census gap, nothing left out, no invariant failed.</p>
 {% endif %}
 {% if headline %}
 <div class="scroll"><table>
@@ -155,11 +159,12 @@ Trusted verifier keys: {{ r.trust.trusted_keys }}; trusted TSA roots: {{ r.trust
 {% for g in groups %}
 <h3>Group {{ g.name }}: {{ g.n_sessions }} session(s), {{ g.n_robots }} robot(s)</h3>
 <p>Observed {{ g.observed }}, active {{ g.active }}. Unknown share {{ g.unknown_share }} (limit {{ g.unknown_share_max }}): <strong>{{ g.conformance }}</strong>.</p>
-<div class="scroll"><table>
-<thead><tr><th>Metric</th><th>Estimate</th><th>Confidence interval and method</th><th>Unknown as human</th><th>Unknown as AI</th><th>Outer interval</th><th>Clusters</th><th>Notes</th></tr></thead>
+<div class="scroll"><table class="metrics-table">
+<thead><tr><th>Metric</th><th>Estimate</th><th>CI</th><th>Unknown as human</th><th>Unknown as AI</th><th>Outer interval</th><th>Clusters</th><th class="notes">Notes</th></tr></thead>
 <tbody>
 {% for m in g.rows %}
-<tr><td>{{ m.label }}</td><td class="n">{{ m.estimate }}</td><td class="n">{{ m.ci }}<div class="method">{{ m.method }}</div></td><td class="n">{{ m.lower }}</td><td class="n">{{ m.upper }}</td><td class="n">{{ m.outer }}</td><td class="n">{{ m.clusters }}</td><td>{{ m.notes | join("; ") }}</td></tr>
+<tr class="metric"><td class="label">{{ m.label }}</td><td class="n">{{ m.estimate }}</td><td class="n">{{ m.ci }}</td><td class="n">{{ m.lower }}</td><td class="n">{{ m.upper }}</td><td class="n">{{ m.outer }}</td><td class="n">{{ m.clusters }}</td><td class="notes">{% for note in m.notes %}<div>{{ note }}</div>{% endfor %}</td></tr>
+<tr class="method"><td></td><td colspan="7">method: {{ m.method }}</td></tr>
 {% endfor %}
 </tbody></table></div>
 <p>Gap between interventions, Kaplan-Meier median: {{ g.gap_median }}{% if g.gap_note %} ({{ g.gap_note }}){% endif %}.</p>
@@ -171,23 +176,24 @@ Trusted verifier keys: {{ r.trust.trusted_keys }}; trusted TSA roots: {{ r.trust
 <thead><tr><th>Whole-robot state</th><th>Time</th><th>Share of observed</th></tr></thead>
 <tbody>{% for x in g.states %}<tr><td>{{ x.state }}</td><td class="n">{{ x.seconds }}</td><td class="n">{{ x.share }}</td></tr>{% endfor %}</tbody>
 </table>
+<p class="muted">Approval and hint dwell moved {{ g.moved }} of this AI time to human time (Section 6.1); the time autonomy share uses the moved time.</p>
 {% if g.drift %}
 <table class="narrow">
-<thead><tr><th>Drift bin (UTC)</th><th>Active hours</th><th>Interventions</th><th>Rate per hour</th><th>Exact Poisson CI</th></tr></thead>
-<tbody>{% for x in g.drift %}<tr><td class="id">{{ x.bin }}</td><td class="n">{{ x.hours }}</td><td class="n">{{ x.count }}</td><td class="n">{{ x.rate }}</td><td class="n">{{ x.ci }}</td></tr>{% endfor %}</tbody>
+<thead><tr><th>Drift bin (UTC)</th><th>Active time</th><th>Interventions</th><th>Rate per hour</th><th>Exact Poisson CI</th></tr></thead>
+<tbody>{% for x in g.drift %}<tr><td class="id">{{ x.bin }}</td><td class="n">{{ x.active }}</td><td class="n">{{ x.count }}</td><td class="n">{{ x.rate }}</td><td class="n">{{ x.ci }}</td></tr>{% endfor %}</tbody>
 </table>
 {% endif %}
 {% endfor %}
 {% if figures.share %}<figure>{{ figures.share }}<figcaption>Time autonomy share: estimate and confidence interval, both bounds for unknown time with theirs, the outer interval as a band, and the variants.</figcaption></figure>{% endif %}
-{% if figures.gaps %}<figure>{{ figures.gaps }}<figcaption>Kaplan-Meier curve of the active hours between interventions with its pointwise band; the dotted line marks S = 0.5, where the median is read.</figcaption></figure>{% endif %}
+{% if figures.gaps %}<figure>{{ figures.gaps }}<figcaption>Kaplan-Meier curve of the active time between interventions with its pointwise band; the dotted line marks S = 0.5, where the median is read.</figcaption></figure>{% endif %}
 {% if figures.drift %}<figure>{{ figures.drift }}<figcaption>Interventions per active hour per calendar bin with exact Poisson intervals.</figcaption></figure>{% endif %}
 </section>
 
 <section id="statements">
 <h2>Statements</h2>
-{% if r.statements %}
+{% if statement_rows %}
 <ul>
-{% for s in r.statements %}<li><strong>{{ s.group }}</strong>, {{ s.metrics | map("replace", "_", " ") | join(", ") }}: {{ s.text }}{% if s.code == "rare_events" %} Upper bound: {{ s.upper_bound | num }} per active hour.{% endif %}</li>
+{% for s in statement_rows %}<li><strong>{{ s.group }}</strong> · {{ s.kind }}: {{ s.metrics }}. <span class="muted">{{ s.detail }}</span></li>
 {% endfor %}
 </ul>
 {% else %}
@@ -220,7 +226,7 @@ Trusted verifier keys: {{ r.trust.trusted_keys }}; trusted TSA roots: {{ r.trust
 <section id="parameters">
 <h2>Parameters</h2>
 <div class="scroll"><table>
-<thead><tr><th>Parameter (definitions.md 9)</th><th>Value</th></tr></thead>
+<thead><tr><th>Parameter (definitions.md 9; report thresholds of 11.6)</th><th>Value</th></tr></thead>
 <tbody>
 {% for name, value in p.parameters | dictsort %}<tr><td><code>{{ name }}</code></td><td class="n">{{ value }}</td></tr>
 {% endfor %}
@@ -235,8 +241,8 @@ Trusted verifier keys: {{ r.trust.trusted_keys }}; trusted TSA roots: {{ r.trust
 <tbody>
 <tr><th>Spec version</th><td>{{ p.spec_version }}</td></tr>
 <tr><th>Software</th><td>{{ p.software.name }} {{ p.software.version }}</td></tr>
-<tr><th>Generated at</th><td>{{ p.generated_at }}</td></tr>
-<tr><th>Period</th><td>{% if p.period %}{{ p.period.start }} to {{ p.period.end }}{% else %}nothing observed{% endif %}</td></tr>
+<tr><th>Generated at</th><td>{{ p.generated_at | instant }}</td></tr>
+<tr><th>Period</th><td>{% if p.period %}{{ p.period.start | instant }} to {{ p.period.end | instant }}{% else %}nothing observed{% endif %}</td></tr>
 <tr><th>Counts</th><td>{{ p.counts.sessions }} session(s), {{ p.counts.robots }} robot(s), {{ p.counts.utc_days }} UTC day(s), {{ p.counts.tasks }} task(s)</td></tr>
 <tr><th>Robots</th><td class="id">{{ p.robots | join(", ") }}</td></tr>
 {% for name, values in p.registry_hashes | dictsort %}<tr><th>{{ name }}</th><td class="id">{{ values | join(", ") or "none declared" }}</td></tr>

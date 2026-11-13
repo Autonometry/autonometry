@@ -144,7 +144,7 @@ def provenance(inputs: ReportInputs, rules: Rules, options: Options) -> Json:
             for f in sorted(inputs.files, key=lambda f: (f.role, f.path))
         ],
         "spec_files": dict(sorted(inputs.spec_files.items())),
-        "parameters": parameters(rules),
+        "parameters": parameters(rules) | rules.report.model_dump(),
         "statistics": {
             "alpha": options.alpha,
             "n_boot": options.n_boot,
@@ -215,6 +215,7 @@ def figure_data(
         members = grouped[name]
         states[name] = {
             "observed_s": sum(s.observed_s for s in members),
+            "moved_s": sum(s.moved_s for s in members),
             "states_s": {state: sum(s.states_s[state] for s in members) for state in STATE_ORDER},
         }
         km[name] = _km(members, alpha)
@@ -245,11 +246,15 @@ def _headline(groups: Mapping[str, Json]) -> Json:
 
 
 def verdict(
-    trust: Json, groups: Mapping[str, Json], census: Json, exclusions: Sequence[Json]
+    trust: Json,
+    groups: Mapping[str, Json],
+    census: Json,
+    exclusions: Sequence[Json],
+    invariants: Mapping[str, Json],
 ) -> Json:
     """The verdict box: status and level, completeness, census, exclusions and the headline
     numbers. ``clean`` is true only when the report is verified at L2, complete, has no
-    census gap and leaves nothing out; ``reasons`` says why not."""
+    census gap, leaves nothing out and no invariant fails (11.7); ``reasons`` says why not."""
     complete = bool(groups) and all(
         g["unmeasured"]["conformance"] == "complete" for g in groups.values()
     )
@@ -265,6 +270,9 @@ def verdict(
         reasons.append(f"census: {missing} session counter(s) missing")
     if exclusions:
         reasons.append(f"{len(exclusions)} session(s) left out of the metrics")
+    reasons += [
+        f"invariant {name} failed" for name, i in invariants.items() if i["status"] == "fail"
+    ]
     return {
         "status": trust["status"],
         "level": trust["level"],
@@ -300,23 +308,20 @@ def build_report(inputs: ReportInputs, rules: Rules, options: Options) -> Json:
         in_metrics,
         inputs.registry_problems,
     )
+    checks = invariants_.invariants(
+        inputs.log_check, inputs.verification, inputs.timelines, census["status"], groups
+    )
     report: Json = {
         "title": inputs.title,
         "about": inputs.about,
-        "verdict": verdict(trust, groups, census, exclusions),
+        "verdict": verdict(trust, groups, census, exclusions, checks),
         "provenance": provenance(inputs, rules, options),
         "trust": trust,
         "census": census,
         "exclusions": exclusions,
         "metrics": metrics,
-        "statements": statements_.statements(groups, DEPENDS_ON),
-        "invariants": invariants_.invariants(
-            inputs.log_check,
-            inputs.verification,
-            inputs.timelines,
-            census["status"],
-            groups,
-        ),
+        "statements": statements_.statements(groups, DEPENDS_ON, rules.report),
+        "invariants": checks,
         "sessions": sessions_table(inputs, facts, in_metrics),
         "figures": figure_data(grouped, groups, options.alpha),
     }

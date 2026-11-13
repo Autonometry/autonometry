@@ -8,6 +8,7 @@ numbers and fixed labels (:mod:`autonometry.report.figures`). The page is a func
 dict alone: the same dict gives the same bytes.
 """
 
+import re
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Final
 
@@ -16,7 +17,7 @@ from markupsafe import Markup
 
 from autonometry.report import figures as figures_
 from autonometry.report.build import HEADLINE, STATE_ORDER
-from autonometry.stats.metrics import HOUR_S
+from autonometry.stats.metrics import HOUR_S, MINUTE_S
 
 Json = dict[str, Any]
 Row = dict[str, Any]
@@ -36,19 +37,34 @@ def num(value: Any) -> str:
 
 
 def seconds(value: Any) -> str:
-    """Seconds, shown in hours from one hour on."""
+    """A duration in seconds to the nearest second, in s, min and s, or h, min and s by size
+    (the JSON keeps full precision)."""
     if value is None:
         return NA
-    value = float(value)
-    return f"{value / HOUR_S:.2f} h" if value >= HOUR_S else f"{value:.1f} s"
+    total = round(float(value))
+    hours, rest = divmod(total, round(HOUR_S))
+    minutes, secs = divmod(rest, round(MINUTE_S))
+    if hours:
+        return f"{hours} h {minutes} min {secs} s"
+    return f"{minutes} min {secs} s" if minutes else f"{secs} s"
 
 
-def interval(pair: Any, fmt: Format = num) -> str:
-    """``[lo, hi]``; an open limit shows as an empty side."""
+def hours(value: Any) -> str:
+    """A duration in hours, shown as :func:`seconds` shows it."""
+    return NA if value is None else seconds(float(value) * HOUR_S)
+
+
+def instant(value: Any) -> str:
+    """An RFC 3339 UTC time to the second: the fraction is cut, never rounded up."""
+    return NA if value is None else re.sub(r"\.[0-9]+Z$", "Z", str(value))
+
+
+def interval(pair: Any, fmt: Format = num, open_text: str = "") -> str:
+    """``[lo, hi]``; an open limit shows as ``open_text``."""
     if not pair:
         return NA
     lo, hi = pair
-    return f"[{'' if lo is None else fmt(lo)}, {'' if hi is None else fmt(hi)}]"
+    return f"[{open_text if lo is None else fmt(lo)}, {open_text if hi is None else fmt(hi)}]"
 
 
 #: Metrics of the metrics table: key, label, formatter.
@@ -127,6 +143,7 @@ def _group(name: str, metrics: Json, report: Json) -> Row:
         "unknown_share": pct(unmeasured["unknown_share"]),
         "unknown_share_max": pct(unmeasured["unknown_share_max"]),
         "observed": seconds(unmeasured["observed_time_s"]),
+        "moved": seconds(states["moved_s"]) if states else NA,
         "active": seconds(unmeasured["active_time_s"]),
         "cluster": share.get("cluster", ""),
         "rows": [_metric_row(key, metrics[key], notes.get(key, [])) for key, _, _ in METRIC_ROWS],
@@ -146,12 +163,13 @@ def _group(name: str, metrics: Json, report: Json) -> Row:
             }
             for state in STATE_ORDER
         ],
-        "gap_median": f"{num(gaps.get('estimate'))} h {interval(gaps.get('ci'))}",
+        "gap_median": f"{hours(gaps.get('estimate'))} "
+        f"{interval(gaps.get('ci'), hours, 'not reached')}",
         "gap_note": gaps.get("note", ""),
         "drift": [
             {
                 "bin": b["bin"],
-                "hours": num(b["active_hours"]),
+                "active": hours(b["active_hours"]),
                 "count": b["count"],
                 "rate": num(b["rate"]),
                 "ci": interval(drift[b["bin"]]["ci"]) if b["bin"] in drift else NA,
@@ -160,6 +178,52 @@ def _group(name: str, metrics: Json, report: Json) -> Row:
         ],
         "trend": metrics["drift"]["trend"],
     }
+
+
+#: How the page names each kind of statement (11.6), so a kind is listed once per group.
+STATEMENT_KINDS: Final[Mapping[str, str]] = {
+    "no_worst_case": "No true worst case while unknown time exists",
+    "data_quality": "Data quality, not sample size, limits these numbers",
+    "not_generalisable": "Single cluster, not generalisable",
+    "rare_events": "Few events: one-sided 95 % upper bound (exact Poisson, Garwood)",
+    "unobserved": "Signal class {signal} declared unobserved by {sessions} session(s)",
+}
+_KIND_DETAIL: Final[Mapping[str, str]] = {
+    "no_worst_case": "Events can hide in unknown time. unknown_as_human assumes one hidden "
+    "intervention per run of unknown time between AI control and counts each task's unknown "
+    "time as human time.",
+    "data_quality": "Their bounds for unknown time are wider than their confidence intervals.",
+    "not_generalisable": "The interval describes these sessions, not new robots or days.",
+    "rare_events": "Bounds are per active hour.",
+    "unobserved": "The recorder cannot see it; these metrics depend on it.",
+}
+
+
+def _metric_name(statement: Json, metric: str) -> str:
+    name = LABELS.get(metric, metric.replace("_", " ")).lower()
+    if statement["code"] == "rare_events":
+        return f"{name} ({statement['count']} event(s); bound {num(statement['upper_bound'])})"
+    return name
+
+
+def statement_rows(statements: Sequence[Json]) -> list[Row]:
+    """Statements grouped by group and kind, in the order they first appear: one line per
+    kind naming every metric it concerns (11.6)."""
+    rows: dict[tuple[str, str], Row] = {}
+    for s in statements:
+        key = (s["group"], s["code"] + "/" + str(s.get("signal", "")))
+        if key not in rows:
+            kind = STATEMENT_KINDS[s["code"]].format(
+                signal=s.get("signal", ""), sessions=s.get("sessions", "")
+            )
+            rows[key] = {
+                "group": s["group"],
+                "kind": kind,
+                "metrics": [],
+                "detail": _KIND_DETAIL[s["code"]],
+            }
+        rows[key]["metrics"] += [_metric_name(s, metric) for metric in s["metrics"]]
+    return [row | {"metrics": ", ".join(row["metrics"])} for row in rows.values()]
 
 
 def _headline(report: Json) -> list[Row]:
@@ -200,6 +264,10 @@ def context(report: Json) -> Json:
     return {
         "report": report,
         "status_text": STATUS_TEXT[report["verdict"]["status"]],
+        "verdict_class": "failed"
+        if report["verdict"]["status"] == "failed"
+        else ("clean" if report["verdict"]["clean"] else "unclean"),
+        "statement_rows": statement_rows(report["statements"]),
         "headline": _headline(report),
         "groups": [_group(name, groups[name], report) for name in sorted(groups)],
         "invariants": [{"name": name} | report["invariants"][name] for name in INVARIANTS],
@@ -221,6 +289,7 @@ def _environment() -> Environment:
     environment.filters["num"] = num
     environment.filters["pct"] = pct
     environment.filters["seconds"] = seconds
+    environment.filters["instant"] = instant
     return environment
 
 

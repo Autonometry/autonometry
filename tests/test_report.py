@@ -20,7 +20,7 @@ from autonometry.events import (
 from autonometry.reader import read_logs
 from autonometry.report import census, figures, html, invariants, statements, trust
 from autonometry.report.build import InputFile, ReportInputs, build_report, verdict
-from autonometry.spec import load_rules
+from autonometry.spec import ReportRules, load_rules
 from autonometry.stats.metrics import DEPENDS_ON, Options
 from autonometry.stats.report import metrics_report
 from autonometry.timeline import Registries, Timeline, build_timeline
@@ -310,7 +310,8 @@ def _group(
 
 def _codes(group: dict[str, Any]) -> list[tuple[str, tuple[str, ...]]]:
     return [
-        (s["code"], tuple(s["metrics"])) for s in statements.statements({"real": group}, DEPENDS_ON)
+        (s["code"], tuple(s["metrics"]))
+        for s in statements.statements({"real": group}, DEPENDS_ON, RULES.report)
     ]
 
 
@@ -319,7 +320,7 @@ def test_no_statement_for_a_clean_group__defs_11_6() -> None:
 
 
 def test_statement_no_worst_case_with_unknown_time__defs_11_6_1() -> None:
-    found = statements.statements({"real": _group(unknown_s=1.0)}, DEPENDS_ON)
+    found = statements.statements({"real": _group(unknown_s=1.0)}, DEPENDS_ON, RULES.report)
     assert [(s["code"], s["metrics"]) for s in found] == [
         ("no_worst_case", ["interventions_per_active_hour"]),
         ("no_worst_case", ["human_minutes_per_task"]),
@@ -329,7 +330,9 @@ def test_statement_no_worst_case_with_unknown_time__defs_11_6_1() -> None:
 
 def test_statement_data_quality_when_bounds_wider_than_ci__defs_11_6_2() -> None:
     wide = _block(unknown_as_human={"estimate": 0.2}, unknown_as_ai={"estimate": 0.9})
-    found = statements.statements({"real": _group(time_autonomy_share=wide)}, DEPENDS_ON)
+    found = statements.statements(
+        {"real": _group(time_autonomy_share=wide)}, DEPENDS_ON, RULES.report
+    )
     assert [(s["code"], s["metrics"]) for s in found] == [("data_quality", ["time_autonomy_share"])]
     assert found[0]["text"].startswith("Data quality, not sample size, limits this number")
     open_ci = _block(
@@ -340,7 +343,7 @@ def test_statement_data_quality_when_bounds_wider_than_ci__defs_11_6_2() -> None
 
 def test_statement_single_cluster__defs_11_6_3() -> None:
     found = statements.statements(
-        {"real": _group(task_autonomy_rate=_block(n_clusters=1))}, DEPENDS_ON
+        {"real": _group(task_autonomy_rate=_block(n_clusters=1))}, DEPENDS_ON, RULES.report
     )
     assert [(s["code"], s["metrics"]) for s in found] == [
         ("not_generalisable", ["task_autonomy_rate"])
@@ -351,7 +354,9 @@ def test_statement_single_cluster__defs_11_6_3() -> None:
 
 def test_statement_rare_rate_upper_bound__defs_11_6_4() -> None:
     found = statements.statements(
-        {"real": _group(hints_per_active_hour=_block(count=0, active_hours=1.0))}, DEPENDS_ON
+        {"real": _group(hints_per_active_hour=_block(count=0, active_hours=1.0))},
+        DEPENDS_ON,
+        RULES.report,
     )
     assert [(s["code"], s["metrics"]) for s in found] == [
         ("rare_events", ["hints_per_active_hour"])
@@ -364,7 +369,9 @@ def test_statement_rare_rate_upper_bound__defs_11_6_4() -> None:
 
 
 def test_statement_unobserved_signals__defs_11_6_5() -> None:
-    found = statements.statements({"real": _group(unobserved={"safety_stops": 2})}, DEPENDS_ON)
+    found = statements.statements(
+        {"real": _group(unobserved={"safety_stops": 2})}, DEPENDS_ON, RULES.report
+    )
     assert [s["code"] for s in found] == ["unobserved"]
     assert found[0]["sessions"] == 2
     assert "safety_stops_per_active_hour" in found[0]["metrics"]
@@ -466,14 +473,15 @@ def test_failures_list_is_bounded__defs_11_7() -> None:
 
 def test_verdict_clean_only_when_everything_holds__defs_11() -> None:
     trust_ok = {"status": "verified", "level": "L2"}
-    complete = {"real": {"unmeasured": {"conformance": "complete"}, **{m: {} for m in ()}}}
+    complete = {"real": {"unmeasured": {"conformance": "complete"}}}
+    passing = {"partition": {"status": "pass"}, "census": {"status": "not_checked"}}
     no_gap = {"status": "pass", "robots": [{"missing_count": 0}]}
 
     def check(groups: dict[str, Any], census_: dict[str, Any], excluded: list[Any]) -> list[str]:
         headline = {g: {m: _block() for m in ("time_autonomy_share", "task_autonomy_rate",
                     "interventions_per_active_hour", "human_minutes_per_task")} | groups[g]
                     for g in groups}  # fmt: skip
-        result = verdict(trust_ok, headline, census_, excluded)
+        result = verdict(trust_ok, headline, census_, excluded, passing)
         assert result["clean"] is (not result["reasons"])
         return list(result["reasons"])
 
@@ -498,14 +506,85 @@ def test_html_formatters() -> None:
     assert html.pct(None) == "n/a"
     assert html.pct(0.1234) == "12.3 %"
     assert html.num(51.575931) == "51.58"
-    assert html.seconds(90.0) == "90.0 s"
-    assert html.seconds(7200.0) == "2.00 h"
+    assert html.seconds(42.4) == "42 s"
+    assert html.seconds(90.0) == "1 min 30 s"
+    assert html.seconds(7265.6) == "2 h 1 min 6 s"
     assert html.seconds(None) == "n/a"
+    assert html.hours(0.5) == "30 min 0 s"
+    assert html.instant("2026-11-10T08:00:00.999999999Z") == "2026-11-10T08:00:00Z"
+    assert html.instant(None) == "n/a"
     assert html.interval(None) == "n/a"
     assert html.interval([0.1, None], html.pct) == "[10.0 %, ]"
+    assert figures.time_unit(2.0) == ("h", 1.0)
+    assert figures.time_unit(0.02)[0] == "min"
+    assert figures.time_unit(0.001)[0] == "s"
 
 
 def test_page_is_a_function_of_the_dict__defs_11() -> None:
     report = build_report(_inputs(), RULES, FAST)
     first = html.render_html(report)
     assert html.render_html(json.loads(json.dumps(report))) == first
+
+
+def test_failed_invariant_makes_the_report_unclean__defs_11_7() -> None:
+    trust_ok = {"status": "verified", "level": "L2"}
+    groups = {
+        "real": {"unmeasured": {"conformance": "complete"}}
+        | {m: _block() for m in ("time_autonomy_share", "task_autonomy_rate",
+           "interventions_per_active_hour", "human_minutes_per_task")}
+    }  # fmt: skip
+    checks = {"partition": {"status": "fail"}, "witnesses": {"status": "not_available"}}
+    result = verdict(trust_ok, groups, {"status": "pass", "robots": []}, [], checks)
+    assert result["reasons"] == ["invariant partition failed"]
+    assert result["clean"] is False
+
+
+def test_statement_thresholds_come_from_rules__defs_11_6() -> None:
+    assert (RULES.report.rare_rate_events, RULES.report.min_clusters) == (5, 2)
+    strict = ReportRules(rare_rate_events=11, min_clusters=6)
+    found = statements.statements({"real": _group()}, DEPENDS_ON, strict)
+    assert {s["code"] for s in found} == {"rare_events", "not_generalisable"}
+    report = build_report(_inputs(), RULES, FAST)
+    assert report["provenance"]["parameters"]["rare_rate_events"] == 5
+    assert report["provenance"]["parameters"]["min_clusters"] == 2
+
+
+def test_statements_grouped_by_group_and_kind__defs_11_6() -> None:
+    found = statements.statements(
+        {
+            "real": _group(
+                task_autonomy_rate=_block(n_clusters=1), time_autonomy_share=_block(n_clusters=1)
+            )
+        },
+        DEPENDS_ON,
+        RULES.report,
+    )
+    rows = html.statement_rows(found)
+    assert rows == [
+        {
+            "group": "real",
+            "kind": "Single cluster, not generalisable",
+            "metrics": "time autonomy share, task autonomy rate",
+            "detail": rows[0]["detail"],
+        }
+    ]
+
+
+def test_moved_dwell_is_shown_under_the_state_table__defs_11_5() -> None:
+    report = build_report(_inputs(), RULES, FAST)
+    assert report["figures"]["state_seconds"]["simulated"]["moved_s"] == pytest.approx(3.0)
+    page = html.render_html(report)
+    assert "Approval and hint dwell moved 3 s of this AI time to human time (Section 6.1)" in page
+
+
+def test_verdict_colour_follows_cleanliness__defs_11() -> None:
+    report = build_report(_inputs(), RULES, FAST)
+    assert 'class="verdict unclean"' in html.render_html(report)
+    clean = report | {"verdict": report["verdict"] | {"clean": True, "status": "verified"}}
+    assert 'class="verdict clean"' in html.render_html(clean)
+    failed = report | {"verdict": report["verdict"] | {"status": "failed"}}
+    assert 'class="verdict failed"' in html.render_html(failed)
+
+
+def test_gap_median_open_limit_reads_not_reached() -> None:
+    assert html.interval([0.5, None], html.hours, "not reached") == "[30 min 0 s, not reached]"
