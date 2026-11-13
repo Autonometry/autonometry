@@ -5,8 +5,11 @@ import hashlib
 import json
 import logging
 import sys
+import unicodedata
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
 from typing import Annotated, Any, NoReturn, cast
@@ -317,10 +320,12 @@ def _registries_for(
     given: Mapping[RegistryKind, Path | None],
     version: str,
     cache: dict[tuple[str, RegistryKind], RegistryCheck],
+    used: set[tuple[RegistryKind, Path]] | None = None,
 ) -> tuple[Registries, list[str]]:
     """The registries of one session (definitions.md 8, Registries): the files the user named,
     else the copies in the session folder; each must match its hash in ``session_start``.
-    Returns the matching registries (``None`` for a missing one) and one line per problem."""
+    Returns the matching registries (``None`` for a missing one) and one line per problem; every
+    file read is added to ``used``."""
     start = next((e for e in session.events if e["type"] == "session_start"), None)
     folder = Path(session.file).parent if session.file is not None else None
     documents: dict[RegistryKind, Mapping[str, Any] | None] = {}
@@ -332,6 +337,8 @@ def _registries_for(
             path = folder / layout.copy_name
         if path is None or start is None:
             continue
+        if used is not None:
+            used.add((kind, path))
         key = (str(path), kind)
         try:
             check = cache[key] if key in cache else check_registry(path, version, kind)
@@ -494,10 +501,14 @@ def timeline_cmd(  # noqa: PLR0913, PLR0917 -- matches the timeline CLI's docume
 
 
 def _build_timelines(
-    logs: Sequence[Path], given: Mapping[RegistryKind, Path | None], version: str
+    logs: Sequence[Path],
+    given: Mapping[RegistryKind, Path | None],
+    version: str,
+    used: set[tuple[RegistryKind, Path]] | None = None,
 ) -> tuple[LogCheck, Rules, list[Timeline], list[tuple[Session, str]]]:
     """Read the logs and build the timeline of every session whose registries match their
-    hashes (definitions.md 8, Registries); the others are returned with their problems."""
+    hashes (definitions.md 8, Registries); the others are returned with their problems. Every
+    registry file read is added to ``used``."""
     try:
         result = read_logs(logs, version)
         rules = load_rules(version)
@@ -507,7 +518,7 @@ def _build_timelines(
     timelines: list[Timeline] = []
     registry_errors: list[tuple[Session, str]] = []
     for session in result.sessions:
-        registries, problems = _registries_for(session, given, version, cache)
+        registries, problems = _registries_for(session, given, version, cache, used)
         if problems:
             registry_errors += [(session, problem) for problem in problems]
             continue
@@ -1051,6 +1062,268 @@ def verify_cmd(  # noqa: PLR0913, PLR0917 -- matches the verify CLI's documented
         for line in verify_summary_lines(result, level):
             typer.echo(line)
     if not result.verified(level):
+        raise typer.Exit(1)
+
+
+#: Limits on text the report shows as given (definitions.md 11; CLAUDE.md, input limits).
+_TITLE_MAX_CHARS = 200
+_ABOUT_MAX_BYTES = 65536
+_HASH_CHUNK = 1 << 20
+
+
+@contextmanager
+def _input_errors_exit(code: int) -> Iterator[None]:
+    """Run helpers that stop with exit status 1 on an input error (:func:`_fail`) under a
+    command whose contract gives ``code`` for input and I/O errors."""
+    try:
+        yield
+    except typer.Exit as exc:
+        if exc.exit_code == 1:
+            raise typer.Exit(code) from None
+        raise
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    try:
+        with open(path, "rb") as stream:
+            while chunk := stream.read(_HASH_CHUNK):
+                digest.update(chunk)
+    except OSError as exc:
+        _fail(f"cannot read {path}: {exc.strerror or exc}")
+    return digest.hexdigest()
+
+
+def _has_control(text: str, allowed: str = "") -> bool:
+    """True when ``text`` holds a control character (Unicode category Cc) not in ``allowed``."""
+    return any(unicodedata.category(c) == "Cc" and c not in allowed for c in text)
+
+
+def _title(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if len(value) > _TITLE_MAX_CHARS or _has_control(value):
+        raise typer.BadParameter(
+            f"must be at most {_TITLE_MAX_CHARS} characters without control characters"
+        )
+    return value
+
+
+def _read_about(path: Path) -> str:
+    """The ``--about`` file as plain text: UTF-8, at most 64 KiB, line breaks and tabs the only
+    control characters; shown escaped, never as markup."""
+    try:
+        with open(path, "rb") as stream:
+            data = stream.read(_ABOUT_MAX_BYTES + 1)
+    except OSError as exc:
+        _fail(f"cannot read {path}: {exc.strerror or exc}")
+    if len(data) > _ABOUT_MAX_BYTES:
+        _fail(f"{path} is larger than {_ABOUT_MAX_BYTES} bytes")
+    try:
+        text = data.decode("utf-8").removeprefix("﻿").replace("\r\n", "\n")
+    except UnicodeDecodeError:
+        _fail(f"{path} is not valid UTF-8")
+    if _has_control(text, "\n\t"):
+        _fail(f"{path} holds control characters; plain text only")
+    return text
+
+
+def _utc_now() -> str:
+    """The current UTC time as RFC 3339 with a ``Z`` offset, to the second."""
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _input_files(roles: Sequence[tuple[str, Path]]) -> list[tuple[str, str, str]]:
+    """``(role, path as given, SHA-256)`` of every input file, once each, sorted."""
+    return [(role, str(path), _sha256_file(path)) for role, path in sorted(set(roles))]
+
+
+@app.command("report")
+def report_cmd(  # noqa: PLR0913, PLR0917 -- matches the report CLI's documented options
+    logs: Annotated[
+        list[Path],
+        typer.Argument(
+            help="JSON Lines event log files.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            show_default=False,
+        ),
+    ],
+    out: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            file_okay=False,
+            help="Folder for report.json and report.html; created if missing.",
+            show_default=False,
+        ),
+    ],
+    vkey: Annotated[
+        list[Path] | None,
+        typer.Option("--vkey", help="File of trusted vkeys, one per line; repeatable."),
+    ] = None,
+    tsa_root: Annotated[
+        list[Path] | None,
+        typer.Option("--tsa-root", help="Trusted TSA root certificate (PEM); repeatable."),
+    ] = None,
+    anchor: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--anchor", help="Anchor file, same format as a checkpoints file; repeatable."
+        ),
+    ] = None,
+    devices: Annotated[
+        Path | None,
+        typer.Option(
+            "--devices",
+            help="Device registry for every session. Default: devices.json beside each log.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+    tasks: Annotated[
+        Path | None,
+        typer.Option(
+            "--tasks",
+            help="Task registry for every session. Default: tasks.json beside each log.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+    plan: Annotated[
+        Path | None,
+        typer.Option(
+            "--plan",
+            help="Plan for every session. Default: plan.json beside each log.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+    alpha: Annotated[
+        float,
+        typer.Option(
+            "--alpha", callback=_alpha, help="Two-sided level: 0.05 gives 95 % intervals."
+        ),
+    ] = 0.05,
+    n_boot: Annotated[
+        int, typer.Option("--n-boot", min=2, help="Bootstrap replicates per interval.")
+    ] = 2000,
+    seed: Annotated[int, typer.Option("--seed", min=0, help="Seed of every bootstrap.")] = 0,
+    cluster: Annotated[
+        ClusterOption,
+        typer.Option("--cluster", help="Cluster unit, as for autonometry metrics."),
+    ] = ClusterOption.auto,
+    drift_bin: Annotated[
+        DriftBinOption, typer.Option("--drift-bin", help="Calendar bin of the drift metric (UTC).")
+    ] = DriftBinOption.day,
+    title: Annotated[
+        str | None,
+        typer.Option("--title", callback=_title, help="Title of the report (plain text)."),
+    ] = None,
+    about: Annotated[
+        Path | None,
+        typer.Option(
+            "--about",
+            help="Plain-text file describing the deployment, shown escaped.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+    spec: Annotated[
+        str | None, typer.Option("--spec", help="Spec version, for example 0.3.")
+    ] = None,
+) -> None:
+    """Write a report a buyer, insurer or auditor can read (definitions.md 11): verification,
+    census, exclusions, metrics per group with their uncertainty, statements and invariants.
+
+    Writes DIR/report.json and DIR/report.html (self-contained: no scripts, no links to other
+    sites) atomically. Exit status: 0 only when the report is verified at L2, complete, has no
+    census gap and leaves no session out; 1 when the report was written but any of those fails;
+    2 on bad usage, unreadable input or without the report extra. No network access; actor ids
+    never appear in the report.
+    """
+    try:
+        from autonometry.report import build, html  # noqa: PLC0415 -- optional extra
+        from autonometry.stats import metrics  # noqa: PLC0415 -- optional extra
+        from autonometry.stats import report as stats_report  # noqa: PLC0415 -- optional extra
+    except ImportError:
+        typer.echo(
+            "error: autonometry report needs the report extra: pip install 'autonometry[report]'",
+            err=True,
+        )
+        raise typer.Exit(2) from None
+    given: dict[RegistryKind, Path | None] = {"devices": devices, "tasks": tasks, "plan": plan}
+    used: set[tuple[RegistryKind, Path]] = set()
+    with _input_errors_exit(2):
+        version = _spec_version(spec)
+        log_check, rules, timelines, registry_errors = _build_timelines(logs, given, version, used)
+        trusted_keys = _load_vkeys(vkey or [])
+        trusted_roots = _load_tsa_roots(tsa_root or [])
+        checkpoint_paths = [
+            p for log_path in logs if (p := sealfile.checkpoints_path(log_path)).exists()
+        ]
+        checkpoint_files = _read_seal_files(checkpoint_paths, version, rules)
+        anchor_files = _read_seal_files(anchor or [], version, rules)
+        about_text = None if about is None else _read_about(about)
+        files = _input_files(
+            [
+                *(("log", p) for p in logs),
+                *(("checkpoints", p) for p in checkpoint_paths),
+                *(("anchor", p) for p in anchor or []),
+                *(("registry_" + kind, p) for kind, p in used),
+                *(("vkey", p) for p in vkey or []),
+                *(("tsa_root", p) for p in tsa_root or []),
+                *([] if about is None else [("about", about)]),
+            ]
+        )
+        try:
+            verification = verify_.verify_log(
+                log_check, checkpoint_files, anchor_files, trusted_keys, trusted_roots, rules
+            )
+        except SpecError as exc:
+            _fail(str(exc))
+    problems: dict[tuple[str, str], tuple[str, ...]] = {}
+    for session, problem in registry_errors:
+        key = (session.robot_id, session.session_id)
+        problems[key] = (*problems.get(key, ()), problem)
+    inputs = build.ReportInputs(
+        log_check=log_check,
+        verification=verification,
+        timelines=tuple(timelines),
+        generated_at=_utc_now(),
+        registry_problems=problems,
+        files=tuple(build.InputFile(*row) for row in files),
+        spec_files=spec_file_hashes(version),
+        trusted_keys=len(trusted_keys),
+        trusted_tsa_roots=len(trusted_roots),
+        anchor_files=len(anchor or []),
+        title=title,
+        about=about_text,
+    )
+    options = metrics.Options(alpha, n_boot, seed, cluster.value, drift_bin.value)
+    body = build.build_report(inputs, rules, options)
+    page = html.render_html(body)
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        text = stats_report.to_json(body)
+        atomic_write(out / "report.json", text.encode("utf-8"), PUBLIC_FILE_MODE)
+        atomic_write(out / "report.html", page.encode("utf-8"), PUBLIC_FILE_MODE)
+    except OSError as exc:
+        typer.echo(f"error: cannot write the report to {out}: {exc.strerror or exc}", err=True)
+        raise typer.Exit(2) from None
+    verdict = body["verdict"]
+    typer.echo(
+        f"report: {verdict['status']}, level {verdict['level']}, {verdict['completeness']}; "
+        f"census {verdict['census']}; {verdict['exclusions']} session(s) left out"
+    )
+    typer.echo(f"wrote {out / 'report.json'} and {out / 'report.html'}")
+    if not verdict["clean"]:
+        typer.echo(f"not clean: {'; '.join(verdict['reasons'])}")
         raise typer.Exit(1)
 
 
