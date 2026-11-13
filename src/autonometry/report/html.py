@@ -90,11 +90,12 @@ STATUS_TEXT: Final[Mapping[str, str]] = {
 }
 
 
-def _bound(block: Json, name: str, fmt: Format) -> str:
+def _bound(block: Json, name: str, fmt: Format) -> list[str]:
+    """A bound as two lines, its estimate and its interval, so the column stays narrow."""
     bound = block.get(name)
     if bound is None:
-        return ""
-    return f"{fmt(bound.get('estimate'))} {interval(bound.get('ci'), fmt)}"
+        return []
+    return [fmt(bound.get("estimate")), interval(bound.get("ci"), fmt)]
 
 
 def _metric_row(key: str, block: Json, notes: Sequence[str]) -> Row:

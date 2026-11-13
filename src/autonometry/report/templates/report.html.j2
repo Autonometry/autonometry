@@ -39,8 +39,7 @@ td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowra
 table.narrow { width: auto; min-width: 50%; }
 tr.metric td { border-bottom: none; padding-bottom: .1rem; }
 tr.method td { color: var(--muted); font-size: .78rem; padding-top: 0; overflow-wrap: normal;
-  word-break: keep-all; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-th.notes, td.notes { min-width: 11rem; }
+  word-break: keep-all; white-space: normal; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 td.label { min-width: 8.5rem; }
 .metrics-table { font-size: .84rem; }
 code, .id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .85em;
@@ -49,11 +48,18 @@ svg.figure { width: 100%; height: auto; display: block; margin: .5rem 0 1rem; }
 figure { margin: 0; break-inside: avoid; }
 figcaption { color: var(--muted); font-size: .85rem; }
 ul.notes { padding-left: 1.2rem; }
+@media (max-width: 40rem) {
+  table { display: block; overflow-x: auto; }
+  table.narrow { min-width: 0; }
+}
 @media print {
   body { max-width: none; padding: 0; font-size: 10.5pt; }
   h2 { break-after: avoid; }
   table, figure, .verdict { break-inside: avoid; }
   .scroll { overflow: visible; }
+  table { font-size: 8pt; }
+  th, td { padding: .2rem .3rem; }
+  td.label { min-width: 0; }
 }
 @page { margin: 16mm 14mm; }
 </style>
@@ -160,11 +166,11 @@ Trusted verifier keys: {{ r.trust.trusted_keys }}; trusted TSA roots: {{ r.trust
 <h3>Group {{ g.name }}: {{ g.n_sessions }} session(s), {{ g.n_robots }} robot(s)</h3>
 <p>Observed {{ g.observed }}, active {{ g.active }}. Unknown share {{ g.unknown_share }} (limit {{ g.unknown_share_max }}): <strong>{{ g.conformance }}</strong>.</p>
 <div class="scroll"><table class="metrics-table">
-<thead><tr><th>Metric</th><th>Estimate</th><th>CI</th><th>Unknown as human</th><th>Unknown as AI</th><th>Outer interval</th><th>Clusters</th><th class="notes">Notes</th></tr></thead>
+<thead><tr><th>Metric</th><th>Estimate</th><th>CI</th><th>Unknown as human</th><th>Unknown as AI</th><th>Outer interval</th><th>Clusters</th></tr></thead>
 <tbody>
 {% for m in g.rows %}
-<tr class="metric"><td class="label">{{ m.label }}</td><td class="n">{{ m.estimate }}</td><td class="n">{{ m.ci }}</td><td class="n">{{ m.lower }}</td><td class="n">{{ m.upper }}</td><td class="n">{{ m.outer }}</td><td class="n">{{ m.clusters }}</td><td class="notes">{% for note in m.notes %}<div>{{ note }}</div>{% endfor %}</td></tr>
-<tr class="method"><td></td><td colspan="7">method: {{ m.method }}</td></tr>
+<tr class="metric"><td class="label">{{ m.label }}</td><td class="n">{{ m.estimate }}</td><td class="n">{{ m.ci }}</td><td class="n">{% for line in m.lower %}<div>{{ line }}</div>{% endfor %}</td><td class="n">{% for line in m.upper %}<div>{{ line }}</div>{% endfor %}</td><td class="n">{{ m.outer }}</td><td class="n">{{ m.clusters }}</td></tr>
+<tr class="method"><td></td><td colspan="6">method: {{ m.method }}{% for note in m.notes %} · {{ note }}{% endfor %}</td></tr>
 {% endfor %}
 </tbody></table></div>
 <p>Gap between interventions, Kaplan-Meier median: {{ g.gap_median }}{% if g.gap_note %} ({{ g.gap_note }}){% endif %}.</p>

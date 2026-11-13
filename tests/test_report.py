@@ -588,3 +588,10 @@ def test_verdict_colour_follows_cleanliness__defs_11() -> None:
 
 def test_gap_median_open_limit_reads_not_reached() -> None:
     assert html.interval([0.5, None], html.hours, "not reached") == "[30 min 0 s, not reached]"
+
+
+def test_notes_sit_on_the_method_row_not_a_column__defs_11_6() -> None:
+    page = html.render_html(build_report(_inputs(), RULES, FAST))
+    assert ">Notes</th>" not in page
+    assert "method: wilson_effective_n(single_cluster) · single cluster: not generalisable" in page
+    assert "@media (max-width: 40rem)" in page
