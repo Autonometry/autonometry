@@ -150,11 +150,11 @@
             },
             "human_minutes_per_task": {
               "ci": [
-                -0.31219653093347033,
+                0.0,
                 0.10716938160001255
               ],
               "estimate": 0.07222222222222222,
-              "interval_method": "cluster_bootstrap_t(session)",
+              "interval_method": "cluster_bootstrap_t(session), clipped at 0",
               "n": 6,
               "n_clusters": 3
             },
@@ -422,7 +422,7 @@
       },
       "human_minutes_per_task": {
         "ci": [
-          -0.31219653093347033,
+          0.0,
           0.10716938160001255
         ],
         "ci_bootstrap_percentile": [
@@ -432,22 +432,22 @@
         "cluster": "session",
         "definition": "mean over tasks of (human time + unplanned reset + moved dwell) in minutes",
         "estimate": 0.07222222222222222,
-        "interval_method": "cluster_bootstrap_t(session)",
+        "interval_method": "cluster_bootstrap_t(session), clipped at 0",
         "median": 0.04166666666666667,
         "n": 6,
         "n_clusters": 3,
         "outer_interval": [
-          -0.31219653093347033,
+          0.0,
           0.3955386670602625
         ],
         "share_tasks_zero_human": 0.16666666666666666,
         "unknown_as_ai": {
           "ci": [
-            -0.31219653093347033,
+            0.0,
             0.10716938160001255
           ],
           "estimate": 0.07222222222222222,
-          "interval_method": "cluster_bootstrap_t(session)",
+          "interval_method": "cluster_bootstrap_t(session), clipped at 0",
           "n": 6
         },
         "unknown_as_human": {
