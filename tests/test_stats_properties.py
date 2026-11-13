@@ -18,6 +18,16 @@ OPTIONS = Options(n_boot=20)
 EPS = 1e-12
 
 
+def _shares_within_unit(block: Any) -> None:
+    """Every estimate in the time-share block is a proportion."""
+    if isinstance(block, dict):
+        for key, value in block.items():
+            if key == "estimate" and value is not None:
+                assert -EPS <= value <= 1 + EPS
+            else:
+                _shares_within_unit(value)
+
+
 def _ordered(block: dict[str, Any]) -> None:
     point = block["estimate"]
     lower = block["unknown_as_human"]["estimate"]
@@ -48,6 +58,7 @@ def test_random_timelines_never_crash_and_bounds_bracket__defs_7(data: st.DataOb
     assert "NaN" not in text
     assert "Infinity" not in text
     for group in report["groups"].values():
+        _shares_within_unit(group["time_autonomy_share"])
         _ordered(group["time_autonomy_share"])
         _ordered(group["task_autonomy_rate"])
         _ordered(group["autonomous_success_rate"])

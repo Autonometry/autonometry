@@ -12,7 +12,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from autonometry.reader import check_event, read_streams
-from autonometry.timeline import Registries, Timeline, build_timeline
+from autonometry.timeline import Registries, Timeline, build_timeline, dwell_shift
 from timeline_helpers import DEVICES, FULL, PLAN, RULES, SPEC, TASKS, Log
 
 STATES = [
@@ -160,6 +160,23 @@ def test_state_times_sum_to_observed_and_episodes_never_overlap__defs_2_4_6_6(
     log: Log, registries: Registries
 ) -> None:
     _check(log.build(registries))
+
+
+@settings(max_examples=300, deadline=None)
+@given(logs(), REGISTRIES, st.sampled_from([0.0, 2.0, 30.0]))
+def test_dwell_never_moves_more_than_the_ai_time__defs_6_1(
+    log: Log, registries: Registries, minimum: float
+) -> None:
+    timeline = log.build(registries)
+    shift = dwell_shift(timeline, minimum, minimum)
+    assert shift.whole_robot_moved_ns <= timeline.whole_robot.states["ai"]
+    for scope, moved in shift.moved_ns_by_scope.items():
+        assert moved <= timeline.per_scope[scope].states["ai"]
+    assert shift.scope_weighted_moved_ns <= timeline.scope_weighted.states["ai"]
+    for task in timeline.tasks:
+        # the task's human time never exceeds its duration plus the reset attributed to it
+        human = task.human_ns + task.dwell_moved_ns + task.unplanned_reset_ns
+        assert human <= task.end_ns - task.start_ns + task.unplanned_reset_ns
 
 
 @settings(max_examples=150, deadline=None)

@@ -316,12 +316,14 @@ class Supervision:
 class DwellShift:
     """Dwell of approvals and hints with given minimum dwells (definitions.md 6.1, 6.2):
     ``human_ns`` in total, and the part moved from AI to human time per scope, for the whole
-    robot and scope-weighted."""
+    robot and scope-weighted. Overlapping windows count once: the AI time moved is the AI time
+    inside the union of the windows, ``windows`` (sorted, disjoint)."""
 
     human_ns: int
     moved_ns_by_scope: Mapping[str, int]
     whole_robot_moved_ns: int
     scope_weighted_moved_ns: Fraction
+    windows: tuple[tuple[int, int], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -429,25 +431,36 @@ def dwell_shift(
     timeline: Timeline, approval_min_dwell_s: float, hint_min_dwell_s: float
 ) -> DwellShift:
     """Place every approval and hint dwell on ``[ts - max(dwell, min_dwell), ts)`` of its scope
-    and return how much of it overlaps ``ai`` time, which moves from AI to human time
-    (definitions.md 6.1, 6.2). Minimum dwells in seconds, for the sensitivity variants."""
+    and return how much ``ai`` time the union of those windows covers, which moves from AI to
+    human time; overlapping windows count once (definitions.md 6.1, 6.2). Minimum dwells in
+    seconds, for the sensitivity variants."""
     minimum = _min_dwell_ns(approval_min_dwell_s, hint_min_dwell_s)
     scope_ai, whole_ai = _ai_intervals(timeline.spans, timeline.whole_spans)
     human = 0
-    moved = dict.fromkeys(timeline.scopes, 0)
-    whole = 0
+    by_scope: dict[str, list[tuple[int, int]]] = {scope: [] for scope in timeline.scopes}
+    every: list[tuple[int, int]] = []
     for item in timeline.discrete:
         length = dwell_human_ns(item, minimum[item.type])
         human += length
-        low = item.ts_ns - length
-        if item.scope in moved:
-            moved[item.scope] += overlap_ns(scope_ai.get(item.scope, []), low, item.ts_ns)
-        whole += overlap_ns(whole_ai, low, item.ts_ns)
+        window = (item.ts_ns - length, item.ts_ns)
+        every.append(window)
+        if item.scope in by_scope:
+            by_scope[item.scope].append(window)
+    moved = {
+        scope: covered_ns(scope_ai.get(scope, []), _union(windows))
+        for scope, windows in by_scope.items()
+    }
+    union = tuple(_union(every))
     weighted = sum(
         (timeline.weights.get(scope, Fraction(0)) * value for scope, value in moved.items()),
         Fraction(0),
     )
-    return DwellShift(human, MappingProxyType(moved), whole, weighted)
+    return DwellShift(human, MappingProxyType(moved), covered_ns(whole_ai, union), weighted, union)
+
+
+def covered_ns(intervals: Sequence[tuple[int, int]], windows: Iterable[tuple[int, int]]) -> int:
+    """Nanoseconds of sorted, disjoint ``intervals`` inside sorted, disjoint ``windows``."""
+    return sum(overlap_ns(intervals, low, high) for low, high in windows)
 
 
 def _min_dwell_ns(approval_s: float, hint_s: float) -> Mapping[str, int]:
@@ -1507,6 +1520,7 @@ def _tasks(  # noqa: PLR0913, PLR0917 -- every fact a task needs
             human_ns[piece.task_index] += piece.duration_ns
     own_episodes = _count_by_task((e.task_index for e in episodes), count)
     own_groups = _count_by_task((i.task_index for i in interventions), count)
+    whole_ai = [(s.start_ns, s.end_ns) for s in whole if s.state == "ai"]
     own_discrete: list[list[DiscreteIntervention]] = [[] for _ in range(count)]
     for item in discrete:
         if item.task_index is not None:
@@ -1538,7 +1552,7 @@ def _tasks(  # noqa: PLR0913, PLR0917 -- every fact a task needs
                 not (inside & human) and not own_episodes[index] and not signals and not reset,
                 "unknown" in inside,
                 human_ns[index],
-                sum(d.whole_robot_moved_ns for d in signals),
+                _task_moved_ns(whole_ai, signals, task.start_ns, end_ns),
                 own_episodes[index] + len(counted),
                 own_groups[index] + len(counted),
                 reset,
@@ -1546,6 +1560,18 @@ def _tasks(  # noqa: PLR0913, PLR0917 -- every fact a task needs
         )
         previous_end = end_ns
     return tuple(out)
+
+
+def _task_moved_ns(
+    whole_ai: Sequence[tuple[int, int]],
+    signals: Iterable[DiscreteIntervention],
+    start_ns: int,
+    end_ns: int,
+) -> int:
+    """Whole-robot ``ai`` time inside the task's own ``[start, end)`` that the union of its
+    approval and hint dwell windows covers; overlapping windows count once (6.1, 6.3)."""
+    windows = _union((max(d.ts_ns - d.human_ns, start_ns), min(d.ts_ns, end_ns)) for d in signals)
+    return covered_ns(whole_ai, windows)
 
 
 def _count_by_task(indexes: Iterable[int | None], count: int) -> list[int]:

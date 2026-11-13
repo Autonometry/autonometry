@@ -177,6 +177,21 @@ def test_time_share_subtracts_moved_dwell__defs_6_1() -> None:
     assert share["interval_method"] == "wilson_effective_n(single_cluster)"
 
 
+def test_overlapping_dwell_windows_move_ai_time_once__defs_6_1() -> None:
+    # Task and ai from 0.5 s, approvals at 5..9 s with 5 s dwells, task end 10 s, end 10.5 s:
+    # the windows' union [0, 9) covers 8.5 s of ai, which moves once.
+    log = Log().add(0.5, "task_start").ai(0.5)
+    for t in (5, 6, 7, 8, 9):
+        log = approval(log, t, dwell=5)
+    log = log.add(10, "task_end").end(10.5)
+    result = metrics(facts(log))
+    share = result["time_autonomy_share"]
+    assert share["estimate"] == pytest.approx(1.5 / 10)
+    for variant in ("with_approvals", "scope_weighted", "unsupported"):
+        assert share["variants"][variant]["estimate"] == pytest.approx(1.5 / 10)
+    assert result["human_minutes_per_task"]["estimate"] == pytest.approx(8.5 / 60)
+
+
 def test_with_approvals_uses_median_logged_dwell_per_type__defs_6_1() -> None:
     log = approval(approval(Log().ai(0), 10, dwell=2), 20, dwell=6)
     log = hint(log, 30).end(60)

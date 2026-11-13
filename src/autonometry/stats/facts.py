@@ -13,7 +13,13 @@ from itertools import pairwise
 from typing import Final
 
 from autonometry.spec import Rules
-from autonometry.timeline import Timeline, WholeSpan, dwell_shift, overlap_ns
+from autonometry.timeline import (
+    DwellShift,
+    Timeline,
+    WholeSpan,
+    covered_ns,
+    dwell_shift,
+)
 
 NS_PER_S: Final = 1_000_000_000
 #: Reasons of the narrow (DMV-like) count (definitions.md 3, Intervention episode).
@@ -189,14 +195,11 @@ def _tasks(timeline: Timeline) -> tuple[TaskFacts, ...]:
     )
 
 
-def _unsupported_moved_ns(timeline: Timeline, ai: Intervals) -> int:
-    """Dwell moved from whole-robot AI time outside physical support (6.1, 6.15)."""
+def _unsupported_moved_ns(timeline: Timeline, ai: Intervals, shift: DwellShift) -> int:
+    """Whole-robot AI time outside physical support inside the union of the dwell windows,
+    which moves to human time; overlapping windows count once (6.1, 6.15)."""
     supported_ai = intersect(ai, timeline.support)
-    moved = 0
-    for item in timeline.discrete:
-        low = item.ts_ns - item.human_ns
-        moved += overlap_ns(ai, low, item.ts_ns) - overlap_ns(supported_ai, low, item.ts_ns)
-    return moved
+    return covered_ns(ai, shift.windows) - covered_ns(supported_ai, shift.windows)
 
 
 def _stops_by_trigger(timeline: Timeline) -> Counter[str]:
@@ -244,7 +247,7 @@ def session_facts(timeline: Timeline, rules: Rules) -> SessionFacts:
         unsupported_active_s=seconds(
             _length(active) - _length(intersect(active, timeline.support))
         ),
-        unsupported_moved_s=seconds(_unsupported_moved_ns(timeline, ai)),
+        unsupported_moved_s=seconds(_unsupported_moved_ns(timeline, ai, shift)),
         supported_s=seconds(timeline.supported_ns),
         reset_human_s=seconds(timeline.reset_planned_ns + timeline.reset_unplanned_ns),
         segments=_segments(timeline.whole_spans, rules),

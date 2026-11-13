@@ -242,6 +242,48 @@ def test_dwell_moves_only_its_overlap_with_ai_time__defs_6_1() -> None:
     )
 
 
+def _overlapping_approvals() -> Log:
+    """Task and ai from 0.5 s; approvals at 5..9 s with 5 s dwells; task end 10 s."""
+    log = Log().add(0.5, "task_start").ai(0.5)
+    for t in (5, 6, 7, 8, 9):
+        log.add(
+            t,
+            "approval",
+            scope="whole_robot",
+            actor_id="op_b",
+            reason="ai_requested_help",
+            dwell_s=5.0,
+        )
+    log.add(10, "task_end", outcome="success")
+    return log.end(10.5)
+
+
+def test_overlapping_dwell_windows_count_once__defs_6_1() -> None:
+    timeline = _overlapping_approvals().build()
+    # windows [0, 5) .. [4, 9): union [0, 9); ai from 0.5 s, so 8.5 s move once
+    assert [seconds(d.whole_robot_moved_ns) for d in timeline.discrete] == [4.5, 5, 5, 5, 5]
+    shift = dwell_shift(timeline, 0.0, 0.0)
+    assert seconds(shift.whole_robot_moved_ns) == 8.5
+    assert shift.moved_ns_by_scope == {"whole_robot": 8_500_000_000}
+    assert shift.scope_weighted_moved_ns == Fraction(8_500_000_000)
+    (task,) = timeline.tasks
+    assert seconds(task.dwell_moved_ns) == 8.5
+    assert timeline.to_json()["dwell"]["moved_from_ai_s"]["whole_robot"] == 8.5
+
+
+def test_task_dwell_moves_only_ai_time_inside_the_task__defs_6_1() -> None:
+    log = Log().ai(0).add(4, "task_start")
+    log.add(
+        6, "approval", scope="whole_robot", actor_id="op_b", reason="ai_requested_help", dwell_s=5.0
+    )
+    log.add(8, "task_end", outcome="success")
+    timeline = log.end(9).build()
+    (item,) = timeline.discrete
+    assert seconds(item.whole_robot_moved_ns) == 5
+    # window [1, 6) clipped to the task [4, 8)
+    assert seconds(timeline.tasks[0].dwell_moved_ns) == 2
+
+
 def test_dwell_sensitivity_uses_another_minimum__defs_6_1() -> None:
     log = (
         Log()
