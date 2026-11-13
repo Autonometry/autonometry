@@ -97,6 +97,9 @@ def test_golden_metrics_by_hand__defs_7(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert real["unmeasured"]["conformance"] == "incomplete"
     assert simulated["time_autonomy_share"]["estimate"] == pytest.approx(47 / 50)
     assert simulated["unmeasured"]["conformance"] == "complete"
+    # Two gaps, one an event at 20 s with both at risk: S = 0.5 there, so the median is 20 s.
+    gap = simulated["gaps_between_interventions"]["active_hours"]
+    assert gap["estimate"] == pytest.approx(20 / 3600)
 
 
 def test_same_logs_and_options_give_byte_identical_json(

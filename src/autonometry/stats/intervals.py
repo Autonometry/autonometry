@@ -16,8 +16,8 @@ Every call into statsmodels or SciPy that can fail numerically runs with warning
 errors (:func:`strict`): an attempt that warns is rejected and the method name says why. Nothing is
 silenced. Bootstraps take an explicit seed and draw from :func:`numpy.random.default_rng`.
 
-References: Garwood F. (1936) Biometrika 28:437-442; Brookmeyer R., Crowley J. (1982) Biometrics
-38:29-41 (median interval by test inversion, as statsmodels ``quantile_ci``).
+References: Garwood F. (1936) Biometrika 28:437-442; Kalbfleisch J. D., Prentice R. L. (2002)
+The Statistical Analysis of Failure Time Data, 2nd ed., 1.4 (exponential Greenwood band).
 """
 
 import math
@@ -101,10 +101,6 @@ def undefined(reason: str) -> Interval:
 def z_value(alpha: float) -> float:
     """The standard normal quantile ``1 - alpha / 2`` of a two-sided interval."""
     return float(stats.norm.ppf(1.0 - alpha / 2.0))
-
-
-def _finite(value: float) -> float | None:
-    return value if math.isfinite(value) else None
 
 
 # -- proportions ---------------------------------------------------------------------------------
@@ -465,8 +461,8 @@ class SurvivalAt:
 
 @dataclass(frozen=True, slots=True)
 class KaplanMeier:
-    """Kaplan-Meier median (statsmodels, first time with S(t) < 0.5) with its interval, and the
-    survival probability at horizons."""
+    """Kaplan-Meier median (the smallest time with S(t) <= 0.5, as lifelines) with its interval,
+    and the survival probability at horizons."""
 
     median: float | None
     median_interval: Interval
@@ -474,52 +470,59 @@ class KaplanMeier:
     n_events: int
 
 
-def _cloglog_ratio(prob: Array, se: Array, target: float) -> Array:
-    """``(g(S) - g(target)) / (g'(S) se)`` with ``g(x) = log(-log x)``, evaluated where it is
-    defined (0 < S < 1 and se > 0) and infinite elsewhere."""
-    out = np.full(prob.shape, np.inf)
+#: S(t) counts as at or below one half within this slack, so a product of survival factors
+#: that is exactly 0.5 in exact arithmetic is not lost to rounding.
+_HALF: Final = 0.5 + 1e-12
+
+
+def _band(prob: Array, se: Array, alpha: float) -> tuple[Array, Array]:
+    """Pointwise cloglog (exponential Greenwood) band of a Kaplan-Meier curve, as lifelines; a
+    point with S of 0 or 1, or no standard error, gets [S, S]."""
+    lower, upper = prob.copy(), prob.copy()
     usable = (prob > 0) & (prob < 1) & np.isfinite(se) & (se > 0)
     s = prob[usable]
-    log_s = np.log(s)
-    slope = -1.0 / (s * log_s)
-    out[usable] = (np.log(-log_s) - math.log(-math.log(target))) / (slope * se[usable])
-    return out
+    theta = z_value(alpha) * se[usable] / (s * np.abs(np.log(s)))
+    lower[usable] = s ** np.exp(theta)
+    upper[usable] = s ** np.exp(-theta)
+    return lower, upper
+
+
+def _first_at_or_below_half(times: Array, curve: Array) -> float | None:
+    """The smallest time at which ``curve`` is at or below one half; ``None`` if it never is."""
+    hits = np.flatnonzero(curve <= _HALF)
+    return float(times[hits[0]]) if len(hits) else None
 
 
 def _median_interval(times: Array, prob: Array, se: Array, alpha: float) -> Interval:
-    """Interval for the median by inverting z-tests on the cloglog scale (Brookmeyer and
-    Crowley; statsmodels ``quantile_ci`` with ``method="cloglog"``). It is evaluated only where
-    the transform is defined, so it gives statsmodels' limits without its log-of-zero warnings.
-    An upper limit beyond the last event time is ``None``."""
-    inside = np.flatnonzero(np.abs(_cloglog_ratio(prob, se, 0.5)) <= z_value(alpha))
-    if len(inside) == 0:
+    """Interval for the median from the pointwise band, as lifelines ``median_survival_times``
+    (the method the simulation study validated): the medians of the lower and upper band
+    curves, with the median's own convention (smallest t with the curve at or below 0.5). The
+    upper limit is ``None`` when the upper curve never reaches 0.5."""
+    lower, upper = _band(prob, se, alpha)
+    lo = _first_at_or_below_half(times, lower)
+    if lo is None:
         return undefined("median_not_bracketed")
-    lo = float(times[inside[0]])
-    last = int(inside[-1])
-    hi = None if last == len(times) - 1 else float(times[last + 1])
-    return Interval(lo, hi, "km_cloglog")
+    return Interval(lo, _first_at_or_below_half(times, upper), "km_cloglog")
 
 
 def _survival_at(times: Array, prob: Array, se: Array, horizon: float, alpha: float) -> SurvivalAt:
     """S(horizon) as a step function and its pointwise cloglog interval (exponential
     Greenwood, as lifelines); a point with S of 0 or 1, or no standard error, gets [S, S]."""
     index = int(np.searchsorted(times, horizon, side="right")) - 1
-    survival = 1.0 if index < 0 else float(prob[index])
-    error = 0.0 if index < 0 else float(se[index])
-    if 0.0 < survival < 1.0 and math.isfinite(error) and error > 0:
-        theta = z_value(alpha) * error / (survival * abs(math.log(survival)))
-        interval = Interval(survival ** math.exp(theta), survival ** math.exp(-theta), "km_cloglog")
-    else:
-        interval = Interval(survival, survival, "km_cloglog")
-    return SurvivalAt(horizon, survival, interval)
+    if index < 0:
+        return SurvivalAt(horizon, 1.0, Interval(1.0, 1.0, "km_cloglog"))
+    lower, upper = _band(prob[index : index + 1], se[index : index + 1], alpha)
+    survival = float(prob[index])
+    return SurvivalAt(horizon, survival, Interval(float(lower[0]), float(upper[0]), "km_cloglog"))
 
 
 def kaplan_meier(
     durations: Sequence[float], observed: Sequence[int], alpha: float, horizons: Sequence[float]
 ) -> KaplanMeier:
     """Kaplan-Meier analysis of right-censored durations (``observed`` 1 for an event, 0 for
-    censoring) with statsmodels ``SurvfuncRight``: the median (first time with S(t) < 0.5, the
-    SAS convention statsmodels uses), its interval, and S at each horizon."""
+    censoring) with statsmodels ``SurvfuncRight``: the median (smallest time with S(t) <= 0.5,
+    the convention of lifelines and of the reference package), its interval, and S at each
+    horizon. Durations in the caller's unit."""
     d = np.asarray(durations, dtype=float)
     o = np.asarray(observed, dtype=int)
     events = int(o.sum())
@@ -530,7 +533,7 @@ def kaplan_meier(
     times = np.asarray(curve.surv_times, dtype=float)
     prob = np.asarray(curve.surv_prob, dtype=float)
     se = np.asarray(curve.surv_prob_se, dtype=float)
-    median = _finite(float(curve.quantile(0.5)))
+    median = _first_at_or_below_half(times, prob)
     at = tuple(_survival_at(times, prob, se, h, alpha) for h in horizons)
     return KaplanMeier(median, _median_interval(times, prob, se, alpha), at, events)
 

@@ -1042,7 +1042,7 @@
           ],
           "cluster": "session",
           "definition": "gap between consecutive whole-robot interventions (active_hours), right-censored at the session end; Kaplan-Meier median",
-          "estimate": null,
+          "estimate": 0.005555555555555556,
           "exponential": {
             "ci_mean_gap": [
               0.001956437417961354,
@@ -1061,7 +1061,6 @@
           "n_events": 1,
           "n_gaps": 2,
           "naive_mean_gap": 0.013888888888888888,
-          "note": "median not reached",
           "survival_at": {
             "0.5": {
               "ci": [

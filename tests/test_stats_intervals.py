@@ -304,8 +304,46 @@ def test_interval_helpers() -> None:
 # -- survival ------------------------------------------------------------------------------------
 
 
-def test_kaplan_meier_median_by_hand() -> None:
-    # Five events at 1..5: S = 0.8, 0.6, 0.4, 0.2, 0; the first time with S < 0.5 is 3.
+def test_kaplan_meier_median_is_the_smallest_time_at_or_below_half__defs_7() -> None:
+    # Four events at 1..4: S = 0.75, 0.5, 0.25, 0; S(2) = 0.5 already, so the median is 2.
+    km = iv.kaplan_meier([1.0, 2.0, 3.0, 4.0], [1, 1, 1, 1], 0.05, ())
+    assert km.median == 2.0
+    lo, hi = km.median_interval.lo, km.median_interval.hi
+    assert lo is not None
+    assert hi is not None
+    assert lo <= km.median <= hi
+
+
+def test_kaplan_meier_median_matches_lifelines_convention() -> None:
+    rng = np.random.default_rng(11)
+    for _ in range(50):
+        n = int(rng.integers(1, 12))
+        durations = rng.integers(1, 6, n).astype(float)
+        observed = (rng.random(n) < 0.7).astype(int)
+        km = iv.kaplan_meier(list(durations), list(observed), 0.05, ())
+        expected = _lifelines_median(durations, observed)
+        assert km.median == expected
+        if km.median is not None:
+            assert km.median_interval.lo is not None
+            assert km.median_interval.lo <= km.median
+            hi = km.median_interval.hi
+            assert hi is None or km.median <= hi
+
+
+def _lifelines_median(durations: np.ndarray, observed: np.ndarray) -> float | None:
+    """Product-limit estimate written out, median = smallest t with S(t) <= 0.5."""
+    survival = 1.0
+    for t in sorted(set(durations[observed == 1])):
+        at_risk = int(np.sum(durations >= t))
+        deaths = int(np.sum((durations == t) & (observed == 1)))
+        survival *= 1 - deaths / at_risk
+        if survival <= 0.5 + 1e-12:
+            return float(t)
+    return None
+
+
+def test_kaplan_meier_survival_by_hand() -> None:
+    # Five events at 1..5: S = 0.8, 0.6, 0.4, 0.2, 0; the smallest time with S <= 0.5 is 3.
     km = iv.kaplan_meier([1.0, 2.0, 3.0, 4.0, 5.0], [1, 1, 1, 1, 1], 0.05, (2.5,))
     assert km.median == 3.0
     assert km.n_events == 5
@@ -319,16 +357,22 @@ def test_kaplan_meier_median_by_hand() -> None:
     )
 
 
-def test_kaplan_meier_median_interval_matches_statsmodels() -> None:
+def test_kaplan_meier_median_interval_is_the_band_medians() -> None:
+    # lifelines median_survival_times: the medians of the lower and upper cloglog band curves.
     rng = np.random.default_rng(4)
     durations = rng.exponential(1.0, 40)
     observed = (rng.random(40) < 0.7).astype(int)
-    observed[np.argmax(durations)] = 0  # last time censored: S never reaches 0, no log(0)
-    expected = SurvfuncRight(durations, observed).quantile_ci(0.5, alpha=0.05)
+    curve = SurvfuncRight(durations, observed)
+    times, prob, se = curve.surv_times, curve.surv_prob, curve.surv_prob_se
+    usable = (prob > 0) & (prob < 1)
+    theta = Z95 * se[usable] / (prob[usable] * np.abs(np.log(prob[usable])))
+    lower = prob[usable] ** np.exp(theta)
+    upper = prob[usable] ** np.exp(-theta)
     km = iv.kaplan_meier(list(durations), list(observed), 0.05, ())
     assert km.median_interval.method == "km_cloglog"
-    assert km.median_interval.lo == pytest.approx(expected[0])
-    assert km.median_interval.hi == pytest.approx(expected[1])
+    assert km.median_interval.lo == times[usable][np.flatnonzero(lower <= 0.5)[0]]
+    up = np.flatnonzero(upper <= 0.5)
+    assert km.median_interval.hi == (times[usable][up[0]] if len(up) else None)
 
 
 def test_kaplan_meier_without_events_has_no_median() -> None:
@@ -342,9 +386,14 @@ def test_kaplan_meier_median_not_reached_and_unbracketed() -> None:
     km = iv.kaplan_meier([1.0, 2.0, 3.0], [1, 0, 0], 0.05, (0.5, 5.0))
     assert km.median is None
     assert [p.survival for p in km.at] == [1.0, pytest.approx(2 / 3)]
+    # S(1) = 2/3 with a wide band: its lower curve reaches 0.5, the upper never does.
+    assert km.median_interval.as_list() == [1.0, None]
     single = iv.kaplan_meier([1.0], [1], 0.05, ())
     assert single.median == 1.0
-    assert single.median_interval.method == "undefined(median_not_bracketed)"
+    assert single.median_interval.as_list() == [1.0, 1.0]
+    late = iv.kaplan_meier([1.0] + [2.0] * 30, [1] + [0] * 30, 0.05, ())
+    assert late.median is None
+    assert late.median_interval.method == "undefined(median_not_bracketed)"
 
 
 def test_kaplan_meier_upper_limit_beyond_the_last_event_is_open() -> None:
