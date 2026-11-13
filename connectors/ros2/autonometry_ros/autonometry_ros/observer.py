@@ -13,7 +13,9 @@ publisher count changes and every ``graph_period_s``. A topic with one publisher
 it; with several, the engine applies the topic-level rule and marks its states
 ``x_attribution_inferred``. Where a newer rclpy gives ``publisher_gid``, it is used. Who sent an
 action goal comes from the action's clients in the graph. The publisher map is recorded as
-``x_publishers`` on a heartbeat each time it changes.
+``x_publishers`` on a heartbeat each time it changes. The publishers of Nav2's chain topics
+(``cmd_vel_nav``, ``cmd_vel_smoothed``) go to the engine as well, one entry per publisher, so a
+relayed command counts as the AI's only on a declared chain and a shared node name shows.
 """
 
 import contextlib
@@ -74,7 +76,8 @@ STATUS_QOS = QoSProfile(
 )
 
 #: Action name (relative) for each action the engine follows.
-ACTIONS = (tb4.NAVIGATE, "dock", "undock", "wall_follow")
+#: Nav2 task actions, then the routines (Create 3 and Nav2 behaviours) that move the base.
+ACTIONS = (*tb4.TASK_ACTIONS, *sorted(tb4.ROUTINES))
 #: ``/interface_buttons`` fields, as they appear in device registry topics.
 CREATE3_BUTTONS = ("button_1", "button_2", "button_power")
 
@@ -83,6 +86,7 @@ TOPICS = {
     "cmd_vel": "cmd_vel",
     "cmd_vel_unstamped": "cmd_vel_unstamped",
     "cmd_vel_smoothed": "cmd_vel_smoothed",
+    "cmd_vel_nav": "cmd_vel_nav",
     "collision_monitor_state": "collision_monitor_state",
     "function_calls": "function_calls",
     "interface_buttons": "interface_buttons",
@@ -127,6 +131,7 @@ class Observer(Node):
         self._requesters: dict[str, tuple[tb4.Source, ...]] = {}
         self._recorded: str | None = None
         self._buttons: dict[str, bool] = {}
+        self._chain: dict[str, tuple[tb4.Source, ...]] = {}
         self._subscribe()
         self.create_timer(float(param("tick_period_s")), self._guard(self._tick))
         self.create_timer(float(param("graph_period_s")), self._guard(self._refresh_graph))
@@ -145,7 +150,6 @@ class Observer(Node):
             "spec_version": "0.3",
             "hint_policy": "hint_as_shared",
             "scope": "base",
-            "nav_task_definition_id": "nav_to_pose",
             "initial_pose_plan_item_id": "initial_pose",
             "nav2_actor_id": "ai:nav2",
             "nav2_node": "collision_monitor",
@@ -162,6 +166,8 @@ class Observer(Node):
             self.declare_parameter(name, value)
         for key, topic in TOPICS.items():
             self.declare_parameter(f"topics.{key}", topic)
+        for action, definition in tb4.TASK_ACTIONS.items():
+            self.declare_parameter(f"task_definitions.{action}", definition)
 
     def _param(self, name: str) -> Any:
         return self.get_parameter(name).value
@@ -187,7 +193,9 @@ class Observer(Node):
             tb4.devices_from_registry(check.document),
             hint_policy=str(param("hint_policy")),
             scope=str(param("scope")),
-            nav_task_definition_id=str(param("nav_task_definition_id")),
+            task_definitions=tuple(
+                (action, str(param(f"task_definitions.{action}"))) for action in tb4.TASK_ACTIONS
+            ),
             initial_pose_plan_item_id=str(param("initial_pose_plan_item_id")),
             nav2_actor_id=str(param("nav2_actor_id")),
             nav2_source=self._node_source(str(param("nav2_node"))),
@@ -210,6 +218,7 @@ class Observer(Node):
         sub(TwistStamped, topics["cmd_vel"], SENSOR_QOS, self._on_cmd_vel_stamped, info=True)
         sub(Twist, topics["cmd_vel_unstamped"], SENSOR_QOS, self._on_cmd_vel_unstamped, info=True)
         sub(TwistStamped, topics["cmd_vel_smoothed"], SENSOR_QOS, self._on_smoothed)
+        sub(TwistStamped, topics["cmd_vel_nav"], SENSOR_QOS, self._on_cmd_vel_nav)
         sub(String, topics["function_calls"], EVENT_QOS, self._on_function_call)
         sub(Joy, topics["joy"], SENSOR_QOS, self._on_joy)
         sub(
@@ -312,11 +321,28 @@ class Observer(Node):
     # -- identities -------------------------------------------------------------------------
 
     def _refresh_graph(self) -> None:
-        for key in ("cmd_vel", "cmd_vel_unstamped", "cmd_vel_smoothed", "initialpose"):
+        for key in ("cmd_vel", "cmd_vel_unstamped", "initialpose", *tb4.CHAIN_TOPICS):
             self._refresh_topic(self._topics[key])
         for action in ACTIONS:
             self._refresh_requesters(action)
         self._record_publishers()
+        self._observe_chain()
+
+    def _observe_chain(self) -> None:
+        """Tell the engine the publishers of Nav2's chain topics when they changed: one entry
+        per publisher, so a node name two publishers share shows (README, "TurtleBot 4")."""
+        for key in tb4.CHAIN_TOPICS:
+            sources = tuple(source for source, _ in self._publishers.get(self._topics[key], ()))
+            if self._chain.get(key) != sources:
+                self._chain[key] = sources
+                self._observe(tb4.ChainPublishers(time.monotonic(), key, sources))
+
+    def _check_chain(self, key: str) -> None:
+        topic = self._topics[key]
+        if self.count_publishers(topic) != self._counts.get(topic):
+            self._refresh_topic(topic)
+            self._record_publishers()
+            self._observe_chain()
 
     def _refresh_topic(self, topic: str) -> None:
         infos = self.get_publishers_info_by_topic(topic)[:MAX_ENDPOINTS]
@@ -366,7 +392,8 @@ class Observer(Node):
     def _attribution(
         self, topic: str, info: Any
     ) -> tuple[tb4.Source | None, tuple[tb4.Source, ...]]:
-        """The publisher of a message, or the topic's publishers when it cannot be told."""
+        """The publisher of a message when it can be told, and the topic's publishers, one
+        entry per publisher."""
         if self.count_publishers(topic) != self._counts.get(topic):
             self._refresh_topic(topic)
             self._record_publishers()
@@ -376,10 +403,10 @@ class Observer(Node):
             wanted = bytes(gid["data"]).hex()
             for source, known in found:
                 if wanted.startswith(known) or known.startswith(wanted):
-                    return source, ()
+                    return source, tuple(s for s, _ in found)
         sources = tuple(source for source, _ in found)
         if len(sources) == 1:
-            return sources[0], ()
+            return sources[0], sources
         return None, sources
 
     # -- callbacks --------------------------------------------------------------------------
@@ -399,9 +426,13 @@ class Observer(Node):
         self._cmd_vel_with_info(self._topics["cmd_vel_unstamped"], msg, info)
 
     def _on_smoothed(self, msg: TwistStamped) -> None:
+        self._check_chain("cmd_vel_smoothed")
         linear, angular = msg.twist.linear, msg.twist.angular
         if _finite(linear.x, linear.y, angular.z):
             self._observe(tb4.CmdVelSmoothed(time.monotonic(), linear.x, linear.y, angular.z))
+
+    def _on_cmd_vel_nav(self, _msg: TwistStamped) -> None:
+        self._check_chain("cmd_vel_nav")
 
     def _on_initial_pose(self, msg: PoseWithCovarianceStamped, info: Any = None) -> None:
         source, candidates = self._attribution(self._topics["initialpose"], info)

@@ -4,8 +4,11 @@ Nodes named like the real ones publish what a TurtleBot 4 running Nav2 publishes
 storyline of the integration notes' worked example: docked and idle, an undock by a Create 3
 button, a pose estimate from RViz, a Nav2 goal, a keyboard drive during it, a collision-monitor
 stop with a keyboard takeover, an EStop, a cancelled goal, the EStop released, a dock by a mission
-node, and idle again. Action status is published directly, as Nav2 and the Create 3 would; the
-nodes that send goals in real life create action clients, so the ROS graph shows them as such.
+node, and idle again. Then two hidden operators: an undeclared node driving through
+/cmd_vel_smoothed (the collision monitor relays it) and a drive_on_heading goal from an
+undeclared client, both of which must count as human time. Action status is published
+directly, as Nav2 and the Create 3 would; the nodes that send goals in real life create action
+clients, so the ROS graph shows them as such.
 
 This is the robot's world, not the observer: it publishes, the observer only listens. Run it with
 ROS 2 Jazzy sourced, nav2_msgs and irobot_create_msgs installed.
@@ -20,7 +23,7 @@ from action_msgs.msg import GoalStatus, GoalStatusArray
 from geometry_msgs.msg import PoseWithCovarianceStamped, TwistStamped
 from irobot_create_msgs.action import Dock, Undock
 from irobot_create_msgs.msg import DockStatus, InterfaceButtons, KidnapStatus, WheelStatus
-from nav2_msgs.action import NavigateToPose
+from nav2_msgs.action import DriveOnHeading, NavigateToPose
 from nav2_msgs.msg import CollisionMonitorState
 from nav_msgs.msg import Odometry
 from rclpy.action import ActionClient
@@ -36,6 +39,7 @@ STATUS_QOS = QoSProfile(
 NAV_GOAL = bytes.fromhex("a1b2c3d4e5f60718293a4b5c6d7e8f90")
 UNDOCK_GOAL = bytes.fromhex("0f0e0d0c0b0a09080706050403020100")
 DOCK_GOAL = bytes.fromhex("1f1e1d1c1b1a19181716151413121110")
+HEADING_GOAL = bytes.fromhex("2f2e2d2c2b2a29282726252423222120")
 
 
 def status_array(goal: bytes, status: int) -> GoalStatusArray:
@@ -59,6 +63,9 @@ class World:
         self.motion = Node("motion_control")
         self.nav = Node("bt_navigator")
         self.smoother = Node("velocity_smoother")
+        self.controller = Node("controller_server")
+        self.behaviors = Node("behavior_server")
+        self.laptop = Node("laptop_cli")
         self.monitor = Node("collision_monitor")
         self.tb4 = Node("turtlebot4_node")
         self.keyboard = Node("teleop_twist_keyboard")
@@ -69,6 +76,9 @@ class World:
             self.motion,
             self.nav,
             self.smoother,
+            self.controller,
+            self.behaviors,
+            self.laptop,
             self.monitor,
             self.tb4,
             self.keyboard,
@@ -92,6 +102,11 @@ class World:
             GoalStatusArray, "navigate_to_pose/_action/status", STATUS_QOS
         )
         self.smoothed = self.smoother.create_publisher(TwistStamped, "cmd_vel_smoothed", 10)
+        self.controller_out = self.controller.create_publisher(TwistStamped, "cmd_vel_nav", 10)
+        self.behaviors_out = self.behaviors.create_publisher(TwistStamped, "cmd_vel_nav", 10)
+        self.heading_status = self.behaviors.create_publisher(
+            GoalStatusArray, "drive_on_heading/_action/status", STATUS_QOS
+        )
         self.relay = self.monitor.create_publisher(TwistStamped, "cmd_vel", 10)
         self.monitor_state = self.monitor.create_publisher(
             CollisionMonitorState, "collision_monitor_state", 10
@@ -106,13 +121,18 @@ class World:
             ActionClient(self.tb4, Dock, "dock"),
             ActionClient(self.rviz, NavigateToPose, "navigate_to_pose"),
             ActionClient(self.mission, Dock, "dock"),
+            ActionClient(self.laptop, DriveOnHeading, "drive_on_heading"),
         ]
+        self.hidden: Node | None = None
+        self.hidden_out: object = None
         self.lock = threading.Lock()
         self.wheels_enabled = True
         self.docked = True
         self.x = 0.0
         self.speed = 0.0
         self.nav_speed: float | None = None  # Nav2's wish; None when no goal runs
+        self.heading_speed: float | None = None  # the behaviour server's drive_on_heading
+        self.hidden_speed: float | None = None  # the hidden node on cmd_vel_smoothed
         self.stopped = False  # the collision monitor's STOP
         m.create_timer(0.1, self._fast)
         m.create_timer(1.0, self._slow)
@@ -121,8 +141,16 @@ class World:
         with self.lock:
             self.wheels.publish(WheelStatus(wheels_enabled=self.wheels_enabled))
             if self.nav_speed is not None:
+                self.controller_out.publish(twist(self.nav_speed))
                 self.smoothed.publish(twist(self.nav_speed))
                 self.relay.publish(twist(0.0 if self.stopped else self.nav_speed))
+            if self.heading_speed is not None:
+                self.behaviors_out.publish(twist(self.heading_speed))
+                self.smoothed.publish(twist(self.heading_speed))
+                self.relay.publish(twist(self.heading_speed))
+            if self.hidden_speed is not None and self.hidden_out is not None:
+                self.hidden_out.publish(twist(self.hidden_speed))  # type: ignore[attr-defined]
+                self.relay.publish(twist(self.hidden_speed))
             self.x += self.speed * 0.1
             odom = Odometry()
             odom.pose.pose.position.x = self.x
@@ -146,6 +174,16 @@ class World:
         self.buttons.publish(pressed)
         time.sleep(0.1)
         self.buttons.publish(InterfaceButtons())
+
+    def hide(self, present: bool) -> None:
+        """Start or remove the hidden, undeclared node that publishes on cmd_vel_smoothed."""
+        with self.lock:
+            if present and self.hidden is None:
+                self.hidden = Node("nav_helper")
+                self.hidden_out = self.hidden.create_publisher(TwistStamped, "cmd_vel_smoothed", 10)
+            elif not present and self.hidden is not None:
+                self.hidden.destroy_node()
+                self.hidden, self.hidden_out, self.hidden_speed = None, None, None
 
     def call(self, name: str) -> None:
         self.function_calls.publish(String(data=name))
@@ -224,7 +262,24 @@ def storyline(world: World, log: Callable[[str], None]) -> None:  # noqa: PLR091
     world.set(speed=0.0, docked=True)
     world.dock_action_status.publish(status_array(DOCK_GOAL, GoalStatus.STATUS_SUCCEEDED))
     log("docked: idle 30 s after the dock")
-    at(start, 122.0)
+    at(start, 120.0)
+    log("a hidden node drives through cmd_vel_smoothed; the collision monitor relays it")
+    world.hide(True)
+    time.sleep(1.5)  # let the graph show it before it drives
+    world.set(hidden_speed=0.3, speed=0.3)
+    time.sleep(4.0)
+    world.set(hidden_speed=None, speed=0.0)
+    time.sleep(0.5)
+    world.hide(False)
+    at(start, 130.0)
+    log("drive_on_heading sent from an undeclared laptop")
+    world.heading_status.publish(status_array(HEADING_GOAL, GoalStatus.STATUS_EXECUTING))
+    world.set(heading_speed=0.2, speed=0.2)
+    at(start, 135.0)
+    world.set(heading_speed=None, speed=0.0)
+    world.heading_status.publish(status_array(HEADING_GOAL, GoalStatus.STATUS_SUCCEEDED))
+    log("nobody commands: idle 30 s after the drive")
+    at(start, 169.0)
 
 
 def main() -> None:

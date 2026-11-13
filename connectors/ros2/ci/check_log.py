@@ -28,6 +28,9 @@ STATES = [
     "unknown",  # EStop released, no commander
     "ai",  # dock by the mission node
     "idle",
+    "human_remote",  # a hidden node drives through cmd_vel_smoothed (6.10, 6.12)
+    "shared",  # drive_on_heading from an undeclared laptop (6.13)
+    "idle",
 ]
 #: (state, reason, actor_id, device_id) of the transitions that name a source.
 SOURCES = [
@@ -39,6 +42,8 @@ SOURCES = [
     ("human_remote", "human_initiated", "op_01", "teleop_kbd_pc_1"),
     ("safety_stop", "safety", "op_02", "create3_button_power"),
     ("ai", None, "ai:mission_navigator", "mission_navigator"),
+    ("human_remote", "human_initiated", "person:unidentified", None),
+    ("shared", "human_initiated", "person:unidentified", None),
 ]
 
 
@@ -101,11 +106,13 @@ def check(
     if not session["resets"]["planned_s"] > 0:
         problems.append("no planned reset time (the pose estimate)")
     if not session["resets"]["unplanned_s"] > 0:
-        problems.append("no unplanned human time before the task (the undock)")
+        problems.append("no unplanned human time (the undock, the hidden operators)")
     codes = {f["code"] for f in session["flags"]}
     if "attribution_inferred" not in codes:
         problems.append("no attribution_inferred flag")
-    unexpected = codes - {"attribution_inferred", "clock_unsynced"}
+    if "undeclared_device" not in codes:
+        problems.append("the hidden operators were not flagged undeclared_device")
+    unexpected = codes - {"attribution_inferred", "clock_unsynced", "undeclared_device"}
     if unexpected:
         problems.append(f"unexpected flags: {sorted(unexpected)}")
 
