@@ -42,9 +42,10 @@ logger = logging.getLogger(__name__)
 
 EVENTS_FILE = "events.jsonl"
 CHECKPOINTS_FILE = "events.checkpoints.jsonl"
-_SESSION_RE = re.compile(r"(?P<counter>[0-9]{6,16})-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}", re.ASCII)
+#: Session id form (definitions.md 11.3): a per-robot counter, the UTC start and 4 hex digits.
+SESSION_ID_RE = re.compile(r"(?P<counter>[0-9]{6,16})-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}", re.ASCII)
 #: Width the session counter is padded to; it grows beyond when it must.
-_COUNTER_DIGITS = 6
+COUNTER_DIGITS = 6
 _BINARY = getattr(os, "O_BINARY", 0)
 _CLOEXEC = getattr(os, "O_CLOEXEC", 0)
 _TAIL_CHUNK = 65536
@@ -240,7 +241,7 @@ def robot_dir(prepared: Prepared) -> Path:
 
 
 def _counter(entry: Path) -> int | None:
-    match = _SESSION_RE.fullmatch(entry.name)
+    match = SESSION_ID_RE.fullmatch(entry.name)
     return int(match.group("counter")) if match else None
 
 
@@ -270,7 +271,7 @@ def new_session_dir(robot: Path, now_ns: int, inputs: Mapping[str, bytes]) -> Pa
     # Every entry with a session id's form counts, so the new name is never taken.
     counters = [c for entry in robot.iterdir() if (c := _counter(entry)) is not None]
     counter = max(counters, default=0) + 1
-    path = robot / f"{counter:0{_COUNTER_DIGITS}d}-{stamp}-{secrets.token_hex(2)}"
+    path = robot / f"{counter:0{COUNTER_DIGITS}d}-{stamp}-{secrets.token_hex(2)}"
     make_private_dirs(path)
     for name, data in sorted(inputs.items()):
         atomic_write(path / name, data)

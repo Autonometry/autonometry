@@ -171,6 +171,15 @@ def garwood(k: int, exposure: float, alpha: float) -> Interval:
     return Interval(lo / exposure, hi / exposure, "poisson_exact")
 
 
+def garwood_upper(k: int, exposure: float, level: float) -> float | None:
+    """One-sided exact (Garwood 1936) upper bound of a Poisson rate ``k / exposure`` at
+    confidence ``level``: ``chi2.ppf(level, 2k + 2) / 2`` divided by the exposure; ``None``
+    without exposure."""
+    if exposure <= 0:
+        return None
+    return float(stats.chi2.ppf(level, 2 * k + 2)) / 2.0 / exposure
+
+
 def dispersion_index(counts: Sequence[float], exposures: Sequence[float]) -> float | None:
     """Pearson dispersion against a common-rate Poisson model: ``sum((k_i - mu_i)^2 / mu_i) /
     (n - 1)`` with ``mu_i = rate * exposure_i`` over clusters with exposure; 1 is Poisson.
@@ -536,6 +545,39 @@ def kaplan_meier(
     median = _first_at_or_below_half(times, prob)
     at = tuple(_survival_at(times, prob, se, h, alpha) for h in horizons)
     return KaplanMeier(median, _median_interval(times, prob, se, alpha), at, events)
+
+
+@dataclass(frozen=True, slots=True)
+class KaplanMeierCurve:
+    """A Kaplan-Meier curve as steps: S and its pointwise cloglog band just after each time,
+    starting at time 0 with S = 1."""
+
+    times: tuple[float, ...]
+    survival: tuple[float, ...]
+    lower: tuple[float, ...]
+    upper: tuple[float, ...]
+
+
+def kaplan_meier_curve(
+    durations: Sequence[float], observed: Sequence[int], alpha: float
+) -> KaplanMeierCurve | None:
+    """The Kaplan-Meier curve of right-censored durations with the pointwise band of
+    :func:`kaplan_meier`; ``None`` without an event. Durations in the caller's unit."""
+    d = np.asarray(durations, dtype=float)
+    o = np.asarray(observed, dtype=int)
+    if len(d) == 0 or int(o.sum()) == 0:
+        return None
+    curve = SurvfuncRight(d, o)
+    times = np.asarray(curve.surv_times, dtype=float)
+    prob = np.asarray(curve.surv_prob, dtype=float)
+    lower, upper = _band(prob, np.asarray(curve.surv_prob_se, dtype=float), alpha)
+
+    def steps(values: Array) -> tuple[float, ...]:
+        return (1.0, *(float(v) for v in values))
+
+    return KaplanMeierCurve(
+        (0.0, *(float(t) for t in times)), steps(prob), steps(lower), steps(upper)
+    )
 
 
 @dataclass(frozen=True, slots=True)
