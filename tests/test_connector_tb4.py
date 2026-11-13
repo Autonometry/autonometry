@@ -228,7 +228,8 @@ def test_person_and_nav2_within_contention_window_are_shared__defs_6_12_notes_b2
     on_task(e)
     for o in nav2_cmd(2.0, 0.25):
         e.observe(o)
-    value = last_state(e.observe(cmd(2.5, 0.1, wz=0.4)))
+    assert not [m for m in e.observe(cmd(2.5, 0.1, wz=0.4)) if isinstance(m, tb4.StateAssertion)]
+    value = state(e, 2.8)  # it waited smoothed_match_s for a relay match
     assert (value.state, value.reason, value.device_id) == (
         "shared",
         "human_initiated",
@@ -263,7 +264,18 @@ def test_a_scaled_relay_is_still_nav2s__defs_6_12_notes_uc5() -> None:
 def test_a_stale_smoothed_command_does_not_match__defs_6_12() -> None:
     e = started()
     e.observe(tb4.CmdVelSmoothed(1.0, 0.25, 0.0, 0.0))
-    assert last_state(e.observe(cmd(1.5, 0.25))).state == "human_remote"
+    e.observe(cmd(1.5, 0.25))
+    assert state(e, 1.8).state == "human_remote"
+
+
+def test_a_relay_arriving_before_its_smoothed_command_is_still_nav2s__defs_6_12() -> None:
+    e = started()
+    on_task(e)
+    e.observe(cmd(2.0, 0.25))
+    e.observe(tb4.CmdVelSmoothed(2.05, 0.25, 0.0, 0.0))
+    value = state(e, 2.5)
+    assert (value.state, value.device_id) == ("ai", "nav2")
+    assert not [c for c in e._commanders.values() if c.device and c.device.kind == "human"]
 
 
 def test_dead_man_release_ends_joystick_control__defs_6_11_notes_b2_uc14() -> None:
@@ -313,7 +325,8 @@ def test_a_person_driving_during_a_collision_stop_takes_over__defs_6_7() -> None
     e.observe(tb4.CollisionMonitorState(2.0, tb4.COLLISION_STOP))
     for o in nav2_cmd(2.5, 0.25, relayed=0.0):
         e.observe(o)
-    assert last_state(e.observe(cmd(3.0, -0.15))).state == "human_remote"
+    e.observe(cmd(3.0, -0.15))
+    assert state(e, 3.3).state == "human_remote"
 
 
 def test_estop_button_is_a_safety_stop_a_person_triggered__defs_6_7_notes_b2_uc7() -> None:

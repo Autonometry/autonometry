@@ -515,8 +515,9 @@ only in later releases, and the observer uses it when present). The observer the
 publishers from the ROS graph, refreshed when a topic's publisher count changes and every second,
 and records the map once per change as `x_publishers` on a heartbeat. A topic with one publisher
 is attributed to it. With several, a `/cmd_vel` message that relays the latest `/cmd_vel_smoothed`
-(equal, or scaled by the collision monitor) is Nav2's and any other the remaining publisher's; such
-states carry `x_attribution_inferred: true` and cap the session at trust level L1 (6.12, 10.6). A
+(equal, or scaled by the collision monitor) is Nav2's and any other the remaining publisher's.
+Since a relay and its `/cmd_vel_smoothed` can arrive in either order, a command that relays
+nothing yet waits up to 0.25 s for a match before it counts. Such states carry `x_attribution_inferred: true` and cap the session at trust level L1 (6.12, 10.6). A
 goal or cancel is attributed to the action's clients in the graph, also inferred. Button presses on
 `/interface_buttons` and `/hmi/buttons` are matched in the device registry as topics with the field
 appended: `/interface_buttons/button_2`, `/hmi/buttons/1` to `/hmi/buttons/4`.

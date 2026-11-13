@@ -24,9 +24,9 @@ section B.5) rebuilt as what the observer sees on a TurtleBot 4, then run throug
 | 19 | undock succeeded | nothing: the person stays the last controller (6.14) |
 | 25 | 2D Pose Estimate from RViz | `human_remote`, `planned`, `initial_pose` |
 | 31 | Nav2 goal executing | `task_start`, then `ai` |
-| 52.3–54.1 | keyboard while Nav2 drives | `shared`, `human_initiated`, `x_contention` (6.12) |
+| 52.6–54.1 | keyboard from 52.3 while Nav2 drives | `shared`, `human_initiated`, `x_contention` (6.12) |
 | 61 | collision monitor STOP | `safety_stop`, no actor (automatic) |
-| 62.2 | keyboard, Nav2 stopped | `human_remote`: takeover within 60 s, one intervention with the stop (6.7) |
+| 62.5 | keyboard from 62.2, Nav2 stopped | `human_remote`: takeover within 60 s, one intervention with the stop (6.7) |
 | 70.4 | Create 3 power button, `EStop`, wheels disabled | `safety_stop`, actor `op_02`, `create3_button_power` |
 | 70.45 | goal cancelling | `hint` (`x_kind: cancel`): the shared span is hidden by the stop, so it is sent as an event |
 | 70.5 | goal cancelled | `task_end`, `aborted` |
@@ -34,10 +34,14 @@ section B.5) rebuilt as what the observer sees on a TurtleBot 4, then run throug
 | 100.5 | 30 s since the last command (the task's end) | `idle` |
 | 130 | recorder stops | `session_end` |
 
-Hand-worked result: `ai` 28.2 s, `shared` 14.35 s, `human_remote` 14.2 s, `safety_stop` 10.8 s,
+A keyboard command is counted `smoothed_match_s` (0.25 s) after it arrives, at the next tick: with
+several publishers on `/cmd_vel`, a command that relays nothing yet waits that long for the
+`/cmd_vel_smoothed` it might relay, since the two can arrive in either order.
+
+Hand-worked result: `ai` 28.5 s, `shared` 14.05 s, `human_remote` 13.9 s, `safety_stop` 11.1 s,
 `idle` 41.95 s, `unknown` 20.5 s; 2 interventions (the contention, and the takeover joined to the
 automatic stop); 2 safety stops (1 automatic and joined by the takeover, 1 triggered by a person);
-the hint lies inside the takeover's episode; task t1 not autonomous, outcome `aborted`, 10.0 s of
+the hint lies inside the takeover's episode; task t1 not autonomous, outcome `aborted`, 9.4 s of
 human time inside it and 12.55 s of unplanned human time before it (the undock); planned resets
 6.0 s; 9.0 m travelled.
 

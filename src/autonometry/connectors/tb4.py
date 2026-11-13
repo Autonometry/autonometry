@@ -111,6 +111,8 @@ _ESTOP: Final = "EStop"
 _NEUTRAL: Final = 1e-6
 #: Rounding allowed on the collision monitor's scale factor, which lies in [0, 1].
 _SCALE_SLACK: Final = 1e-6
+#: Most commands waiting for their ``/cmd_vel_smoothed`` match.
+_MAX_PENDING: Final = 256
 _HINT_POLICIES: Final = frozenset({"hint_as_shared", "hint_as_event"})
 _MATCH_FIELDS: Final = ("host", "node", "topic", "participant")
 
@@ -557,6 +559,7 @@ class Tb4Engine:
         self._released = False
         self._commanders: dict[str, _Commander] = {}
         self._smoothed: tuple[float, tuple[float, float, float]] | None = None
+        self._pending: list[CmdVel] = []
         self._goals: dict[str, dict[str, int]] = {}
         self._nav: _Nav | None = None
         self._routine: _Routine | None = None
@@ -613,6 +616,7 @@ class Tb4Engine:
             self._start = t
             self._now = t
         self._now = max(self._now, t)
+        self._settle()
 
     def _flush(self, out: list[Message]) -> None:
         value = self._decide()
@@ -625,10 +629,7 @@ class Tb4Engine:
             case CmdVel():
                 self._on_cmd_vel(observation)
             case CmdVelSmoothed():
-                self._smoothed = (
-                    observation.t,
-                    (observation.linear_x, observation.linear_y, observation.angular_z),
-                )
+                self._on_smoothed(observation)
             case ActionStatus():
                 self._on_action(observation, out)
             case CollisionMonitorState():
@@ -725,27 +726,58 @@ class Tb4Engine:
 
     # -- topics -----------------------------------------------------------------------------
 
-    def _attribute(self, observation: CmdVel) -> tuple[Source | None, bool]:
-        """The publisher of a command: given, or by the topic-level rule (inferred)."""
-        if observation.source is not None:
-            return observation.source, False
-        command = (observation.linear_x, observation.linear_y, observation.angular_z)
+    def _relayed(self, observation: CmdVel) -> bool:
+        """True when the command relays the latest ``/cmd_vel_smoothed`` (topic-level rule)."""
         smoothed = self._smoothed
-        nav2 = self._s.nav2_source
-        if (
+        command = (observation.linear_x, observation.linear_y, observation.angular_z)
+        return (
             smoothed is not None
             and abs(observation.t - smoothed[0]) <= self._s.smoothed_match_s
             and _relays(command, smoothed[1])
-        ):
-            return nav2, True
-        others = sorted(
-            {c for c in observation.candidates if c != nav2},
-            key=lambda c: (c.node or "", c.topic or "", c.host or "", c.participant or ""),
         )
-        return (others[0], True) if len(others) == 1 else (None, True)
+
+    def _other(self, observation: CmdVel) -> Source | None:
+        """The publisher of a command that relays nothing: the one candidate besides Nav2's
+        relay, or undeclared when there are several."""
+        nav2 = self._s.nav2_source
+        others = {c for c in observation.candidates if c != nav2}
+        return others.pop() if len(others) == 1 else None
 
     def _on_cmd_vel(self, observation: CmdVel) -> None:
-        source, inferred = self._attribute(observation)
+        """A command with a known publisher counts at once. Otherwise the topic-level rule
+        decides; since the relay and its ``/cmd_vel_smoothed`` may arrive in either order, a
+        command that relays nothing yet waits up to ``smoothed_match_s`` for one (inferred)."""
+        if observation.source is not None:
+            self._command(observation, observation.source, inferred=False)
+        elif self._relayed(observation):
+            self._command(observation, self._s.nav2_source, inferred=True)
+        else:
+            self._pending.append(observation)
+            if len(self._pending) > _MAX_PENDING:
+                oldest = self._pending.pop(0)
+                self._command(oldest, self._other(oldest), inferred=True)
+
+    def _on_smoothed(self, observation: CmdVelSmoothed) -> None:
+        self._smoothed = (
+            observation.t,
+            (observation.linear_x, observation.linear_y, observation.angular_z),
+        )
+        waiting, self._pending = self._pending, []
+        for command in waiting:
+            if self._relayed(command):
+                self._command(command, self._s.nav2_source, inferred=True)
+            else:
+                self._pending.append(command)
+
+    def _settle(self) -> None:
+        """Commands that waited ``smoothed_match_s`` without a matching relay are the other
+        publisher's."""
+        limit = self._now - self._s.smoothed_match_s
+        while self._pending and self._pending[0].t < limit:
+            command = self._pending.pop(0)
+            self._command(command, self._other(command), inferred=True)
+
+    def _command(self, observation: CmdVel, source: Source | None, inferred: bool) -> None:
         device = self._device(source)
         key = device.device_id if device is not None else f"undeclared:{source!r}"
         commander = self._commanders.get(key)
