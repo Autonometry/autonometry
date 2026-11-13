@@ -1,5 +1,5 @@
 """The core package never imports the report extra's numeric packages (CLAUDE.md Stack: core is
-installed on robots and stays light); only ``autonometry.stats`` may."""
+installed on robots and stays light); only ``autonometry.stats`` and ``autonometry.report`` may."""
 
 import ast
 import subprocess
@@ -8,7 +8,8 @@ from pathlib import Path
 
 import autonometry
 
-HEAVY = ("numpy", "scipy", "statsmodels", "pandas")
+HEAVY = ("numpy", "scipy", "statsmodels", "pandas", "matplotlib", "jinja2")
+EXTRA_PACKAGES = ("stats", "report")
 PACKAGE = Path(autonometry.__file__).parent
 
 
@@ -23,7 +24,11 @@ def _imported(path: Path) -> set[str]:
 
 
 def test_no_core_module_imports_a_heavy_package() -> None:
-    core = [p for p in PACKAGE.rglob("*.py") if "stats" not in p.relative_to(PACKAGE).parts]
+    core = [
+        p
+        for p in PACKAGE.rglob("*.py")
+        if not set(EXTRA_PACKAGES) & set(p.relative_to(PACKAGE).parts)
+    ]
     assert len(core) > 20
     offenders = {str(p.relative_to(PACKAGE)): _imported(p) & set(HEAVY) for p in core}
     assert {name: found for name, found in offenders.items() if found} == {}

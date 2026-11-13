@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+{% set r = report %}
+{% set v = r.verdict %}
+{% set p = r.provenance %}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="{{ p.software.name }} {{ p.software.version }}">
+<title>{{ r.title or "Autonometry report" }}</title>
+<style>
+:root { --ink: #1f1f1f; --muted: #5f5f5f; --rule: #d9d9d9; --soft: #f5f5f4;
+  --ok: #1a6b3c; --warn: #8a5a00; --bad: #a3121b; }
+* { box-sizing: border-box; }
+body { margin: 0 auto; max-width: 64rem; padding: 1.5rem 1rem 3rem; color: var(--ink);
+  background: #ffffff; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+  Arial, sans-serif; }
+h1 { font-size: 1.6rem; margin: 0 0 .25rem; overflow-wrap: anywhere; }
+h2 { font-size: 1.2rem; margin: 2.25rem 0 .5rem; padding-top: .5rem; border-top: 1px solid var(--rule); }
+h3 { font-size: 1rem; margin: 1.25rem 0 .4rem; }
+p, li { max-width: 48rem; }
+.muted { color: var(--muted); }
+.about { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--soft);
+  padding: .75rem 1rem; border-radius: 4px; }
+.verdict { border: 3px solid var(--warn); border-radius: 6px; padding: 1rem 1.25rem; margin: 1rem 0; }
+.verdict.clean { border-color: var(--ok); }
+.verdict.failed { border-color: var(--bad); }
+.verdict .status { font-size: 1.4rem; font-weight: 700; margin: 0 0 .25rem; color: var(--warn); }
+.verdict.failed .status { color: var(--bad); }
+.verdict.clean .status { color: var(--ok); }
+.tag { display: inline-block; padding: 0 .45rem; border-radius: 3px; font-weight: 600;
+  border: 1px solid currentColor; font-size: .85rem; }
+.pass { color: var(--ok); } .fail { color: var(--bad); } .not_checked, .not_available { color: var(--warn); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; font-size: .88rem; }
+th, td { text-align: left; vertical-align: top; padding: .3rem .5rem; border-bottom: 1px solid var(--rule); }
+th { background: var(--soft); font-weight: 600; }
+td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.narrow { width: auto; min-width: 50%; }
+tr.metric td { border-bottom: none; padding-bottom: .1rem; }
+tr.method td { color: var(--muted); font-size: .78rem; padding-top: 0; overflow-wrap: normal;
+  word-break: keep-all; white-space: normal; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+td.label { min-width: 8.5rem; }
+.metrics-table { font-size: .84rem; }
+code, .id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .85em;
+  overflow-wrap: anywhere; }
+svg.figure { width: 100%; height: auto; display: block; margin: .5rem 0 1rem; }
+figure { margin: 0; break-inside: avoid; }
+figcaption { color: var(--muted); font-size: .85rem; }
+ul.notes { padding-left: 1.2rem; }
+@media (max-width: 40rem) {
+  table { display: block; overflow-x: auto; }
+  table.narrow { min-width: 0; }
+}
+@media print {
+  body { max-width: none; padding: 0; font-size: 10.5pt; }
+  h2 { break-after: avoid; }
+  table, figure, .verdict { break-inside: avoid; }
+  .scroll { overflow: visible; }
+  table { font-size: 8pt; }
+  th, td { padding: .2rem .3rem; }
+  td.label { min-width: 0; }
+}
+@page { margin: 16mm 14mm; }
+</style>
+</head>
+<body>
+<header id="top">
+<h1>{{ r.title or "Autonometry report" }}</h1>
+<p class="muted">Spec {{ p.spec_version }} · {{ p.software.name }} {{ p.software.version }} · generated {{ p.generated_at | instant }}</p>
+</header>
+
+<section id="verdict" class="verdict {{ verdict_class }}" aria-label="Verdict">
+<p class="status">Trust: {{ status_text }} · level {{ v.level }} · {{ v.completeness }}</p>
+{% if v.status == "failed" %}
+<p><strong>FAILED: at least one log contradicts its own seals (tampering or corruption).</strong> Failed sessions stay in the metrics below; see Trust.</p>
+{% endif %}
+<p>Census: {{ v.census | replace("_", " ") }} · sessions left out of the metrics: {{ v.exclusions }}</p>
+{% if v.reasons %}
+<p>Not a clean report:</p>
+<ul>{% for reason in v.reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+{% else %}
+<p>Clean: verified at L2, complete, no census gap, nothing left out, no invariant failed.</p>
+{% endif %}
+{% if headline %}
+<div class="scroll"><table>
+<thead><tr><th>Group</th><th>Metric</th><th>Estimate</th><th>Confidence interval</th><th>Outer interval</th></tr></thead>
+<tbody>
+{% for row in headline %}
+<tr><td>{{ row.group }}</td><td>{{ row.label }}</td><td class="n">{{ row.estimate }}</td><td class="n">{{ row.ci }}</td><td class="n">{{ row.outer }}</td></tr>
+{% endfor %}
+</tbody></table></div>
+<p class="muted">The outer interval runs from the smallest to the largest confidence limit of the estimate and of its two bounds for unknown time: it combines sampling and measurement uncertainty.</p>
+{% else %}
+<p>No group has metrics.</p>
+{% endif %}
+</section>
+
+{% if r.about %}
+<section id="about">
+<h2>About this report</h2>
+<div class="about">{{ r.about }}</div>
+</section>
+{% endif %}
+
+<section id="trust">
+<h2>Trust</h2>
+<p>Status <strong>{{ status_text }}</strong>, level <strong>{{ r.trust.level }}</strong> (the lowest of its sessions). L1: {{ r.trust.levels.L1 }}; L2: {{ r.trust.levels.L2 }}; L3: {{ r.trust.levels.L3 }}.
+Trusted verifier keys: {{ r.trust.trusted_keys }}; trusted TSA roots: {{ r.trust.trusted_tsa_roots }}; anchor files: {{ r.trust.anchor_files }}.</p>
+{% if r.trust.notes %}<ul class="notes">{% for note in r.trust.notes %}<li>{{ note }}</li>{% endfor %}</ul>{% endif %}
+<div class="scroll"><table>
+<thead><tr><th>Robot</th><th>Session</th><th>Status</th><th>Level</th><th>Sealed through seq</th><th>Evidence and gaps</th></tr></thead>
+<tbody>
+{% for s in r.trust.sessions %}
+<tr><td class="id">{{ s.robot_id }}</td><td class="id">{{ s.session_id }}</td><td>{{ s.status }}</td><td>{{ s.level }}</td><td class="n">{{ s.sealed_through_seq if s.sealed_through_seq is not none else "" }}</td>
+<td>{% for i in s.evidence %}<div><span class="fail">evidence {{ i.code }}</span>: {{ i.detail }}</div>{% endfor %}{% for i in s.gaps %}<div>gap {{ i.code }}: {{ i.detail }}</div>{% endfor %}</td></tr>
+{% endfor %}
+</tbody></table></div>
+<h3>Rejected lines and file problems</h3>
+<p>Rejected lines: {{ r.trust.rejected_lines.count }}; file problems: {{ r.trust.file_problems.count }}. Either makes the report not verified.</p>
+{% if r.trust.rejected_lines.listed or r.trust.file_problems.listed %}
+<div class="scroll"><table>
+<thead><tr><th>File</th><th>Line</th><th>Code</th><th>Detail</th></tr></thead>
+<tbody>
+{% for e in r.trust.rejected_lines.listed %}<tr><td class="id">{{ e.file }}</td><td class="n">{{ e.line }}</td><td>{{ e.code }}</td><td>{{ e.message }}</td></tr>
+{% endfor %}
+{% for e in r.trust.file_problems.listed %}<tr><td class="id">{{ e.file }}</td><td class="n">{{ e.line }}</td><td>{{ e.code }}</td><td>{{ e.detail }}</td></tr>
+{% endfor %}
+</tbody></table></div>
+{% endif %}
+</section>
+
+<section id="census">
+<h2>Session census</h2>
+<p>Result: <span class="tag {{ r.census.status }}">{{ r.census.status | replace("_", " ") }}</span>. Session ids of the recorder's form carry a per-robot counter; a missing counter is a session that is not in these logs.</p>
+<div class="scroll"><table>
+<thead><tr><th>Robot</th><th>Checked</th><th>Lowest</th><th>Highest</th><th>Missing</th><th>Not checked (other id form)</th></tr></thead>
+<tbody>
+{% for c in r.census.robots %}
+<tr><td class="id">{{ c.robot_id }}</td><td class="n">{{ c.sessions_checked }}</td><td class="id">{{ c.lowest or "" }}</td><td class="id">{{ c.highest or "" }}</td>
+<td class="id">{% if c.missing_count %}{{ c.missing_count }}: {% for first, last in c.missing_ranges %}{{ first }}{% if last != first %}–{{ last }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}none{% endif %}</td>
+<td class="id">{{ c.sessions_not_checked | join(", ") }}</td></tr>
+{% endfor %}
+</tbody></table></div>
+</section>
+
+<section id="exclusions">
+<h2>Exclusions</h2>
+{% if r.exclusions %}
+<div class="scroll"><table>
+<thead><tr><th>Robot</th><th>Session</th><th>Why it is left out of the metrics</th></tr></thead>
+<tbody>
+{% for e in r.exclusions %}<tr><td class="id">{{ e.robot_id }}</td><td class="id">{{ e.session_id }}</td><td>{{ e.reasons | join("; ") }}</td></tr>
+{% endfor %}
+</tbody></table></div>
+{% else %}
+<p>No session is left out of the metrics.</p>
+{% endif %}
+</section>
+
+<section id="metrics">
+<h2>Metrics</h2>
+<p>Real and simulated sessions are never pooled: each group has its own metrics. Confidence level {{ (1 - p.statistics.alpha) | pct }}, cluster option {{ p.statistics.cluster }}, {{ p.statistics.n_boot }} bootstrap replicates, seed {{ p.statistics.seed }}.</p>
+{% if figures.states %}<figure>{{ figures.states }}<figcaption>Whole-robot state shares of observed time; unknown time is hatched. The table under each group gives the same numbers.</figcaption></figure>{% endif %}
+{% for g in groups %}
+<h3>Group {{ g.name }}: {{ g.n_sessions }} session(s), {{ g.n_robots }} robot(s)</h3>
+<p>Observed {{ g.observed }}, active {{ g.active }}. Unknown share {{ g.unknown_share }} (limit {{ g.unknown_share_max }}): <strong>{{ g.conformance }}</strong>.</p>
+<div class="scroll"><table class="metrics-table">
+<thead><tr><th>Metric</th><th>Estimate</th><th>CI</th><th>Unknown as human</th><th>Unknown as AI</th><th>Outer interval</th><th>Clusters</th></tr></thead>
+<tbody>
+{% for m in g.rows %}
+<tr class="metric"><td class="label">{{ m.label }}</td><td class="n">{{ m.estimate }}</td><td class="n">{{ m.ci }}</td><td class="n">{% for line in m.lower %}<div>{{ line }}</div>{% endfor %}</td><td class="n">{% for line in m.upper %}<div>{{ line }}</div>{% endfor %}</td><td class="n">{{ m.outer }}</td><td class="n">{{ m.clusters }}</td></tr>
+<tr class="method"><td></td><td colspan="6">method: {{ m.method }}{% for note in m.notes %} · {{ note }}{% endfor %}</td></tr>
+{% endfor %}
+</tbody></table></div>
+<p>Gap between interventions, Kaplan-Meier median: {{ g.gap_median }}{% if g.gap_note %} ({{ g.gap_note }}){% endif %}.</p>
+<table class="narrow">
+<thead><tr><th>Time share variant</th><th>Estimate</th><th>CI</th></tr></thead>
+<tbody>{% for x in g.variants %}<tr><td>{{ x.name | replace("_", " ") }}</td><td class="n">{{ x.estimate }}</td><td class="n">{{ x.ci }}</td></tr>{% endfor %}</tbody>
+</table>
+<table class="narrow">
+<thead><tr><th>Whole-robot state</th><th>Time</th><th>Share of observed</th></tr></thead>
+<tbody>{% for x in g.states %}<tr><td>{{ x.state }}</td><td class="n">{{ x.seconds }}</td><td class="n">{{ x.share }}</td></tr>{% endfor %}</tbody>
+</table>
+<p class="muted">Approval and hint dwell moved {{ g.moved }} of this AI time to human time (Section 6.1); the time autonomy share uses the moved time.</p>
+{% if g.drift %}
+<table class="narrow">
+<thead><tr><th>Drift bin (UTC)</th><th>Active time</th><th>Interventions</th><th>Rate per hour</th><th>Exact Poisson CI</th></tr></thead>
+<tbody>{% for x in g.drift %}<tr><td class="id">{{ x.bin }}</td><td class="n">{{ x.active }}</td><td class="n">{{ x.count }}</td><td class="n">{{ x.rate }}</td><td class="n">{{ x.ci }}</td></tr>{% endfor %}</tbody>
+</table>
+{% endif %}
+{% endfor %}
+{% if figures.share %}<figure>{{ figures.share }}<figcaption>Time autonomy share: estimate and confidence interval, both bounds for unknown time with theirs, the outer interval as a band, and the variants.</figcaption></figure>{% endif %}
+{% if figures.gaps %}<figure>{{ figures.gaps }}<figcaption>Kaplan-Meier curve of the active time between interventions with its pointwise band; the dotted line marks S = 0.5, where the median is read.</figcaption></figure>{% endif %}
+{% if figures.drift %}<figure>{{ figures.drift }}<figcaption>Interventions per active hour per calendar bin with exact Poisson intervals.</figcaption></figure>{% endif %}
+</section>
+
+<section id="statements">
+<h2>Statements</h2>
+{% if statement_rows %}
+<ul>
+{% for s in statement_rows %}<li><strong>{{ s.group }}</strong> · {{ s.kind }}: {{ s.metrics }}. <span class="muted">{{ s.detail }}</span></li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No statement applies.</p>
+{% endif %}
+</section>
+
+<section id="invariants">
+<h2>Invariants</h2>
+<div class="scroll"><table>
+<thead><tr><th>Invariant</th><th>Result</th><th>Detail</th></tr></thead>
+<tbody>
+{% for i in invariants %}
+<tr><td>{{ i.name }}</td><td><span class="tag {{ i.status }}">{{ i.status | replace("_", " ") }}</span></td><td>{{ i.detail }}{% if i.failures %}<ul>{% for f in i.failures %}<li>{{ f }}</li>{% endfor %}{% if i.failure_count > i.failures | length %}<li>… and {{ i.failure_count - i.failures | length }} more</li>{% endif %}</ul>{% endif %}</td></tr>
+{% endfor %}
+</tbody></table></div>
+</section>
+
+<section id="sessions">
+<h2>Sessions</h2>
+<div class="scroll"><table>
+<thead><tr><th>Robot</th><th>Session</th><th>Simulated</th><th>Status</th><th>Level</th><th>Observed</th><th>Active</th><th>AI share</th><th>Interventions</th><th>Unknown share</th><th>Flags</th></tr></thead>
+<tbody>
+{% for s in sessions %}
+<tr><td class="id">{{ s.robot_id }}</td><td class="id">{{ s.session_id }}</td><td>{{ s.simulated }}</td><td>{{ s.status }}</td><td>{{ s.level }}</td><td class="n">{{ s.observed }}</td><td class="n">{{ s.active }}</td><td class="n">{{ s.ai_share }}</td><td class="n">{{ s.interventions }}</td><td class="n">{{ s.unknown }}</td><td>{{ s.flags }}</td></tr>
+{% endfor %}
+</tbody></table></div>
+</section>
+
+<section id="parameters">
+<h2>Parameters</h2>
+<div class="scroll"><table>
+<thead><tr><th>Parameter (definitions.md 9; report thresholds of 11.6)</th><th>Value</th></tr></thead>
+<tbody>
+{% for name, value in p.parameters | dictsort %}<tr><td><code>{{ name }}</code></td><td class="n">{{ value }}</td></tr>
+{% endfor %}
+{% for name, value in p.statistics | dictsort %}<tr><td><code>{{ name }}</code> (statistics)</td><td class="n">{{ value }}</td></tr>
+{% endfor %}
+</tbody></table></div>
+</section>
+
+<section id="provenance">
+<h2>Provenance</h2>
+<table>
+<tbody>
+<tr><th>Spec version</th><td>{{ p.spec_version }}</td></tr>
+<tr><th>Software</th><td>{{ p.software.name }} {{ p.software.version }}</td></tr>
+<tr><th>Generated at</th><td>{{ p.generated_at | instant }}</td></tr>
+<tr><th>Period</th><td>{% if p.period %}{{ p.period.start | instant }} to {{ p.period.end | instant }}{% else %}nothing observed{% endif %}</td></tr>
+<tr><th>Counts</th><td>{{ p.counts.sessions }} session(s), {{ p.counts.robots }} robot(s), {{ p.counts.utc_days }} UTC day(s), {{ p.counts.tasks }} task(s)</td></tr>
+<tr><th>Robots</th><td class="id">{{ p.robots | join(", ") }}</td></tr>
+{% for name, values in p.registry_hashes | dictsort %}<tr><th>{{ name }}</th><td class="id">{{ values | join(", ") or "none declared" }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+<h3>Input files (SHA-256)</h3>
+<div class="scroll"><table>
+<thead><tr><th>Role</th><th>Path</th><th>SHA-256</th></tr></thead>
+<tbody>
+{% for f in p.input_files %}<tr><td>{{ f.role }}</td><td class="id">{{ f.path }}</td><td class="id">{{ f.sha256 }}</td></tr>
+{% endfor %}
+</tbody></table></div>
+<h3>Spec files (SHA-256)</h3>
+<div class="scroll"><table>
+<tbody>
+{% for name, digest in p.spec_files | dictsort %}<tr><td class="id">{{ name }}</td><td class="id">{{ digest }}</td></tr>
+{% endfor %}
+</tbody></table></div>
+</section>
+</body>
+</html>

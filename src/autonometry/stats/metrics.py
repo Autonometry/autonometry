@@ -558,11 +558,25 @@ def gaps(sessions: Sequence[SessionFacts], options: Options, measure: Measure) -
 # -- (e) human minutes per task ------------------------------------------------------------------
 
 
+def _at_least_zero(interval: iv.Interval) -> iv.Interval:
+    """An interval of a quantity that cannot be negative, its limits clipped at 0; the method
+    label says so when a limit moved."""
+    if interval.lo is None or interval.hi is None or min(interval.lo, interval.hi) >= 0:
+        return interval
+    clipped = iv.Interval(max(interval.lo, 0.0), max(interval.hi, 0.0), interval.method)
+    return clipped.renamed(f"{interval.method}, clipped at 0")
+
+
 def _mean(
-    pairs: Sequence[tuple[str, float]], unit: ClusterUnit, options: Options, secondary: bool = False
+    pairs: Sequence[tuple[str, float]],
+    unit: ClusterUnit,
+    options: Options,
+    secondary: bool = False,
+    non_negative: bool = False,
 ) -> Json:
     """A mean over tasks in clusters: cluster bootstrap-t (relabelled clusters), t on tasks with
-    one cluster; the percentile bootstrap beside it."""
+    one cluster; the percentile bootstrap beside it. With ``non_negative`` the interval is
+    clipped at 0, since the mean of values that cannot be negative cannot be either."""
     if not pairs:
         return _null("no tasks", n=0)
     by_cluster: dict[str, list[float]] = {}
@@ -580,6 +594,8 @@ def _mean(
         interval = iv.t_interval(values, options.alpha)
         if interval.defined:
             interval = interval.renamed("t_on_tasks(single_cluster)")
+    if non_negative:
+        interval = _at_least_zero(interval)
     block = _block(estimate, interval, n=len(values), n_clusters=len(keys))
     if secondary:
         boot = iv.bootstrap_mean_percentile(
@@ -593,12 +609,24 @@ def human_minutes(sessions: Sequence[SessionFacts], options: Options) -> Json:
     """(e) Human minutes per task over every task with a known definition, closed or not: the
     task's whole-robot human time, the unplanned reset time attributed to it and the dwell its
     approvals and hints moved (definitions.md 6.1, 6.3); ``unknown_as_human`` adds the task's
-    whole-robot unknown time, ``unknown_as_ai`` equals the point estimate (7)."""
+    whole-robot unknown time, ``unknown_as_ai`` equals the point estimate (7). Intervals are
+    clipped at 0: human time cannot be negative."""
     unit = other_unit(options)
     tasks = [(cluster_of(unit, s), t) for s in sessions for t in s.tasks if t.known]
     per_minute = NS_PER_S * MINUTE_S
-    point = _mean([(c, t.human_ns / per_minute) for c, t in tasks], unit, options, secondary=True)
-    lower = _mean([(c, (t.human_ns + t.unknown_ns) / per_minute) for c, t in tasks], unit, options)
+    point = _mean(
+        [(c, t.human_ns / per_minute) for c, t in tasks],
+        unit,
+        options,
+        secondary=True,
+        non_negative=True,
+    )
+    lower = _mean(
+        [(c, (t.human_ns + t.unknown_ns) / per_minute) for c, t in tasks],
+        unit,
+        options,
+        non_negative=True,
+    )
     zero = sum(1 for _, t in tasks if t.human_ns == 0)
     return _bounded(
         "mean over tasks of (human time + unplanned reset + moved dwell) in minutes",
@@ -640,7 +668,7 @@ def _definition_block(
         ),
         "success_rate": _wilson_rate([t.success for t in closed], options.alpha),
         "human_minutes_per_task": _mean(
-            [(c, t.human_ns / per_minute) for c, t in pairs], unit, options
+            [(c, t.human_ns / per_minute) for c, t in pairs], unit, options, non_negative=True
         ),
         "interventions_per_task": _mean(
             [(c, float(t.interventions)) for c, t in pairs], unit, options

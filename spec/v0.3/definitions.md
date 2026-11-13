@@ -43,6 +43,7 @@ Resolves the cases that the TurtleBot 4 and Unitree G1 research found uncovered 
 30. Dwell windows that overlap count once: the AI time moved is the AI time inside the union of the windows (Section 6.1).
 31. The supported share is supported active time over active time, so it is a proportion (Section 6.15).
 32. Distance at an instant is the latest `distance_m` at or before it, and 0 before the first sample (Section 8).
+33. New Section 11, the report: provenance, trust, session census, exclusions, metrics per group, the statements printed beside them, and invariants (Section 11).
 
 ## Changes in v0.2 (2026-10-31)
 
@@ -336,3 +337,37 @@ Gap codes; they never raise the level:
 **File problems.** A record that cannot be tied to one session is reported for its file: `malformed_checkpoint` (a checkpoint note that is not a well-formed signed checkpoint) and `orphan_timestamp` (a timestamp record whose `note_sha256` matches no checkpoint record in the same file). File problems, like rejected lines, make the result not verified whatever the sessions' statuses.
 
 A verifier MUST NOT report L2 for a span it did not prove, and MUST report a log with rejected lines as not verified.
+
+## 11. Report
+
+A report turns one or more logs into a document a buyer, insurer or auditor can read: what was measured, how far to trust it, and the numbers with their uncertainty. It adds no measurement rule: it combines verification (Section 10), the timeline (Sections 1 to 8) and the metrics with their bounds (Section 7). A report is produced as JSON and MAY also be rendered for reading; both carry the same content. The same inputs and options MUST give the same report apart from `generated_at`: every resampling is seeded and every list and map is in a fixed order. A report contains no actor ids, only counts (Section 1, Actor), and no event contents beyond identifiers (Section 8).
+
+**11.1 Provenance.** The spec version; the software name and version; `generated_at` (RFC 3339 UTC); the robots; the period, from the first to the last observed instant; the counts of sessions, robots, UTC calendar days with observed time, and tasks; the registry hashes the sessions declare (`device_registry_hash`, `task_registry_hash`, `plan_hash`); the SHA-256 of every input file (logs, checkpoint and anchor files, registries, trusted keys, trusted TSA roots and any other file read); and every parameter of Section 9 and the statistics options (confidence level, resampling count and seed, cluster choice, drift bin).
+
+**11.2 Trust.** Each session's status (Section 10.6) and its level: L2 only for a `verified` session, else L1; with its evidence and gap codes. The rejected lines and file problems of every file read. The report's level is the lowest of its sessions'. The report is `verified` only when every session is `verified` and there are no rejected lines and no file problems; it is `failed` when any session is `failed`, and the report MUST then say `failed` at the top. A failed session stays in the metrics: leaving it out would reward corrupting a bad session. The report MUST say so when no trusted key or no trusted TSA root was given. L3 is shown as not available until a later version specifies it.
+
+**11.3 Session census.** For the session ids of the recorder's form, `<counter>-<YYYYMMDD>T<hhmmss>Z-<4 lower-case hex digits>` with a counter of 6 to 16 digits, the report lists for each robot the counters missing between its lowest and its highest present counter. Sessions with ids of any other form are listed as not checked.
+
+**11.4 Exclusions.** Every session left out of the metrics, with the reason: a registry that does not match its hash (Section 8, Registries), no `session_start` (no observed time and no group), or a session named by a checkpoint or anchor but absent from the logs.
+
+**11.5 Metrics.** The metrics of Section 7 with their bounds and intervals, one block per group present (real, simulated), never pooled (Section 8).
+
+**11.6 Statements.** Printed beside the metrics they concern, for each group:
+1. When unknown time exists, interventions per active hour and human minutes per task have no true worst case, since events can hide in unknown time; `unknown_as_human` assumes one hidden intervention per run of unknown time (Section 7).
+2. For a metric with bounds whose bounds are wider than the confidence interval of its point estimate: data quality, not sample size, limits this number.
+3. An interval from fewer than `min_clusters` clusters (default 2, that is a single cluster) is not generalisable.
+4. A rate from fewer than `rare_rate_events` events (default 5) also shows its one-sided 95 % upper bound (exact Poisson, Garwood).
+
+Both thresholds are in `rules.toml` `[report]` and are printed with the parameters of Section 9.
+5. The signal classes sessions declare `unobserved`, with the metrics that depend on them (Section 8).
+
+**11.7 Invariants.** Each with its result, `pass` or `fail`, or `not_checked` when the inputs do not allow the check, with what failed:
+- partition: in every session, the state times sum to the observed time, per scope and for the whole robot;
+- chain: no session contradicts its seals (Section 10.6); `not_checked` when a session has no sealed event;
+- time: no `ts_regression` flag (Section 8) and no `clock_skew` or `late_anchor` gap (Section 10.6);
+- census: no counter missing (11.3); `not_checked` when some session id has another form;
+- tasks: in every session, tasks started = tasks closed + tasks not closed, and every task definition is in the task registry;
+- bounds: `unknown_as_human` ≤ point estimate ≤ `unknown_as_ai` for the time autonomy share, the task autonomy rate and the autonomous success rate;
+- witnesses: not available until trust level L3 is specified.
+
+A report is `complete` when every group present is complete (Section 7) and `incomplete` otherwise, including when no group is present. A report is clean only when it is `verified` at L2, `complete`, has no census gap, leaves no session out and no invariant is `fail`; it then says so at the top, and otherwise lists why not.

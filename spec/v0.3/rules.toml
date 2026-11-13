@@ -115,6 +115,11 @@ l3_station_only_max_share = 0.005
 l3_disputed_max_share = 0.02
 default_tau_s = 1.0
 
+# Thresholds of the report's statements (definitions.md 11.6). Printed with the parameters.
+[report]
+rare_rate_events = 5
+min_clusters = 2
+
 # Sealing and verification (definitions.md section 10).
 [sealing]
 checkpoint_every_events = 1000

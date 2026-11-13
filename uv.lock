@@ -139,6 +139,7 @@ lerobot = [
 ]
 report = [
     { name = "jinja2" },
+    { name = "markupsafe" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pandas" },
@@ -162,7 +163,8 @@ requires-dist = [
     { name = "cryptography", specifier = ">=49.0.0" },
     { name = "jinja2", marker = "extra == 'report'", specifier = ">=3.1.6" },
     { name = "jsonschema-rs", specifier = ">=0.29.1" },
-    { name = "matplotlib", marker = "extra == 'report'", specifier = ">=3.8.0" },
+    { name = "markupsafe", marker = "extra == 'report'", specifier = ">=2.1.5" },
+    { name = "matplotlib", marker = "extra == 'report'", specifier = ">=3.10.7" },
     { name = "numpy", marker = "extra == 'report'", specifier = ">=1.26.0" },
     { name = "pandas", marker = "extra == 'report'", specifier = ">=2.1.1" },
     { name = "pyarrow", marker = "extra == 'lerobot'", specifier = ">=17.0.0" },

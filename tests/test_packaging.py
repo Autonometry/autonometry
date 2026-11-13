@@ -39,6 +39,7 @@ def test_wheel_contains_spec_files__defs_8(dist: Path) -> None:
                 == (REPO / "spec" / "v0.3" / name).read_bytes()
             )
         assert "autonometry/py.typed" in names
+        assert "autonometry/report/templates/report.html.j2" in names
         assert not any(name.startswith("research/") for name in names)
 
 

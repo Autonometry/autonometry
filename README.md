@@ -8,7 +8,8 @@ It is open source and the reference implementation of an open standard; it only 
 reads and checks event logs (`autonometry validate`), seals and verifies them (`autonometry
 seal`, `timestamp`, `verify`; trust levels L1 and L2), turns each session into an exact
 timeline (`autonometry timeline`) and computes the metrics of the standard with confidence
-intervals (`autonometry metrics`). Nothing is published on PyPI yet.
+intervals (`autonometry metrics`), and writes a report a buyer, insurer or auditor can read
+(`autonometry report`). Nothing is published on PyPI yet.
 
 ## Install
 
@@ -197,7 +198,7 @@ counts are reported beside them.
 | (c) `interventions_per_active_hour` | whole-robot interventions / active hours | NB2 Wald (multi-start fit) with labelled Poisson-exact fallbacks | bounds (unknown hours added; the lower bound counts one intervention per run of unknown and safety stop between AI control); Garwood; percentile bootstrap; dispersion index; per-scope count |
 | (c) `safety_stops_per_active_hour`, `approvals_`, `hints_`, `takeovers_per_active_hour` | whole-robot count / active hours | NB2 Wald | stops human-triggered and automatic; per-scope stops; Garwood |
 | (d) `gaps_between_interventions` | active hours and metres between interventions, the last gap per session right-censored; Kaplan-Meier median, the smallest gap with S(t) ≤ 0.5 (statsmodels `SurvfuncRight`) | medians of the pointwise cloglog band, as lifelines | S(h) at horizons; exponential mean gap (log-scale Wald); Weibull shape (SciPy `CensoredData`) with a cluster-bootstrap interval |
-| (e) `human_minutes_per_task` | mean over tasks with a known definition of human time + unplanned reset + moved dwell | cluster bootstrap-t with relabelled clusters; t on tasks with one session | bounds (task unknown time added); percentile bootstrap; median; share of tasks with no human time |
+| (e) `human_minutes_per_task` | mean over tasks with a known definition of human time + unplanned reset + moved dwell | cluster bootstrap-t with relabelled clusters; t on tasks with one session; limits clipped at 0 (the method name then ends in `, clipped at 0`) | bounds (task unknown time added); percentile bootstrap; median; share of tasks with no human time |
 | (f) `breakdowns` | interventions per active hour by reason and kind; narrow count (hand-overs with reason `human_initiated` or `safety`); rates and means per task definition | Poisson exact per cell; Wilson per task definition | — |
 | (g) `drift` | interventions per active hour by UTC day or ISO week, active time split at bin edges | Poisson GLM trend on the bin index (NB when the dispersion index exceeds 1.5), Wald interval of the rate ratio | two-sided CUSUM with its first signal |
 | (h) `unmeasured` | unknown time / observed time | — | `complete` or `incomplete` against `unknown_share_max`; flag counts; `supervision_ratio`; supervisor-hours per robot-hour; human actor hours and distinct actors; sessions with blind spots (`unobserved`); every parameter of definitions.md 9 |
@@ -209,6 +210,72 @@ Metrics that depend on a signal a session declares `unobserved` list it in their
 The estimators are the reference package's, chosen by the coverage study in `research/simulation`;
 `tests/slow` checks their coverage on its baseline scenario. Test-length planning (zero-event
 hours, tasks for a failure rate, two-period power) is in `autonometry.stats.planning`.
+
+## Write a report
+
+```
+uv sync --extra report     # or, once released: pip install 'autonometry[report]'
+autonometry report /var/lib/autonometry/tb4_01/*/events.jsonl --out report/ \
+    --vkey tb4_01.vkey --anchor customer-anchors.jsonl --tsa-root freetsa.pem \
+    --title "TurtleBot 4 fleet, November" --about deployment.txt
+```
+
+`report` combines verification, timelines and metrics into one JSON document and one HTML page
+(definitions.md 11): `report.json` and `report.html` in `--out`, each written atomically. The page is
+self-contained: inline CSS and inline SVG figures, no scripts, no web fonts and no links to other
+sites, so it opens offline and prints cleanly to PDF from a browser. It takes the options of
+`verify` (`--vkey`, `--tsa-root`, `--anchor`; checkpoint files are found beside each log) and of
+`metrics` (`--devices`, `--tasks`, `--plan`, `--alpha`, `--n-boot`, `--seed`, `--cluster`,
+`--drift-bin`, `--spec`), plus `--title` (plain text, at most 200 characters) and `--about` (a
+plain-text UTF-8 file of at most 64 KiB describing the deployment). Both are shown escaped, never as
+markup. It makes no network call.
+
+What the report holds, in the order of the page:
+
+- **Verdict** (at the top): trust status (`verified`, `not verified` or `FAILED`) and level,
+  `complete` or `incomplete`, the census result, how many sessions were left out, and per group the
+  four headline numbers (time autonomy share, task autonomy rate, interventions per active hour,
+  human minutes per task) with their confidence interval and outer interval.
+- **Trust**: each session's status and level (L2 only for a `verified` session) with its evidence
+  and gap codes; rejected lines and file problems. The report's level is the lowest of its
+  sessions'; it is verified only when every session is and nothing was rejected. When a session
+  is `failed`, the top says so and the session **stays in the metrics**: leaving it out would reward
+  corrupting a bad session. The report says when no trusted key or TSA root was given; L3 is shown
+  as not available yet.
+- **Census**: for session ids of the recorder's form (`000042-20261112T083000Z-7f3a`), the counters
+  missing between each robot's lowest and highest; other id forms are listed as not checked.
+- **Exclusions**: every session left out of the metrics and why (a registry that does not match
+  its hash, no `session_start`, or a session named only by a checkpoint or anchor).
+- **Metrics**: the `autonometry metrics` JSON per group (real, simulated), never pooled, with
+  tables and up to four figures in colour-blind-safe colours, each state always in the same colour:
+  whole-robot state shares, the time autonomy share with its interval, bounds, outer interval and
+  variants, the Kaplan-Meier curve of the gaps between interventions, and the drift rate per bin.
+- **Statements** beside the metrics: no true worst case for interventions per active hour and human
+  minutes per task when unknown time exists; "data quality, not sample size, limits this number"
+  when a metric's bounds are wider than its confidence interval; "not generalisable" for an
+  interval from fewer than `min_clusters` clusters (2); the one-sided 95 % Garwood upper bound of a
+  rate from fewer than `rare_rate_events` events (5); the signal classes sessions declare
+  `unobserved`. Both thresholds come from `rules.toml` `[report]` and are printed with the
+  parameters. The page lists each kind of statement once per group, naming its metrics.
+- **Invariants**, each `pass`, `fail` or `not checked`: partition (state times sum to the session
+  window, per scope and whole robot), chain (no session contradicts its seals; not checked for
+  unsealed sessions), time (no `ts_regression`, `clock_skew` or `late_anchor`), census, tasks
+  (started = closed + not closed, every definition in the registry), bounds (`unknown_as_human` ≤
+  estimate ≤ `unknown_as_ai`), witnesses (not available until L3).
+- **Sessions**: one row per session (robot, session, simulated, status, level, observed and
+  active time, AI share, interventions, unknown share, flags).
+- **Parameters** (every parameter of definitions.md 9 and the statistics options) and
+  **provenance**: spec and software version, `generated_at`, robots, period, counts of sessions,
+  robots, UTC days and tasks, the registry hashes the sessions declare, the SHA-256 of every input
+  file (paths as given on the command line) and of every spec file.
+
+The report contains no actor ids, only counts. The same inputs and options give byte-identical
+JSON and HTML apart from `generated_at`. The page shows times to the second (the JSON keeps full
+precision), and the state table notes how much AI time approval and hint dwell moved to human
+time. The verdict box is green only for a clean report, amber for one that is not clean and red
+when a session failed. Exit status: 0 only when the report is clean: verified at L2, complete, no
+census gap, no session left out and no invariant failed; 1 when it was written but is not clean
+(the last output line says why); 2 on bad usage, unreadable input or without the `report` extra.
 
 ## Recorder
 

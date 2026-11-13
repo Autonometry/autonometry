@@ -1,7 +1,6 @@
 """``autonometry metrics`` and the golden metrics set (definitions.md 3 to 9)."""
 
 import json
-import math
 import shutil
 import sys
 from pathlib import Path
@@ -11,42 +10,12 @@ import pytest
 from typer.testing import CliRunner
 
 from autonometry import cli
+from json_helpers import close as _close
 
 GOLDEN = Path(__file__).parent / "golden" / "metrics" / "logs"
 EXPECTED = GOLDEN.parent / "expected.json"
 LOGS = ["s1.jsonl", "s2.jsonl", "s3.jsonl", "s4.jsonl"]
-#: Floats may differ in late digits between platforms and library versions (optimisers, BLAS).
-REL = 1e-4
-ABS = 1e-8
 runner = CliRunner()
-
-
-def _close(expected: Any, actual: Any, path: str = "") -> list[str]:
-    """Differences between two JSON values: floats within the tolerance, everything else equal."""
-    if isinstance(expected, dict) and isinstance(actual, dict):
-        if set(expected) != set(actual):
-            return [f"{path}: keys {sorted(set(expected) ^ set(actual))}"]
-        return [d for key in expected for d in _close(expected[key], actual[key], f"{path}.{key}")]
-    if isinstance(expected, list) and isinstance(actual, list):
-        if len(expected) != len(actual):
-            return [f"{path}: length {len(expected)} != {len(actual)}"]
-        return [
-            d
-            for i, pair in enumerate(zip(expected, actual, strict=True))
-            for d in _close(*pair, f"{path}[{i}]")
-        ]
-    if (
-        isinstance(expected, float)
-        and isinstance(actual, float | int)
-        and not isinstance(actual, bool)
-    ):
-        ok = math.isclose(expected, actual, rel_tol=REL, abs_tol=ABS)
-        return [] if ok else [f"{path}: {expected} != {actual}"]
-    return (
-        []
-        if expected == actual and type(expected) is type(actual)
-        else [f"{path}: {expected!r} != {actual!r}"]
-    )
 
 
 def _run(folder: Path, *args: str) -> tuple[int, dict[str, Any], str]:

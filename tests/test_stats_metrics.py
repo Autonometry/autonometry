@@ -395,7 +395,9 @@ def test_human_minutes_interval_methods__defs_6_3() -> None:
     one = Log().ai(0).add(1, "task_start", task="a").human(2).ai(3).add(4, "task_end")
     one.add(5, "task_start", task="b").add(6, "task_end")
     single = metrics(facts(one.end(7)))["human_minutes_per_task"]
-    assert single["interval_method"] == "t_on_tasks(single_cluster)"
+    # Values 1/60 and 0 minutes: the t interval reaches below 0, which human time cannot.
+    assert single["interval_method"] == "t_on_tasks(single_cluster), clipped at 0"
+    assert single["ci"][0] == 0.0
 
 
 # --- (g) drift ----------------------------------------------------------------------------------
@@ -573,3 +575,16 @@ def test_clean_turns_numpy_and_non_finite_values_into_json() -> None:
     assert clean({"a": (np.float64(1.5), np.int64(2), np.bool_(True), float("inf"))}) == {
         "a": [1.5, 2, True, None]
     }
+
+
+def test_human_minutes_interval_is_clipped_at_zero__defs_7() -> None:
+    """Human time cannot be negative, so neither can a limit of its interval; the method says
+    when a limit moved."""
+    from autonometry.stats import intervals as iv  # noqa: PLC0415
+    from autonometry.stats.metrics import _at_least_zero  # noqa: PLC0415
+
+    clipped = _at_least_zero(iv.Interval(-0.3, 0.1, "cluster_bootstrap_t(session)"))
+    assert clipped == iv.Interval(0.0, 0.1, "cluster_bootstrap_t(session), clipped at 0")
+    kept = iv.Interval(0.2, 0.4, "t_on_tasks(single_cluster)")
+    assert _at_least_zero(kept) is kept
+    assert _at_least_zero(iv.undefined("no_tasks")).method == "undefined(no_tasks)"
