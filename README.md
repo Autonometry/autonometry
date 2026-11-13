@@ -448,8 +448,10 @@ sent to `socket_path`, at most 65536 bytes:
 - `event`: an event of `spec/v0.3/event.schema.json` without `robot_id`, `session_id`, `seq`, `ts`,
   `prev_hash` or `hash`, of type `transition` (a level-triggered assertion: send it on every change
   and at least once a second) or one of the discrete types above. `task_id` is optional: the
-  recorder fills in the open task's id. Types `session_start`, `session_end` and `heartbeat`, and
-  scopes the config does not declare, are rejected.
+  recorder fills in the open task's id. Types `session_start` and `session_end`, and scopes the
+  config does not declare, are rejected. A `heartbeat` may carry only `x_` fields that the
+  recorder does not write itself (for example a connector's `x_publishers`): the recorder writes a
+  heartbeat of its own at once, with its clock status and distance, and those fields added.
 - `distance_m`: instead of `event`, an odometer reading in metres that never decreases while the
   connector runs; heartbeats carry the distance travelled since the session started.
 
@@ -477,6 +479,69 @@ autonometry validate /var/lib/autonometry/tb4_sim_01/*/events.jsonl
 autonometry verify /var/lib/autonometry/tb4_sim_01/*/events.jsonl --vkey tb4_sim_01.key.vkey \
     --anchor copy/000042-20261112T083000Z-7f3a/events.checkpoints.jsonl     # or --tsa-root freetsa.pem
 ```
+
+## TurtleBot 4
+
+`autonometry.connectors.tb4` and the ROS 2 package `connectors/ros2/autonometry_ros` observe a
+TurtleBot 4 (ROS 2 Jazzy, Nav2, Create 3 base) and send its control events to the recorder. The
+observer only subscribes: it never publishes on a robot topic, calls a service or sends an action
+goal (it even turns off its `/rosout` publisher and parameter services), so it cannot slow or stop
+the robot, and nothing on the robot depends on it. A simulator demo for Windows 11 with WSL2 is in
+[`demo/tb4-sim/`](demo/tb4-sim/README.md) (untested; see there).
+
+**Engine.** `Tb4Engine` is pure Python, standard library only, and runs and is tested on every
+platform: it takes one small dataclass per topic, stamped with the observer's receive time, and
+returns the state of the scope `base`, task events, hints and the odometer, in the order to send
+them. Rules (integration notes B.2 under spec v0.3; the first that applies decides the state):
+
+| Observed | State or event |
+|---|---|
+| kidnapped for 1 s or more | `human_local`, device `manual_handling` (6.15) |
+| `EStop` on `/function_calls`, or wheels disabled | `safety_stop` triggered by a person, with the button's device (6.7) |
+| dock, undock or wall follow running | started by a button or person: `shared`, `human_initiated` (6.13); by a declared AI or script: `ai` or `scripted` |
+| `/cmd_vel` from a person | `human_local` or `human_remote` by the device registry; undeclared publisher: `human_remote` (6.10); with another source within `contention_window_s`: `shared`, `human_initiated` (6.12); ends at a neutral command, a dead-man release, or `goal_release_s` after the last command (6.11) |
+| motion on `/odom` with no command for `gap_tolerance_s` | `unknown`, `x_out_of_band` |
+| Nav2 `NavigateToPose` goal | `EXECUTING` with no task: `task_start` and `ai`; `SUCCEEDED`, `ABORTED`, `CANCELED`: `task_end` `success`, `failure`, `aborted`; a person's new goal or pose estimate: a hint (`shared` under `hint_as_shared`); a person's cancel: `shared` until the task ends (6.2, 6.8); collision monitor STOP: `safety_stop` with no actor (automatic) |
+| `/initialpose` from a person before a task | `human_remote`, `planned`, plan item `initial_pose` |
+| wheels enabled again, no commander yet | `unknown` |
+| no task and no command for `idle_threshold_s` | `idle`, docked or not |
+| otherwise | the last controller's state: outside a task it holds until idle (6.14) |
+
+Under `hint_as_shared`, a hint that a higher rule hides (for example a cancel during an EStop) is
+also sent as a `hint` event, so a person's input is never lost.
+
+**Who sent it.** On ROS 2 Jazzy a subscription's message info has no publisher GID (rclpy adds it
+only in later releases, and the observer uses it when present). The observer therefore maps
+publishers from the ROS graph, refreshed when a topic's publisher count changes and every second,
+and records the map once per change as `x_publishers` on a heartbeat. A topic with one publisher
+is attributed to it. With several, a `/cmd_vel` message that relays the latest `/cmd_vel_smoothed`
+(equal, or scaled by the collision monitor) is Nav2's and any other the remaining publisher's; such
+states carry `x_attribution_inferred: true` and cap the session at trust level L1 (6.12, 10.6). A
+goal or cancel is attributed to the action's clients in the graph, also inferred. Button presses on
+`/interface_buttons` and `/hmi/buttons` are matched in the device registry as topics with the field
+appended: `/interface_buttons/button_2`, `/hmi/buttons/1` to `/hmi/buttons/4`.
+
+**Run it** on the robot's computer (or the PC for the simulator), with the recorder running and
+`autonometry` installed in a virtual environment made with `--system-site-packages`, so that it
+sees `rclpy` from ROS:
+
+```
+python3 -m colcon build --base-paths connectors/ros2 && source install/setup.bash
+ros2 launch autonometry_ros observer.launch.py namespace:=/robot1     recorder_socket:=/run/autonometry/recorder.sock device_registry:=/etc/autonometry/devices.json
+```
+
+Parameters are in `config/observer.params.yaml` (topic names, node names of Nav2's relay, the
+TurtleBot 4 node and the joystick teleop, `hint_policy`, which must match the recorder's, the task
+definition of a Nav2 goal, the plan item of a pose estimate). Spec parameters come from
+`rules.toml`. Example registries and a recorder config for the simulator are in
+`demo/tb4-sim/config/`. CI builds the package in a `ros:jazzy` container, plays fake TurtleBot 4
+nodes against the recorder and the observer, and checks the sealed log
+(`connectors/ros2/ci/run_e2e.sh`).
+
+**Deferred** (not observed yet): Create 3 reflexes and hazards (bump, cliff, wheel drop, stall,
+backup limit); safety settings changed on `/parameter_events`; the HMI display, LEDs and light
+ring; battery and power-off shutdown (`session_end` causes); Nav2 assisted teleop; speed limits
+and the collision monitor's slowdown; behaviour-tree recovery counts.
 
 ## Supported platforms
 

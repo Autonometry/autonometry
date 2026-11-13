@@ -71,6 +71,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `recorder.store.SESSION_ID_RE` and `COUNTER_DIGITS` are public, so the census reads the recorder's session id form.
 - Golden reports under `tests/golden/report/`: the metrics logs unsealed (L1) and sealed with the fixed-seed test key, checkpoints and an anchor file (L2); `tests/report_helpers.py` regenerates them.
 
+- TurtleBot 4 connector (M6). `autonometry.connectors.tb4`: a pure, standard-library engine that turns typed observations of a TurtleBot 4's ROS 2 topics (Nav2 goal status, `/cmd_vel` with its publisher, `/cmd_vel_smoothed`, collision monitor, `/function_calls`, buttons, `/joy`, wheel, dock and kidnap status, `/initialpose`, `/odom`) into state assertions for the scope `base`, task events, hints and the odometer, by the integration notes' table B.2 under spec v0.3 (README, "TurtleBot 4"). `connectors/ros2/autonometry_ros`: an ament_python package with a read-only rclpy node (no publisher, no `/rosout`, no parameter services, no service or action calls; transient-local QoS for action status), a launch file and a params file; publisher identity from the ROS graph, recorded as `x_publishers`, with the topic-level rule and `x_attribution_inferred` where the message does not show its sender (ROS 2 Jazzy). Example device registry, task registry, plan and recorder config, and an untested simulator demo for Windows 11 with WSL2 (`demo/tb4-sim/`). Golden test `tests/golden/tb4/`: the notes' 17-event example rebuilt as observations, run through the engine, the recorder and the timeline, with the v0.3 differences explained. CI job running the observer, the recorder and fake TurtleBot 4 nodes in a `ros:jazzy` container pinned by digest.
+- The recorder accepts a client `heartbeat` that carries only `x_` fields it does not write itself, and writes them on a heartbeat of its own with the clock status and distance (how a connector records `x_publishers`).
+
 ### Changed
 
 - The spec draft v0.2 became v0.3 in place (`spec/v0.3/`, schema `$id`s, `spec_version = "0.3"`); nothing had been released, so no v0.2 is kept.
@@ -88,6 +91,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Whole-robot state (spec v0.3, section 6.6): `unknown` now comes right after the human states, so an unknown scope beside an AI-controlled one is unknown time, never AI time (`rules.toml` `whole_robot.precedence`). No timeline golden changed.
 - The timeline takes `distance_m` from every event that carries it, not only heartbeats.
 - Spec v0.3: overlapping dwell windows count once (6.1); the supported share is supported active time over active time (6.15); distance at an instant is the latest `distance_m` at or before it, 0 before the first sample (8).
+- Spec v0.3 section 6.14 (change 34): outside an open task, a scope that no source commands keeps its last controller's state until it is idle; `unknown` is for lost input, not for a robot seen standing still. The golden reports were regenerated for the new spec file hash.
 
 ### Fixed
 
