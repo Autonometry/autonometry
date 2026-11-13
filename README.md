@@ -6,9 +6,9 @@ It is open source and the reference implementation of an open standard; it only 
 
 **Status: pre-alpha.** Version 0.0.1.dev0 records sealed logs on a robot (`autonometry record`),
 reads and checks event logs (`autonometry validate`), seals and verifies them (`autonometry
-seal`, `timestamp`, `verify`; trust levels L1 and L2), and turns each session into an exact
-timeline (`autonometry timeline`). There are no autonomy statistics yet, and nothing is published
-on PyPI yet.
+seal`, `timestamp`, `verify`; trust levels L1 and L2), turns each session into an exact
+timeline (`autonometry timeline`) and computes the metrics of the standard with confidence
+intervals (`autonometry metrics`). Nothing is published on PyPI yet.
 
 ## Install
 
@@ -114,7 +114,8 @@ For each session it prints:
 - **Time.** Observed time (`session_start` to `session_end`), split into active, idle and unknown
   time and into the eight states, for the whole robot, scope-weighted and per scope. The whole
   robot is human when any scope is human (`human_remote` before `human_local` before `shared`),
-  else `safety_stop`, `scripted`, `ai`, `idle` (all scopes idle) or `unknown`. Scope weights are
+  else `unknown` when any scope is unknown (an unknown arm beside an AI-controlled leg is never AI
+  time), else `safety_stop`, `scripted`, `ai`, `idle` (all scopes idle) or `unknown`. Scope weights are
   the declared `scope_weights` normalised to 1, or equal. Every total is exact: the states of
   each timeline add up to observed time to the nanosecond.
 - **Unknown time.** A silence longer than the heartbeat interval plus `gap_tolerance_s` is
@@ -154,13 +155,59 @@ For each session it prints:
 - **Resets** (human time between tasks, planned or not), **supervision** (`supervision_ratio` and
   supervisor-hours per robot-hour over active time), **humans** (distinct people and actor-time:
   two people on one scope count twice), **supported time** and **distance** (the largest
-  `distance_m` a heartbeat reported).
+  `distance_m` any event reported).
 - **Flags**, the reader's and the timeline's, with the `seq` where each shows.
 
 `--json` gives the same as stable JSON: durations in seconds, times in RFC 3339 with nine fraction
 digits. Unlike `validate`, it prints identifiers from the log (actor, device, task and plan item
 ids): they are pseudonyms, and the schema restricts them to letters, digits and `._:-`. Statistics
-and confidence intervals come with the report (M4b).
+and confidence intervals come from `autonometry metrics`.
+
+## Compute metrics
+
+```
+uv sync --extra report     # or, once released: pip install 'autonometry[report]'
+autonometry metrics /var/lib/autonometry/tb4_sim_01/*/events.jsonl --out metrics.json
+autonometry metrics robot.jsonl --alpha 0.1 --n-boot 2000 --seed 0 --cluster auto --drift-bin week
+```
+
+`metrics` builds every session's timeline (registries are found as for `timeline`) and turns the
+timelines of many sessions into the metrics of the standard, as JSON on stdout or in `--out`. It
+needs the `report` extra (NumPy, SciPy, statsmodels); without it, it prints one line and exits 2.
+A session that gets no timeline (a registry that does not match its hash) is left out and named on
+stderr, and the command exits 1; so do rejected lines. The same logs and options give byte-identical
+JSON: every bootstrap is seeded from `--seed`, keys and lists are sorted, and there is no
+generated-at time.
+
+Simulated and real sessions are never pooled: the report has one block per group present
+(`groups.real`, `groups.simulated`). Every metric has an `estimate`, a default interval `ci` and
+its `interval_method`; secondary intervals sit beside it as `ci_<method>`. A metric that cannot be
+computed (no tasks, no active time, no events, no distance) has a null estimate and a `note`, never a
+crash. Five metrics also get bounds for unknown time (definitions.md 7): `unknown_as_human`
+(unknown time counted as human, tasks with unknown time or unclosed not autonomous) and
+`unknown_as_ai`, each with its own interval, and an `outer_interval` from the smallest to the largest
+of the six limits. Counts are whole-robot (one person's action is one intervention); per-scope
+counts are reported beside them.
+
+| Metric | Estimator | Default interval | Also reported |
+|---|---|---|---|
+| (a) `time_autonomy_share` | (AI time − dwell its approvals and hints moved) / active time, whole-robot timeline, ratio of sums over clusters | ratio-linearised t over sessions, or robots under `--cluster auto` with 3 or more robots; Wilson with effective n (control segments) with one cluster | bounds; percentile cluster bootstrap; variants `with_approvals` (minimum dwell = median logged dwell per type, else 5 s), `shared_as_ai`, `scope_weighted`, `unsupported` (active time outside physical support); human_remote, human_local, shared, safety_stop and scripted shares; idle, reset and supported time and shares |
+| (b) `task_autonomy_rate`, `autonomous_success_rate` | closed tasks with a known definition and no human help (and outcome success) / closed tasks | cluster-robust GLM from 20 sessions, Wilson below | bounds (all tasks; an unclosed task or one with unknown time is not autonomous); Clopper-Pearson; Wilson |
+| (c) `interventions_per_active_hour` | whole-robot interventions / active hours | NB2 Wald (multi-start fit) with labelled Poisson-exact fallbacks | bounds (unknown hours added; the lower bound counts one intervention per run of unknown and safety stop between AI control); Garwood; percentile bootstrap; dispersion index; per-scope count |
+| (c) `safety_stops_per_active_hour`, `approvals_`, `hints_`, `takeovers_per_active_hour` | whole-robot count / active hours | NB2 Wald | stops human-triggered and automatic; per-scope stops; Garwood |
+| (d) `gaps_between_interventions` | active hours and metres between interventions, the last gap per session right-censored; Kaplan-Meier median (statsmodels `SurvfuncRight`) | cloglog median interval | S(h) at horizons; exponential mean gap (log-scale Wald); Weibull shape (SciPy `CensoredData`) with a cluster-bootstrap interval |
+| (e) `human_minutes_per_task` | mean over tasks with a known definition of human time + unplanned reset + moved dwell | cluster bootstrap-t with relabelled clusters; t on tasks with one session | bounds (task unknown time added); percentile bootstrap; median; share of tasks with no human time |
+| (f) `breakdowns` | interventions per active hour by reason and kind; narrow count (hand-overs with reason `human_initiated` or `safety`); rates and means per task definition | Poisson exact per cell; Wilson per task definition | — |
+| (g) `drift` | interventions per active hour by UTC day or ISO week, active time split at bin edges | Poisson GLM trend on the bin index (NB when the dispersion index exceeds 1.5), Wald interval of the rate ratio | two-sided CUSUM with its first signal |
+| (h) `unmeasured` | unknown time / observed time | — | `complete` or `incomplete` against `unknown_share_max`; flag counts; `supervision_ratio`; supervisor-hours per robot-hour; human actor hours and distinct actors; sessions with blind spots (`unobserved`); every parameter of definitions.md 9 |
+
+`--cluster session` or `--cluster robot` sets the cluster unit of every clustered interval. Every
+statsmodels or SciPy fit runs with warnings turned into errors: an attempt that warns is rejected,
+and a fallback's method name says why (for example `poisson_exact_fallback(alpha_at_zero_boundary)`).
+Metrics that depend on a signal a session declares `unobserved` list it in their `unobserved` field.
+The estimators are the reference package's, chosen by the coverage study in `research/simulation`;
+`tests/slow` checks their coverage on its baseline scenario. Test-length planning (zero-event
+hours, tasks for a failure rate, two-period power) is in `autonometry.stats.planning`.
 
 ## Recorder
 
