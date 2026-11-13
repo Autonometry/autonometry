@@ -563,6 +563,7 @@ class Tb4Engine:
         self._collision_stop = False
         self._estop: _Person | None = None
         self._estop_trigger = ""
+        self._estop_since = 0.0
         self._wheels_enabled: bool | None = None
         self._kidnap_since: float | None = None
         self._docked: bool | None = None
@@ -588,8 +589,16 @@ class Tb4Engine:
         """Let time pass to ``now`` (seconds, the clock of the observations); return the current
         state assertion and, once odometry was seen, the odometer: both always, since the
         recorder needs a state at least every second and counts distance from the first reading
-        it receives."""
+        it receives. Publishers silent for ``idle_threshold_s`` are forgotten, so memory stays
+        bounded however many come and go."""
         self._advance(now)
+        stale = [
+            key
+            for key, c in self._commanders.items()
+            if c.last_nonzero is None or self._now - c.last_nonzero > self._s.idle_threshold_s
+        ]
+        for key in stale:
+            del self._commanders[key]
         value = self._decide()
         self._sent = value
         out: list[Message] = [value]
@@ -779,19 +788,30 @@ class Tb4Engine:
         return self._person(self._device(recent[-1][1]), inferred=False)
 
     def _on_function_call(self, observation: FunctionCall) -> None:
-        person = self._presser(observation.t)
-        self._calls[observation.name] = (observation.t, person)
-        if observation.name != _ESTOP:
-            if any(observation.name in names for names in ROUTINE_CALLS.values()):
-                self._touch(observation.t)
+        name, t = observation.name, observation.t
+        if name != _ESTOP and not any(name in names for names in ROUTINE_CALLS.values()):
+            return  # menu navigation, sensors, power: not control of the base
+        person = self._presser(t)
+        self._calls[name] = (t, person)
+        if name != _ESTOP:
+            self._touch(t)
             return
-        if self._wheels_enabled is not None:
-            return
-        if self._estop is None:
-            self._estop, self._estop_trigger = person, "/function_calls:EStop"
-        else:
-            self._estop = None
-            self._released = True
+        if self._wheels_enabled is None:  # no wheel status: the call toggles the stop
+            if self._estop is None:
+                self._start_stop(person, "/function_calls:EStop", t)
+            else:
+                self._estop = None
+                self._released = True
+        elif (
+            self._estop is not None
+            and self._estop.device is None
+            and 0 <= t - self._estop_since <= self._s.trigger_window_s
+        ):  # the wheels stopped just before the call arrived: name the button now
+            self._calls.pop(name)
+            self._start_stop(person, "/function_calls:EStop", self._estop_since)
+
+    def _start_stop(self, person: _Person, trigger: str, t: float) -> None:
+        self._estop, self._estop_trigger, self._estop_since = person, trigger, t
 
     def _recent_call(self, names: Iterable[str], t: float) -> _Person | None:
         """The person of the latest call among ``names`` within ``trigger_window_s`` before
@@ -814,8 +834,8 @@ class Tb4Engine:
         self._wheels_enabled = enabled
         if not enabled and self._estop is None:
             person = self._recent_call((_ESTOP,), observation.t)
-            self._estop = person or self._person(None, inferred=False)
-            self._estop_trigger = "/function_calls:EStop" if person else "/wheel_status"
+            trigger = "/function_calls:EStop" if person else "/wheel_status"
+            self._start_stop(person or self._person(None, inferred=False), trigger, observation.t)
         elif enabled and self._estop is not None:
             self._estop = None
             self._released = True

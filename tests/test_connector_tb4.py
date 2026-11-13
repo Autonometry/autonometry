@@ -597,3 +597,30 @@ def test_the_ros_package_vendors_the_recorder_client_unchanged__readme_wire_form
     vendored = ROOT / "connectors" / "ros2" / "autonometry_ros" / "autonometry_ros"
     original = ROOT / "clients" / "python" / "autonometry_client.py"
     assert (vendored / "autonometry_client.py").read_bytes() == original.read_bytes()
+
+
+def test_an_estop_call_arriving_after_the_wheels_still_names_the_button__notes_b2_uc7() -> None:
+    e = started()
+    e.observe(tb4.ButtonEdge(2.0, POWER, True))
+    assert last_state(e.observe(tb4.WheelStatus(2.1, False))).actor_id == "person:unidentified"
+    value = last_state(e.observe(tb4.FunctionCall(2.15, "EStop")))
+    assert (value.state, value.actor_id, value.device_id) == (
+        "safety_stop",
+        "op_02",
+        "create3_button_power",
+    )
+
+
+def test_menu_and_power_calls_are_not_control__notes_b2_uc15() -> None:
+    e = started()
+    for name in ("Select", "Scroll Up", "Power", "x" * 64):
+        e.observe(tb4.FunctionCall(1.0, name))
+    assert state(e, 30.0).state == "idle"
+
+
+def test_silent_publishers_are_forgotten__readme_limits() -> None:
+    e = started()
+    for i in range(50):
+        e.observe(cmd(1.0 + i * 0.01, 0.0, tb4.Source(node=f"/_ros2cli_{i}")))
+    e.tick(40.0)
+    assert not e._commanders  # the bound is internal
