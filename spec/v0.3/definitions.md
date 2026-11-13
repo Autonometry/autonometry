@@ -44,6 +44,7 @@ Resolves the cases that the TurtleBot 4 and Unitree G1 research found uncovered 
 31. The supported share is supported active time over active time, so it is a proportion (Section 6.15).
 32. Distance at an instant is the latest `distance_m` at or before it, and 0 before the first sample (Section 8).
 33. New Section 11, the report: provenance, trust, session census, exclusions, metrics per group, the statements printed beside them, and invariants (Section 11).
+34. Outside an open task, a scope that no source commands keeps its last controller's state until it is `idle`; `unknown` is for lost input, not for a robot seen standing still (Section 6.14).
 
 ## Changes in v0.2 (2026-10-31)
 
@@ -217,7 +218,7 @@ A preset behaviour that a person starts (a posture macro, a gesture, docking, un
 
 ### 6.14 Hand-overs and stale input
 
-While no source commands a scope between two controllers (for example a limp gap while one program releases the robot and another starts), the scope takes the state of the incoming controller if it starts within `gap_tolerance_s`, else it is `unknown`. A human state needs live input: when the declared input device stops reporting (tracking lost, link dropped) while its last command keeps being repeated, the scope is `unknown` from `gap_tolerance_s` after the last live input.
+Inside an open task, while no source commands a scope between two controllers (for example a limp gap while one program releases the robot and another starts), the scope takes the state of the incoming controller if it starts within `gap_tolerance_s`, else it is `unknown`. Outside an open task, a scope that no source commands keeps the state of its last controller until it is `idle` (Section 2): `unknown` is for lost input, not for a robot seen standing still. A human state needs live input: when the declared input device stops reporting (tracking lost, link dropped) while its last command keeps being repeated, the scope is `unknown` from `gap_tolerance_s` after the last live input.
 
 ### 6.15 Physical support
 

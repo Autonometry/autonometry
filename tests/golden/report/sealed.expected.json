@@ -1857,7 +1857,7 @@
     },
     "spec_files": {
       "checkpoint.schema.json": "df303f5e55b38a51baad7a02aabf3b7a83a8db2b1dd32c64577bd7e455f70a9c",
-      "definitions.md": "4632505af2f8f403cf17e51bd2ad2b25339d359f23b8132b0406a4d49620b00a",
+      "definitions.md": "929a2e38df3d4a4dc5d96ddedf83ef336cdd7a40721bb12933ee2a14dcbd669b",
       "device_registry.schema.json": "8e452d7fcb97f250e55a7113e71e984336628add214b722c9e636e497e881998",
       "event.schema.json": "952aed101cfe58104fb753901754affd86df2e2a36b4017a474aed84b448c15c",
       "plan.schema.json": "6028e9e8c31acfec5e10f054a7fb565dfd075035739361c77b3ff9ed950204a6",
