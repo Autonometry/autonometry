@@ -31,6 +31,15 @@ Resolves the cases that the TurtleBot 4 and Unitree G1 research found uncovered 
 18. A transition the registry turns into `human_local` or `human_remote` without a reason takes `human_initiated` (Section 6.10).
 19. The `help_request` and plan-item checks apply to approvals and discrete hints too (Section 3).
 20. A takeover joins an automatic stop when it goes into `human_local`, `human_remote` or `shared`, and the window ends with the task (Section 6.7).
+21. In the any-human rule, `unknown` comes right after the human states: the whole robot is `unknown` when no scope is human and some scope is `unknown` (Section 6.6).
+22. Bounds are reported for the time autonomy share, the task autonomy rate, the autonomous success rate, interventions per active hour and human minutes per task, as `unknown_as_human` (lower bound) and `unknown_as_ai` (upper bound); variants, breakdowns and per-kind rates get a point estimate and confidence interval only (Section 7).
+23. Time share bounds: `unknown_as_human` = ai / (active + unknown), `unknown_as_ai` = (ai + unknown) / (active + unknown) (Section 7).
+24. Task rate bounds: the point estimate covers closed tasks; `unknown_as_human` covers all tasks and counts an unclosed task or one containing unknown time as not autonomous; `unknown_as_ai` equals the point estimate (Section 7).
+25. Interventions per active hour bounds add unknown time to active hours; `unknown_as_human` also counts one intervention for each whole-robot run of `unknown` and `safety_stop` that contains unknown time and has `ai` or `scripted` on both sides (Section 7).
+26. Human minutes per task: `unknown_as_human` adds each task's whole-robot unknown time; `unknown_as_ai` equals the point estimate (Section 7).
+27. The outer interval runs from the smallest to the largest confidence limit of the point estimate and the two bounds (Section 7).
+28. Simulated and real sessions are never pooled: a report has one block per group present (Section 8).
+29. Headline intervention and safety-stop rates use whole-robot counts; per-scope counts are reported beside them (Section 6.6).
 
 ## Changes in v0.2 (2026-10-31)
 
@@ -156,10 +165,10 @@ Each scope has at most one controlling `actor_id` at a time. Two humans on two s
 
 With K declared scopes, each scope has its own state timeline. Two aggregations are reported:
 
-- **any-human rule (default, conservative):** the whole-robot state at t is `human` if any scope is in `human_local`, `human_remote` or `shared`; else `safety_stop` if any scope is in `safety_stop`; else `scripted` if any scope is `scripted`; else `ai` if any scope is `ai`; else `idle` if all scopes are `idle`; else `unknown`. When scopes are in different human states, the whole robot takes the first of `human_remote`, `human_local`, `shared` (conservative for the remote-operator question). The headline time autonomy share uses this timeline.
+- **any-human rule (default, conservative):** the whole-robot state at t is `human` if any scope is in `human_local`, `human_remote` or `shared`; else `unknown` if any scope is `unknown` (a scope that cannot be asserted may be under human control, so it never counts as AI time); else `safety_stop` if any scope is in `safety_stop`; else `scripted` if any scope is `scripted`; else `ai` if any scope is `ai`; else `idle` if all scopes are `idle`; else `unknown`. When scopes are in different human states, the whole robot takes the first of `human_remote`, `human_local`, `shared` (conservative for the remote-operator question). The headline time autonomy share uses this timeline.
 - **scope-weighted rule:** scope k has weight w_k (default 1/K; MAY be declared as actuator count or degrees of freedom in `session_start.scope_weights`). AI time = sum_k w_k * ai_time_k; active time = sum_k w_k * active_time_k. This is the "fraction of the body under AI control" and is always reported beside the any-human figure.
 
-Intervention counts are per scope and summed; one human action that takes several scopes within `simultaneity_window_s` (default 0.5 s) counts once in the whole-robot count and once per scope in the per-scope count. Both are reported.
+Intervention counts are per scope and summed; one human action that takes several scopes within `simultaneity_window_s` (default 0.5 s) counts once in the whole-robot count and once per scope in the per-scope count. Both are reported. The headline `interventions_per_active_hour` and `safety_stops_per_active_hour` use the whole-robot counts (one human action is one intervention); the per-scope counts are reported beside them with a point estimate and confidence interval.
 
 ### 6.7 Safety stops and takeovers
 
@@ -212,12 +221,21 @@ A robot held up by a hoist, a harness or a person is physically supported. Suppo
 
 ## 7. Unmeasured time and bounds
 
-Every metric with time or tasks in the denominator is reported as a point estimate plus two bounds:
+The time autonomy share, the task autonomy rate, the autonomous success rate, interventions per active hour and human minutes per task are reported as a point estimate plus two bounds:
 
-- **lower bound (unknown as human):** all `unknown` intervals are counted as human time; tasks with unknown outcome or containing unknown gaps are counted as not autonomous.
-- **upper bound (unknown as AI):** all `unknown` intervals are counted as AI time; tasks containing unknown gaps are counted as autonomous if they otherwise qualify.
+- **lower bound (unknown as human)**, reported as `unknown_as_human`: all `unknown` intervals are counted as human time; tasks with unknown outcome or containing unknown gaps are counted as not autonomous.
+- **upper bound (unknown as AI)**, reported as `unknown_as_ai`: all `unknown` intervals are counted as AI time; tasks containing unknown gaps are counted as autonomous if they otherwise qualify.
 
-The point estimate excludes `unknown` from both numerator and denominator (`active_time` as defined in Section 4). The report MUST print `unknown_time / observed_time`; a report whose unknown share exceeds `unknown_share_max` (default 0.05) is marked `incomplete`. Confidence intervals are computed for the point estimate and for each bound; the reported outer interval is the union (lower CI limit of the lower bound, upper CI limit of the upper bound), which combines sampling and measurement uncertainty.
+The point estimate excludes `unknown` from both numerator and denominator (`active_time` as defined in Section 4). Variants (such as `time_autonomy_share_with_approvals`), breakdowns and per-kind rates are reported with a point estimate and confidence interval only. With unknown time taken from the whole-robot timeline (Section 6.6), the bounds are:
+
+| Metric | Point estimate | `unknown_as_human` | `unknown_as_ai` |
+|---|---|---|---|
+| time autonomy share | ai / active | ai / (active + unknown) | (ai + unknown) / (active + unknown) |
+| task autonomy rate, autonomous success rate | closed tasks (Section 5), judged with unknown time ignored | all tasks; a task that was not closed, or that contains unknown time on any scope, is not autonomous | equals the point estimate (unclosed tasks are excluded, Section 5) |
+| interventions per active hour | interventions / active hours | interventions plus one for each run of `unknown` and `safety_stop` on the whole-robot timeline that contains unknown time and has `ai` or `scripted` on both sides, over active + unknown hours | interventions / (active + unknown) hours |
+| human minutes per task | mean over tasks of human time | adds each task's whole-robot unknown time | equals the point estimate |
+
+The report MUST print `unknown_time / observed_time`; a report whose unknown share exceeds `unknown_share_max` (default 0.05) is marked `incomplete`. Confidence intervals are computed for the point estimate and for each bound; the reported outer interval runs from the smallest to the largest of their six confidence limits, which combines sampling and measurement uncertainty and also holds for metrics where more is worse.
 
 ## 8. Event log format
 
@@ -246,7 +264,7 @@ Common fields on every event: `robot_id`, `session_id`, `task_id` (nullable), `s
 
 **Time.** `ts` is the time the recorder observed the event, from a UTC clock synchronised by NTP or PTP; the recorder reports its clock status on heartbeats: `clock_source` (`ntp`, `ptp`, `gnss`, `none`, `unknown`) and `clock_max_error_s`, its estimated maximum error in seconds. The loader flags `clock_unsynced` for a session whose clock source is `none` or `unknown` or whose error exceeds `clock_tolerance_s` or is not reported. A source's own timestamp MAY be kept as `x_src_ts` with `x_src_clock` (`wall`, `monotonic`, `sim`, `frame_index`). Events rebuilt after the fact from files rather than observed live (for example from LeRobot dataset frames, whose `timestamp` is `frame_index / fps`) MUST carry `x_ts_reconstructed: true`; the loader counts them under the flag `ts_reconstructed`, and spans built from them are reported at trust level L1 at most.
 
-**Simulation and blind spots.** `session_start.simulated` is true for a session run in a simulator; reports MUST NOT pool simulated and real sessions. `session_start.unobserved` lists signal classes the recorder cannot see on the platform (`safety_stops`, `human_inputs`, `tasks`), for example safety events a robot does not publish by default; reports print them beside every metric that depends on them.
+**Simulation and blind spots.** `session_start.simulated` is true for a session run in a simulator; reports MUST NOT pool simulated and real sessions: a report has one block of metrics per group present (real, simulated). `session_start.unobserved` lists signal classes the recorder cannot see on the platform (`safety_stops`, `human_inputs`, `tasks`), for example safety events a robot does not publish by default; reports print them beside every metric that depends on them.
 
 **Extensions.** Fields whose names start with `x_` are allowed on every event and ignored by the metrics. Any other field not defined here is a schema error.
 

@@ -42,7 +42,7 @@ active = false
 # Whole-robot state from several scopes (definitions.md 6.6).
 # First state in `precedence` held by any scope wins; `idle` needs every scope idle; else `fallback`.
 [whole_robot]
-precedence = ["human_remote", "human_local", "shared", "safety_stop", "scripted", "ai"]
+precedence = ["human_remote", "human_local", "shared", "unknown", "safety_stop", "scripted", "ai"]
 idle_requires_all_scopes = true
 fallback = "unknown"
 
