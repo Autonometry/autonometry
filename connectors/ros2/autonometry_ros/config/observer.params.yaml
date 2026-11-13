@@ -1,0 +1,42 @@
+# Parameters of the Autonometry TurtleBot 4 observer (README, "TurtleBot 4").
+# Topic and node names are relative to the robot namespace unless they start with "/".
+# Spec parameters (idle_threshold_s, gap_tolerance_s, contention_window_s, ...) come from the
+# spec's rules.toml, never from here.
+/**:
+  ros__parameters:
+    recorder_socket: /run/autonometry/recorder.sock
+    client_name: tb4_observer
+    device_registry: /etc/autonometry/devices.json
+    spec_version: "0.3"
+    hint_policy: hint_as_shared          # must match the recorder config
+    scope: base                          # must be one of the recorder's scopes
+    initial_pose_plan_item_id: initial_pose
+    nav2_actor_id: ai:nav2
+    nav2_node: collision_monitor         # relays Nav2's commands to /cmd_vel
+    function_caller_node: turtlebot4_node
+    joy_teleop_node: teleop_twist_joy_node
+    unidentified_actor_id: person:unidentified
+    trigger_window_s: 2.0                # button or /function_calls to the action it starts
+    kidnap_min_s: 1.0
+    deadman_buttons: [4, 5]              # L1 and R1 on the TurtleBot 4 controller
+    tick_period_s: 0.25                  # state re-sent at least this often (recorder: 1 s)
+    graph_period_s: 1.0                  # ROS graph refresh for publisher identities
+    topics:
+      cmd_vel: cmd_vel
+      cmd_vel_unstamped: cmd_vel_unstamped
+      cmd_vel_smoothed: cmd_vel_smoothed
+      cmd_vel_nav: cmd_vel_nav
+      collision_monitor_state: collision_monitor_state
+      function_calls: function_calls
+      interface_buttons: interface_buttons
+      hmi_buttons: hmi/buttons
+      joy: joy
+      wheel_status: wheel_status
+      dock_status: dock_status
+      kidnap_status: kidnap_status
+      initialpose: initialpose
+      odom: odom
+    task_definitions:                    # the task definition of each Nav2 task action's goals
+      navigate_to_pose: nav_to_pose
+      navigate_through_poses: nav_through_poses
+      follow_waypoints: patrol

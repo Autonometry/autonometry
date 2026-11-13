@@ -1,0 +1,16 @@
+{
+  "tasks": [
+    {
+      "task_definition_id": "nav_to_pose",
+      "description": "Reach a pose given as one Nav2 NavigateToPose goal; a later goal from a person during the task is a hint."
+    },
+    {
+      "task_definition_id": "nav_through_poses",
+      "description": "Reach a pose through given intermediate poses, as one Nav2 NavigateThroughPoses goal."
+    },
+    {
+      "task_definition_id": "patrol",
+      "description": "Visit a fixed list of poses in order: one Nav2 FollowWaypoints goal."
+    }
+  ]
+}

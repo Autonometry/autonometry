@@ -116,7 +116,8 @@ class Recorder:
     def event(self, type: str, **fields: Any) -> None:
         """Send a discrete event as received: ``task_start``, ``task_end``, ``hint``,
         ``approval``, ``help_request``, ``supervision``, ``support_start`` or ``support_end``,
-        with its fields (definitions.md section 8)."""
+        with its fields (definitions.md section 8). A ``heartbeat`` with only ``x_`` fields (for
+        example ``x_publishers``) is added to a heartbeat the recorder writes at once."""
         event = {"type": type}  # type: Dict[str, Any]
         event.update(fields)
         self._send_event(event)

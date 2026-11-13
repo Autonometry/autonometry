@@ -1,0 +1,17 @@
+# Recorder config for the TurtleBot 4 simulator demo (README, "TurtleBot 4"). Relative paths are
+# relative to this file; run_demo.sh creates ../run/ with the signing key, the socket and the logs.
+robot_id = "tb4_sim_01"
+data_dir = "../run/data"
+socket_path = "../run/recorder.sock"
+scopes = ["base"]                     # the only motion scope of a TurtleBot 4 (dossier 14E)
+hint_policy = "hint_as_shared"        # must match the observer's hint_policy parameter
+simulated = true                      # Gazebo: reports never pool it with real runs
+# Signal classes the platform does not show (dossier summary 5-6, UC-10, B17): firmware reflexes,
+# hazard and stop status are not relayed and the connector does not read them yet; the Bluetooth
+# LE control plane and the Create 3 webserver leave no ROS 2 trace.
+unobserved = ["safety_stops", "human_inputs"]
+clock_source = "ntp"
+key_path = "../run/tb4_sim_01.key"
+device_registry = "devices.json"
+task_registry = "tasks.json"
+plan = "plan.json"

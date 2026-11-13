@@ -475,3 +475,48 @@ def test_random_datagrams_never_crash_the_engine(datagrams: list[bytes]) -> None
             assert event["type"] in ("transition", "heartbeat")
         clock.advance(0.3)
         engine.tick()
+
+
+# -- client heartbeats -------------------------------------------------------------------------
+
+
+def test_a_client_heartbeat_adds_its_x_fields_to_a_recorder_heartbeat__defs_8() -> None:
+    engine, _ = make_engine()
+    observer = Client("tb4_observer")
+    engine.receive(observer.distance(2.0))
+    publishers = {"/cmd_vel": [{"node": "/collision_monitor", "gid": "01.0f"}]}
+    (heartbeat,) = engine.receive(observer.event("heartbeat", x_publishers=publishers))
+    assert heartbeat["type"] == "heartbeat"
+    assert heartbeat["x_publishers"] == publishers
+    assert heartbeat["clock_source"] == "ntp"
+    assert heartbeat["distance_m"] == 0.0
+    assert heartbeat["task_id"] is None
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {},
+        {"distance_m": 1.0},
+        {"clock_source": "ntp"},
+        {"x_lost_client_events": 0},
+        {"x_cause": "shutdown", "x_note": "hidden"},
+    ],
+)
+def test_a_client_heartbeat_without_x_fields_or_with_recorder_fields_is_rejected__defs_8(
+    fields: dict[str, Any],
+) -> None:
+    engine, _ = make_engine()
+    nav = Client("nav")
+    both_ai(engine, nav)
+    written = engine.receive(nav.event("heartbeat", **fields))
+    assert kinds(written) == ["transition:base:unknown", "transition:arm:unknown"]
+    assert engine.heartbeat()["x_rejected_client_events"] == 1
+
+
+def test_a_client_heartbeat_too_long_with_the_recorder_fields_is_rejected__defs_8() -> None:
+    engine, _ = make_engine()
+    nav = Client("nav")
+    both_ai(engine, nav)
+    written = engine.receive(nav.event("heartbeat", x_blob="a" * 64800))
+    assert {e["x_cause"] for e in written} == {"rejected"}

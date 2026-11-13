@@ -1,0 +1,3152 @@
+autonomy_meter_signal_map:
+  platform: 'TurtleBot 4 (Standard and Lite): iRobot Create 3 base + Raspberry Pi 4B + ROS 2 Jazzy + Nav2 1.3.14'
+  taxonomy: definitions.md v0.2 (2026-10-31) and event.schema.json v0.2
+  pins:
+    turtlebot4: turtlebot/turtlebot4@7fd29fb420e906f3aca4a904adb54b69b11c7c00 (jazzy)
+    turtlebot4_robot: turtlebot/turtlebot4_robot@28e115f86930bb3273f1a1aa4738dbd8747513f0 (jazzy)
+    turtlebot4_desktop: turtlebot/turtlebot4_desktop@d831a5a3d2323d2db1ce79e5b909beecbeed3dcf (jazzy)
+    turtlebot4_simulator: turtlebot/turtlebot4_simulator@b7d0f3b973258481f6cd8137bef9240fb567f566 (jazzy)
+    turtlebot4_setup: turtlebot/turtlebot4_setup@5fe58657aeff57d28cb2cfb4f0c6cc6c62a4b96c (jazzy)
+    turtlebot4-user-manual: turtlebot/turtlebot4-user-manual@4455a75dde3f052b5abf615dade22bece84120b0 (gh-pages)
+    irobot_create_msgs: iRobotEducation/irobot_create_msgs@b4986ef5dc2e07d8aa7471f29c56b617473352c5 (jazzy)
+    create3_docs: iRobotEducation/create3_docs@9fb1510bbceb0e01c4764ddc458da59487519dca (main)
+    create3_sim: iRobotEducation/create3_sim@6c305843afcfe094bf8eb2a0c6997f531e526b9d (jazzy)
+    create3_examples: iRobotEducation/create3_examples@fe3d408a266b755b94cb7334a92f2d58dd661c13 (jazzy)
+    navigation2: ros-navigation/navigation2@d5d768b7b38a05e7cfd2b6c693b786b402161bed (jazzy)
+    docs.nav2.org: ros-navigation/docs.nav2.org@74f751f161154075af6c2b4b9cd60bebf417cab8 (rolling)
+  access_date: 2026-10-31 (pinned trees); 2026-11-03 for live web fetches marked in source_url notes
+  signal_id_prefixes:
+    B: Create 3 base firmware / irobot_create_msgs
+    T: TurtleBot 4 software layer (turtlebot4, turtlebot4_robot, setup, desktop, simulator)
+    N: Nav2 1.3.14 as configured by turtlebot4_navigation
+    E: External dataset label columns (substitute datasets; none recorded on TB4)
+  mapping_vocabulary:
+    state:
+    - ai
+    - human_local
+    - human_remote
+    - shared
+    - scripted
+    - safety_stop
+    - idle
+    - unknown
+    reason:
+    - ai_requested_help
+    - human_initiated
+    - safety
+    - planned
+    - null
+    event_type:
+    - approval
+    - heartbeat
+    - help_request
+    - hint
+    - session_end
+    - session_start
+    - supervision
+    - task_end
+    - task_start
+    - transition
+  scopes: base is the only actuated motion scope; display, LEDs, audio, camera, lidar motor are not scopes (dossier 14E)
+  note: event_type values that a track annotated in parentheses were normalised to the enum; the annotation was moved to mapping[].note.
+    Uncovered cases per signal are in uncovered_cases; the lead decisions are in dossier.md "Uncovered cases".
+signals:
+- id: B1
+  name: cmd_vel velocity command (unstamped)
+  layer: firmware input
+  source: Create 3 firmware /motion_control node
+  interface: topic
+  ros_name: '/cmd_vel (TB4: the robot-side name reached through create3_republisher remaps; on the Pi the TwistStamped stream
+    is /cmd_vel and the Twist stream is /cmd_vel_unstamped)'
+  message_type: geometry_msgs/msg/Twist
+  rate_hz: publisher-defined (docs example 20 Hz); firmware stops wheels 0.5 s after last message (wheels_stop_threshold_sec)
+  qos: firmware subscription QoS UNKNOWN (create3_sim uses SensorDataQoS = best-effort)
+  mapping:
+  - condition: cmd_vel publisher is the navigation stack (DDS publisher node identity = Nav2 controller/collision monitor)
+      and no firmware action goal is active
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2
+  - condition: cmd_vel publisher is a teleop node (teleop_twist_joy/teleop_twist_keyboard) whose device is declared local
+      in the registry
+    state: human_local
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: <operator actor_id>
+  - condition: cmd_vel publisher is a teleop node whose device is declared remote, or is undeclared (definitions 6.10)
+    state: human_remote
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: <operator actor_id>
+  uncovered_cases:
+  - 'The firmware gives no source attribution for cmd_vel: two publishers on one topic are both executed ''last message wins''
+    at the firmware (no mux in TB4 stack); attribution must come from DDS publisher identity, which an observer can only sample
+    (ros2 topic info -v), not per-message.'
+  - 'cmd_vel timeout stop after link loss (publisher vanished from graph) vs. operator holding still: proposed = safety_stop/safety
+    when the publisher''s DDS liveliness is lost, hold-of-current-actor when it is alive.'
+  - Firmware release note says 'don't use cmd_vel and cmd_vel_stamped at the same time' but does not define which wins.
+  - 'No-transition rule: cmd_vel stream stops (>0.5 s) while the publishing node is still alive in the DDS graph: hold by
+    the current actor (definitions 6.8); no transition'
+  reliability: High for presence of a command; zero for who sent it. Ignored entirely while a firmware action goal runs (moving-the-robot.md
+    L48-50).
+  observe_passively: Subscribe best-effort to the Pi-side topics (/cmd_vel TwistStamped and /cmd_vel_unstamped Twist in TB4)
+    and sample publisher node names via the ROS graph API; compare with /wheel_vels and /odom twist to detect commands executed
+    from sources not visible on ROS 2.
+  how_it_could_be_faked: A human teleop node can publish under a node name that looks like an AI controller; nothing in the
+    message carries identity. A joystick can be relayed through a 'nav' namespace.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/moving-the-robot.md#L19
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/moving-the-robot.md#L26
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/moving-the-robot.md#L48
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/h_2_5.md#L29
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/i_0_0.md#L25
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/launch/robot.launch.py#L86
+  - https://iroboteducation.github.io/create3_docs/api/moving-the-robot/
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B2
+  name: cmd_vel_stamped velocity command
+  layer: firmware input
+  source: Create 3 firmware /motion_control node
+  interface: topic
+  ros_name: /cmd_vel_stamped (robot side; remapped to /cmd_vel on the TB4 Pi)
+  message_type: geometry_msgs/msg/TwistStamped
+  rate_hz: publisher-defined; same 0.5 s stale timeout assumed (documented only for /cmd_vel)
+  qos: UNKNOWN
+  mapping:
+  - condition: same as B1; this is the stream Nav2 uses on TB4 Jazzy (enable_stamped_cmd_vel true)
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2
+  uncovered_cases:
+  - Timeout for cmd_vel_stamped is not documented (release note defines wheels_stop_threshold_sec for /cmd_vel only).
+  reliability: As B1. header.stamp is the publisher's clock, not the firmware's.
+  observe_passively: Subscribe best-effort; the TwistStamped header lets the observer measure publisher-to-observer latency.
+  how_it_could_be_faked: As B1.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/i_0_0.md#L25
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/launch/robot.launch.py#L87
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L34
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B3
+  name: wheel_vels measured wheel angular velocities
+  layer: firmware output (actuation evidence)
+  source: Create 3 firmware /robot_state (raw kinematics)
+  interface: topic
+  ros_name: /wheel_vels
+  message_type: irobot_create_msgs/msg/WheelVels
+  rate_hz: 62.5 (odometry.md L41; CLAIM — the wheel_vels section body of that page names wheel_status, an upstream copy error
+    found at re-verification 2026-11-03) vs. throttled to raw_kinematics_min_pub_period_ms = 25 ms (40 Hz) by default since H.2.5
+    — trust the release note
+  qos: UNKNOWN
+  mapping:
+  - condition: '|velocity_left|+|velocity_right| > 0 while no cmd_vel publisher and no action goal is active: motion from
+      a source invisible to ROS 2 (BLE app, reflex, physical push)'
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - 'A reflex moves the wheels with zero/other cmd_vel: definitions have no state for a firmware safety *manoeuvre* (it is
+    motion, not inhibition). Proposed: transition to ai (actor ai:create3_reflex) only if the episode exceeds a min_reflex_duration_s
+    parameter, otherwise ignore.'
+  reliability: Ground truth for actual wheel rotation; does not reveal commander. Can be disabled (raw_kinematics_min_pub_period_ms
+    = -1).
+  observe_passively: Subscribe best-effort; integrate for distance_m; cross-check against last cmd_vel to detect reflexes,
+    pushes and hidden command paths.
+  how_it_could_be_faked: 'Setting raw_kinematics_min_pub_period_ms: -1 in the webserver params file silently removes the topic.'
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/msg/WheelVels.msg#L4
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/odometry.md#L41
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/h_2_5.md#L33
+  - https://iroboteducation.github.io/create3_docs/api/odometry/
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B4
+  name: hazard_detection vector
+  layer: firmware output (safety trigger)
+  source: Create 3 firmware /robot_state
+  interface: topic
+  ros_name: /hazard_detection
+  message_type: 'irobot_create_msgs/msg/HazardDetectionVector (HazardDetection.type enum: BACKUP_LIMIT=0, BUMP=1, CLIFF=2,
+    STALL=3, WHEEL_DROP=4, OBJECT_PROXIMITY=5)'
+  rate_hz: on change only by default (hazards_pub_fixed_period_ms = -1); publication can be disabled (publish_hazard_msgs=false)
+  qos: UNKNOWN (create3_sim publishes SensorDataQoS().reliable())
+  mapping:
+  - condition: BACKUP_LIMIT present AND commanded linear.x < 0 AND wheel_vels ~ 0 (firmware refuses backward motion)
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: 'CLIFF or STALL present during a firmware drive-goal action: firmware cancels the goal (drive-goals.md L15)
+      -> motion stopped by a safety function'
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: 'BUMP/CLIFF/WHEEL_DROP/STALL present and reflexes enabled: reflex manoeuvre in progress (see B3 uncovered)'
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: 'WHEEL_DROP on both wheels together with kidnap_status true: robot lifted by a person'
+    state: human_local
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: <local actor_id>
+  uncovered_cases:
+  - 'BACKUP_LIMIT present while the robot drives forward is not an inhibition: no state change should be logged; the rule
+    needs the commanded direction.'
+  - 'OBJECT_PROXIMITY triggers the proximity-slowdown reflex (speed scaling of whatever is commanded): neither shared nor
+    safety_stop in v0.2. Proposed: no transition; record as x_speed_limited=true on heartbeats.'
+  - Whether the firmware inhibits cmd_vel toward a detected cliff when reflexes are disabled is not documented (UNKNOWN).
+  reliability: Event-driven since H.2.5, so a dropped best-effort sample can be missed until the next change; detections carry
+    their own header.stamp and frame_id.
+  observe_passively: Subscribe best-effort; keep the latest vector as state; use detection header.stamp (firmware clock) as
+    x_src_ts.
+  how_it_could_be_faked: 'publish_hazard_msgs: false removes the topic; safety_override: full removes BACKUP_LIMIT hazards.'
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/msg/HazardDetection.msg#L8
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/msg/HazardDetection.msg#L18
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/msg/HazardDetectionVector.msg#L4
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/hazards.md#L13
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/hazards.md#L22
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/h_2_5.md#L31
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/drive-goals.md#L15
+  - https://iroboteducation.github.io/create3_docs/api/hazards/
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B5
+  name: kidnap_status
+  layer: firmware output
+  source: Create 3 firmware (sensor fusion)
+  interface: topic
+  ros_name: /kidnap_status
+  message_type: irobot_create_msgs/msg/KidnapStatus (bool is_kidnapped)
+  rate_hz: UNKNOWN ('periodically')
+  qos: UNKNOWN
+  mapping:
+  - condition: is_kidnapped true (robot lifted and possibly moved by a person) with a task open
+    state: human_local
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: <local actor_id>
+  - condition: is_kidnapped true between tasks and the move is in the frozen plan
+    state: human_local
+    reason: planned
+    scope: base
+    event_type: transition
+    actor_id: <local actor_id>
+  - condition: 'is_kidnapped false after true: backup limit immediately triggers (safety.md L40); control returns to whoever
+      commands next -> unknown until the next command/goal is observed'
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - 'Kidnap by a lifting mechanism/elevator or a false positive (threshold crossing) is not a human; proposed: require is_kidnapped
+    >= 1 s AND both WHEEL_DROP hazards before calling human_local, else unknown.'
+  - 'Device registry (6.10): ''hands'' are not a device; proposed registry entry device_id=manual_handling, location=local.'
+  reliability: Timestamp was wrong before G.5.3/H.2.3 (fixed). Rate undocumented.
+  observe_passively: Subscribe best-effort; edge-detect is_kidnapped.
+  how_it_could_be_faked: Cannot be disabled by parameter per docs; a robot carried on a cart with wheels loaded may not report
+    kidnap.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/msg/KidnapStatus.msg#L4
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/hazards.md#L87-L89
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/hazards.md#L92
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/safety.md#L40
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/g_5_3.md#L24
+  - https://iroboteducation.github.io/create3_docs/api/hazards/#the-kidnap_status-topic
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B6
+  name: stop_status (robot stopped estimate)
+  layer: firmware output
+  source: Create 3 firmware
+  interface: topic
+  ros_name: /stop_status
+  message_type: irobot_create_msgs/msg/StopStatus (bool is_stopped)
+  rate_hz: at least 1 Hz (G.4.5/H.1.2 note); odometry.md says 1 Hz
+  qos: 'UNKNOWN (create3_sim: SensorDataQoS().reliable())'
+  mapping:
+  - condition: is_stopped true with no task open for >= idle_threshold_s
+    state: idle
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - 1 Hz resolution is coarser than gap_tolerance_s=2 s only by a factor 2; sub-second stops are invisible here (use wheel_vels).
+  - 'No-transition rule: is_stopped true with a task open: hold -> state of whoever caused it (6.8); stop_status alone cannot
+    decide'
+  reliability: Low temporal resolution; semantic only ('moving or not').
+  observe_passively: Subscribe best-effort; use as idle detector together with task state.
+  how_it_could_be_faked: Not configurable per docs.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/msg/StopStatus.msg#L4
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/odometry.md#L67
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/g_4_5.md#L17
+  - https://iroboteducation.github.io/create3_docs/api/odometry/#the-stop_status-topic
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B7
+  name: wheel_status (wheels_enabled = not e-stopped; PWM; current)
+  layer: firmware output (inhibition state)
+  source: Create 3 firmware /motion_control
+  interface: topic
+  ros_name: /wheel_status
+  message_type: irobot_create_msgs/msg/WheelStatus (int16 current_ma_left/right, int16 pwm_left/right, bool wheels_enabled)
+  rate_hz: 62.5 (odometry.md) / throttled by raw_kinematics_min_pub_period_ms = 25 ms default (H.2.5)
+  qos: 'UNKNOWN (create3_sim: SensorDataQoS().reliable())'
+  mapping:
+  - condition: wheels_enabled false (e_stop engaged via /e_stop service, e.g. TB4 power-button short press)
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: 'wheels_enabled false -> true within takeover_window_s followed by human cmd_vel: one intervention (6.7) (human_local
+      per device registry)'
+    state: human_local
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: <actor_id>
+  - condition: 'wheels_enabled false -> true within takeover_window_s followed by human cmd_vel: one intervention (6.7) (human_remote
+      per device registry)'
+    state: human_remote
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: <actor_id>
+  - condition: wheels_enabled true again and AI resumes
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2
+  uncovered_cases:
+  - 'The ''half solid yellow'' light ring = wheels disabled is the only on-robot indication; the e-stop is a software service,
+    not a hardware circuit — v0.2 treats both as safety_stop, which is correct but the trust review may want an x_estop_kind:
+    software flag.'
+  - Create 3 has no hardware E-stop; TB4 maps the power button short press to the software e_stop service, so the same button
+    is both 'safety' (short) and 'power off' (3000 ms long press).
+  reliability: Direct firmware state; subject to raw-kinematics throttling; disabled if raw_kinematics_min_pub_period_ms =
+    -1.
+  observe_passively: Subscribe best-effort; edge-detect wheels_enabled; pwm/current near zero with cmd_vel non-zero also indicates
+    inhibition.
+  how_it_could_be_faked: 'raw_kinematics_min_pub_period_ms: -1 removes the topic; e_stop can be cleared by any node calling
+    /e_stop with e_stop_on false.'
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/msg/WheelStatus.msg#L8
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/safety.md#L79
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/safety.md#L91
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/hw/face.md#L69
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/h_2_5.md#L33
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4.yaml#L43
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L523
+  - https://iroboteducation.github.io/create3_docs/api/safety/#wheel-status
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B8
+  name: e_stop service
+  layer: firmware input (inhibition command)
+  source: Create 3 firmware /motion_control
+  interface: service
+  ros_name: /e_stop
+  message_type: irobot_create_msgs/srv/EStop (bool e_stop_on -> bool success, string message)
+  rate_hz: event-driven
+  qos: rmw services default
+  mapping:
+  - condition: call with e_stop_on true from any client
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: 'call with e_stop_on false: wheels re-enabled; state returns to whoever commands next (no state until a command/goal
+      is observed)'
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - Service calls are not observable on topics; the observer sees only the effect in wheel_status.wheels_enabled. Caller identity
+    (human via TB4 button vs. software) is not recoverable passively.
+  - '''E-stop reset'' happens by a second service call, not a physical reset; definitions 6.7 handles the stop but not an
+    automated clear by the same software that set it (propose: log x_estop_cleared_by if the DDS client identity is known).'
+  reliability: 'Firmware-enforced: ''The robot will not respond to velocity commands when e_stop_on is true''. Not a hardware
+    safety function.'
+  observe_passively: Not directly; infer from B7. ros2 service introspection is not available on the robot side.
+  how_it_could_be_faked: Any node can clear it.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/srv/EStop.srv#L1
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/safety.md#L79
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/safety.md#L80
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/examples/actuators-cli.md#L93-L95
+  - https://iroboteducation.github.io/create3_docs/api/safety/#e-stop
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B9
+  name: dock_status
+  layer: firmware output
+  source: Create 3 firmware
+  interface: topic
+  ros_name: /dock_status
+  message_type: irobot_create_msgs/msg/DockStatus (bool dock_visible, bool is_docked)
+  rate_hz: UNKNOWN
+  qos: UNKNOWN
+  mapping:
+  - condition: is_docked true and no task open for >= idle_threshold_s
+    state: idle
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: 'is_docked true while a task is open (e.g. charging as part of a mission): hold chosen by the AI''s plan'
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:<mission controller>
+  - condition: is_docked true while a task is open because a human drove it onto the dock (human_local per device registry)
+    state: human_local
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: <actor_id>
+  - condition: is_docked true while a task is open because a human drove it onto the dock (human_remote per device registry)
+    state: human_remote
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: <actor_id>
+  uncovered_cases:
+  - 'Charging on dock is ''powered and logging, no commanded motion'' -> idle only after 30 s and only with no task; a session
+    that is mostly docked inflates idle_time/observed_time, which the report prints — acceptable but should be labelled x_base_mode:
+    docked.'
+  reliability: Requires the dock to be powered (docking.md L10).
+  observe_passively: Subscribe best-effort; edge-detect is_docked.
+  how_it_could_be_faked: Unpowered dock -> is_docked never true.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/msg/DockStatus.msg#L4
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/msg/DockStatus.msg#L5
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/docking.md#L10
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/docking.md#L66
+  - https://iroboteducation.github.io/create3_docs/api/docking/#dock-information
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B10
+  name: Firmware autonomous behaviours (dock, undock, wall_follow) and drive goals (drive_distance, rotate_angle, drive_arc,
+    navigate_to_position)
+  layer: firmware action servers
+  source: Create 3 firmware /motion_control
+  interface: action
+  ros_name: /dock, /undock, /wall_follow, /drive_distance, /rotate_angle, /drive_arc, /navigate_to_position
+  message_type: irobot_create_msgs/action/{Dock,Undock,WallFollow,DriveDistance,RotateAngle,DriveArc,NavigateToPosition}
+  rate_hz: event-driven (goal/feedback/result); feedback rate UNKNOWN
+  qos: rmw action defaults
+  mapping:
+  - condition: goal accepted and requested by an automated controller (Nav2 behaviour tree, mission node)
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:create3:<action>
+  - condition: 'goal requested by a human (TB4 button Dock/Undock/Wall Follow, CLI, GUI): human sets goal, firmware executes
+      = shared (definitions 2, ''human sets goals while AI executes'')'
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: <actor_id>
+  - condition: goal cancelled by firmware on CLIFF/STALL (drive goals) -> motion stopped by a safety function
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: 'goal pre-empts cmd_vel: ''cmd_vel messages ... will be ignored until the goal terminates'' -> any concurrent
+      teleop is not in control -> the ignored commander''s state is not asserted; unknown only if no other evidence'
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - The firmware does not expose the goal's requester; action status topics carry goal_id only (hidden topic naming per ROS
+    2 design — CLAIM). Requester identity must be taken from the DDS graph (action client node name) at goal time.
+  - 'Safety features are temporarily re-enabled during built-in behaviours (safety.md L10): an operator-set safety_override:
+    full is overridden by the firmware — no state change, but the x_safety_override value an observer records becomes stale.'
+  - 'A human publishing cmd_vel during an action is ignored by the firmware: is that an attempted intervention? v0.2 counts
+    transitions by actual control; proposed: log a hint-like x_ignored_command event, no transition.'
+  reliability: Goal lifecycle is reliable (actions are reliable by default); which behaviour is active is visible only through
+    the action status topics or the ROS graph.
+  observe_passively: Subscribe to each action's status and feedback topics (names per ROS 2 action design, not verified here)
+    or watch /rosout for the firmware warning about ignored velocities (sim text; real firmware text UNKNOWN).
+  how_it_could_be_faked: A mission node can call /dock under a human-looking node name and vice versa.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/ros2.md#L95-L96
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/moving-the-robot.md#L48
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/moving-the-robot.md#L49
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/drive-goals.md#L15
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/safety.md#L10
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/action/Dock.action#L4
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/action/NavigateToPosition.action#L18
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4.yaml#L42-L44
+  - https://iroboteducation.github.io/create3_docs/api/ros2/#ros-2-actions
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B11
+  name: interface_buttons (three faceplate buttons)
+  layer: hardware UI -> firmware topic
+  source: Create 3 firmware /ui_mgr
+  interface: topic
+  ros_name: /interface_buttons
+  message_type: 'irobot_create_msgs/msg/InterfaceButtons (Button button_1, button_power, button_2; Button: bool is_pressed,
+    Time last_start_pressed_time, Duration last_pressed_duration)'
+  rate_hz: 'UNKNOWN (ui.md: ''Whenever a button ... is pressed, its information will be published'')'
+  qos: UNKNOWN
+  mapping:
+  - condition: button_1 short press on TB4 (default map 'Dock') -> firmware dock action requested by a co-located human
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: <local actor_id>
+  - condition: button_2 short press on TB4 (default 'Undock')
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: <local actor_id>
+  - condition: button_power short press on TB4 (default 'EStop' = /e_stop toggle)
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: button_1 long press 2000 ms ('Wall Follow Left') / button_2 long press ('Wall Follow Right')
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: <local actor_id>
+  - condition: 'button_power long press 3000 ms (''Power'' = /robot_power): robot and payload power off -> observer loses
+      the source; proposed session_end with x_cause (see uncovered_cases), else unknown'
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: 'button_1 held 10 s: firmware standby/low-power (no Wi-Fi/USB/BLE response); center 7 s: storage mode/off ->
+      observer loses the source; proposed session_end with x_cause (see uncovered_cases), else unknown'
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - 'A physical button on the robot body is a local device by nature, but definitions 6.10 classify any undeclared device
+    as human_remote; proposed: the device registry pre-declares create3_button_1/_2/_power as local.'
+  - 'Firmware-level holds (10 s standby, 7 s storage) act regardless of the TB4 mapping and end logging without a session_end
+    from the robot; proposed: observer emits session_end with x_cause=base_power_hold when all base topics vanish within 5
+    s of a >=7 s power-button press.'
+  - Button presses that only trigger menu/UI functions are not control events; only functions that command motion/inhibition
+    map to states.
+  reliability: Publication semantics (edge vs. periodic) undocumented; long-press durations are TB4 parameters and can be
+    changed.
+  observe_passively: Subscribe best-effort; use last_start_pressed_time and last_pressed_duration (firmware clock) to classify
+    short/long presses with the TB4 thresholds (2000/3000 ms).
+  how_it_could_be_faked: turtlebot4.yaml can remap any button to any function; the firmware-level 7 s/10 s holds cannot be
+    remapped.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/msg/InterfaceButtons.msg#L3
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/msg/Button.msg#L4
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/msg/Button.msg#L6
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/ui.md#L7
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/hw/face.md#L10
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/hw/face.md#L22
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4.yaml#L42-L44
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4.yaml#L43
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4.yaml#L44
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/buttons.cpp#L37-L38
+  - https://iroboteducation.github.io/create3_docs/hw/face/
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B12
+  name: ir_opcode (dock / virtual-wall IR codes)
+  layer: firmware output (environment beacon)
+  source: Create 3 firmware
+  interface: topic
+  ros_name: /ir_opcode
+  message_type: irobot_create_msgs/msg/IrOpcode (opcode enum 161 FORCE_FIELD,162 VIRTUAL_WALL,164/168/172 BUOY_GREEN/RED/BOTH,244/248/252
+    EVAC_*_FIELD; sensor 0 OMNI / 1 DIRECTIONAL_FRONT)
+  rate_hz: event-driven ('time-stamped detection of one of those signals')
+  qos: UNKNOWN
+  mapping:
+  - condition: 'CODE_IR_VIRTUAL_WALL with REFLEX_VIRTUAL_WALL enabled: firmware reflex moves robot away (see B3/B4 reflex
+      case)'
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - 'No Roomba remote-control opcodes exist in IrOpcode.msg and no documentation describes a handheld IR remote for Create
+    3: whether the firmware reacts to one is UNKNOWN; a human placing a virtual wall is an environmental constraint, not a
+    hint, in v0.2 — proposed: no event.'
+  - 'No-transition rule: any opcode: no control state change (dock and virtual-wall beacons are environment, not commands)'
+  reliability: Only dock-related codes defined.
+  observe_passively: Subscribe best-effort; log as x_ir_opcode on heartbeats if desired.
+  how_it_could_be_faked: Any IR emitter with the right code.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/msg/IrOpcode.msg#L3-L4
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/msg/IrOpcode.msg#L10
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/msg/IrOpcode.msg#L13
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/docking.md#L55
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/docking.md#L60
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/reflexes.md#L73
+  - https://iroboteducation.github.io/create3_docs/api/docking/#ir-opcodes
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B13
+  name: safety_override parameter
+  layer: firmware parameter
+  source: Create 3 firmware /motion_control
+  interface: parameter
+  ros_name: '/motion_control safety_override (string: none | backup_only | full; default none); related read-only max_speed
+    (0.306 m/s, or 0.460 m/s when full)'
+  message_type: rcl_interfaces (parameter)
+  rate_hz: event-driven (/parameter_events)
+  qos: parameter_events QoS overrides exposed
+  mapping: []
+  uncovered_cases:
+  - Disabling the backup limit removes the BACKUP_LIMIT safety_stop source; the report cannot tell a 'safe' robot from one
+    with safety off unless the parameter value is logged — proposed required x_ field on session_start and on change.
+  - 'No-transition rule: value change: not a control state; record as x_safety_override on the next heartbeat'
+  reliability: Firmware rejects invalid strings; temporarily overridden to full safety during built-in behaviours.
+  observe_passively: Subscribe to /parameter_events; or read via /motion_control/get_parameters (active, not passive).
+  how_it_could_be_faked: Webserver application parameters file sets the boot default (HazardDetection.msg L7).
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/safety.md#L12
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/safety.md#L15
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/safety.md#L67
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/safety.md#L69
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/ros2.md#L169
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/h_2_6.md#L24
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/msg/HazardDetection.msg#L5
+  - https://iroboteducation.github.io/create3_docs/api/safety/
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B14
+  name: reflexes_enabled and reflexes.REFLEX_* parameters
+  layer: firmware parameter
+  source: Create 3 firmware /motion_control
+  interface: parameter
+  ros_name: /motion_control reflexes_enabled (bool, default true); reflexes.REFLEX_BUMP, REFLEX_CLIFF, REFLEX_GYRO_CAL, REFLEX_PANIC,
+    REFLEX_PROXIMITY_SLOWDOWN, REFLEX_STUCK, REFLEX_VIRTUAL_WALL, REFLEX_WHEEL_DROP (default true); REFLEX_DOCK_AVOID (default
+    false)
+  message_type: rcl_interfaces (parameter)
+  rate_hz: event-driven
+  qos: parameter_events
+  mapping: []
+  uncovered_cases:
+  - 'No topic reports ''a reflex is running''. Inference rule proposed: hazard present (BUMP/CLIFF/STALL/WHEEL_DROP) AND wheel_vels
+    non-zero AND (cmd_vel zero or opposite sign) -> reflex episode.'
+  - 'Reflexes are ''high-priority behaviours that temporarily override any user-provided command'' (reflexes.md L5): an AI
+    safety manoeuvre overriding a human — v0.2 has no state (not inhibition, not human). Proposed state handling as in B3.'
+  - 'No-transition rule: value change: not a control state; record as x_reflexes on heartbeat'
+  reliability: Documented defaults; actual activation invisible on ROS 2.
+  observe_passively: /parameter_events for changes; infer activity as above.
+  how_it_could_be_faked: Parameters are writable by any node.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/reflexes.md#L5
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/reflexes.md#L11
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/reflexes.md#L14
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/reflexes.md#L36-L38
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/ros2.md#L124
+  - https://iroboteducation.github.io/create3_docs/api/reflexes/
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B15
+  name: battery_state (charging = on dock)
+  layer: firmware output
+  source: Create 3 firmware /robot_state
+  interface: topic
+  ros_name: /battery_state
+  message_type: sensor_msgs/msg/BatteryState
+  rate_hz: at least 0.1 Hz (G.4.5/H.1.2)
+  qos: UNKNOWN
+  mapping:
+  - condition: 'percentage < 2 %: firmware calls /robot_power itself (G.5.4/H.2.4) -> robot powers off -> observer loses the
+      source; proposed session_end with x_cause (see uncovered_cases), else unknown'
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: charging while docked, no task
+    state: idle
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - 'Firmware-initiated power-off at <2 % ends observation without a session_end; proposed: observer emits session_end with
+    x_cause=low_battery_poweroff when battery_state last showed <= 2 %.'
+  reliability: Slow rate (0.1 Hz) — use dock_status for docked state.
+  observe_passively: Subscribe best-effort.
+  how_it_could_be_faked: n/a
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/ros2.md#L15
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/g_4_5.md#L18
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/hw/electrical.md#L15
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/g_5_4.md#L20
+  - https://iroboteducation.github.io/create3_docs/hw/electrical/
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B16
+  name: robot_power service
+  layer: firmware input (power)
+  source: Create 3 firmware /motion_control
+  interface: service
+  ros_name: /robot_power
+  message_type: irobot_create_msgs/srv/RobotPower (-> bool success, string message)
+  rate_hz: event-driven
+  qos: services default
+  mapping:
+  - condition: 'call (TB4 power button 3000 ms long press, or software): robot and payload power off -> observer loses the
+      source; proposed session_end with x_cause (see uncovered_cases), else unknown'
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - 'Power-off by the firmware/base removes the observer''s data source and the Pi''s power at once; the session cannot be
+    closed by the robot. Proposed: lead-side watchdog closes the session with x_cause=power_off when the last base heartbeat
+    precedes a Pi shutdown.'
+  reliability: Firmware; 'robot may power down before response is transmitted'.
+  observe_passively: Not observable except by disappearance of all topics and the Pi losing power.
+  how_it_could_be_faked: n/a
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/srv/RobotPower.srv#L1-L5
+  - https://github.com/iRobotEducation/irobot_create_msgs/blob/b4986ef5dc2e07d8aa7471f29c56b617473352c5/srv/RobotPower.srv#L4
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/examples/actuators-cli.md#L125-L127
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4.yaml#L43
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B17
+  name: Bluetooth Low Energy control path (iRobot Education protocol via adapter-board USB/BLE toggle)
+  layer: hardware/firmware alternate mode
+  source: Create 3 adapter board + firmware
+  interface: hardware
+  ros_name: (none — not a ROS 2 interface)
+  message_type: iRobot Education BLE protocol (root-robot-ble-protocol)
+  rate_hz: UNKNOWN
+  qos: n/a
+  mapping:
+  - condition: 'toggle at BLE: USB data link to the Pi is cut (G.2.2 L14), all reflexes disabled on BLE connection (G.3.1
+      L23/L51); robot driven from a phone/laptop app — invisible to a ROS 2 observer on the Pi'
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: if the BLE app is declared in the device registry and observed otherwise (e.g. wheel_vels over Wi-Fi ROS 2
+      while no cmd_vel publisher) -> undeclared device rule
+    state: human_remote
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: <actor_id>
+  uncovered_cases:
+  - A whole second control plane with no ROS 2 footprint. On TB4 the toggle must be at USB for the Pi link; an observer should
+    record the toggle position at session_start (x_usb_ble_toggle) and treat loss of the usb0 link as unknown.
+  - Whether ROS 2 topics keep publishing over Wi-Fi while in BLE mode is not stated (Product Information Guide describes 'ROS
+    2 mode' and 'Bluetooth mode' as alternatives) — UNKNOWN.
+  reliability: Physical switch; blue adapter-board LED D6 lit when BLE radio on.
+  observe_passively: 'Only by absence: no cmd_vel publisher yet wheel motion, or complete loss of base topics on usb0.'
+  how_it_could_be_faked: Flip the switch.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/hw/adapter.md#L22
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/hw/adapter.md#L32
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/hw/adapter.md#L33
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/hw/adapter.md#L46
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/g_2_2.md#L14
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/g_3_1.md#L23
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/g_3_1.md#L51
+  - https://iroboteducation.github.io/create3_docs/hw/adapter/
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B18
+  name: Webserver (http port 80, no authentication described)
+  layer: base OS service
+  source: Create 3 webserver (separate process from the ROS 2 application)
+  interface: gui
+  ros_name: (http://192.168.186.2 over usb0, 192.168.10.1 over wlan1 AP, DHCP address over wlan0; POST /api/restart-ntpd,
+    /api/set-datetime, /api/forget-wifi)
+  message_type: HTML/HTTP
+  rate_hz: event-driven
+  qos: n/a
+  mapping:
+  - condition: 'Restart Application / Reboot Robot / firmware update: ROS 2 application stops -> all base topics vanish'
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - 'No motion can be commanded from the webserver, but it can silently change the boot defaults that decide which safety
+    signals exist (publish_hazard_msgs, raw_kinematics_min_pub_period_ms, safety_override). Proposed: observer records the
+    parameter values it sees at session_start.'
+  - 'Planned maintenance (firmware update) during a session: v0.2 has no ''maintenance'' state; proposed: idle when no task
+    is open (declared), else unknown.'
+  - 'No-transition rule: Application ROS 2 parameters file edits (safety_override, reflexes, publish_* defaults): take effect
+    at next application start; not a control state'
+  reliability: Docs describe http on port 80 with no credential step; 'Reboot robot' and 'Factory reset' only in AP mode.
+  observe_passively: Not observable from ROS 2 except by effect (application restart -> topic gap; /parameter_events after
+    restart).
+  how_it_could_be_faked: Anyone on the network segment can change parameters.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/webserver/overview.md#L6
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/webserver/overview.md#L7
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/webserver/overview.md#L9
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/webserver/overview.md#L11
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/webserver/application.md#L6
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/webserver/application.md#L32
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/webserver/about.md#L40
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/webserver/restart-ntpd.md#L11
+  - https://iroboteducation.github.io/create3_docs/webserver/overview/
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: B19
+  name: Application restart on connectivity change (firmware known issue)
+  layer: firmware behaviour
+  source: Create 3 firmware (G.2.2 known issue; later releases only exempt same-address DHCP renewals)
+  interface: log
+  ros_name: '(effect: all topics disappear and reappear; webserver Logs page / /logs-raw)'
+  message_type: n/a
+  rate_hz: event-driven
+  qos: n/a
+  mapping:
+  - condition: gap in all base topics > gap_tolerance_s
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - Wi-Fi roaming on TB4 can make the base restart its ROS 2 application mid-task; the gap is unknown time, which is correct
+    but should be labelled x_cause=base_app_restart when /rosout shows a restart.
+  reliability: Documented as known issue in G.2.2; G.3.1 narrowed it to address changes; current status in I.0.0 not restated
+    (UNKNOWN).
+  observe_passively: Detect simultaneous loss of all base publishers; /rosout from the base.
+  how_it_could_be_faked: Unplugging usb0 / toggling Wi-Fi.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/g_2_2.md#L51
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/g_3_1.md#L41
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/webserver/logs.md#L6
+  - https://iroboteducation.github.io/create3_docs/releases/g_2_2/
+  version: G.2.2 note; carried forward UNKNOWN
+  track: base
+- id: B20
+  name: Firmware log stream (/rosout) and webserver system log
+  layer: firmware logging
+  source: Create 3 firmware nodes (motion_control, system_health)
+  interface: log
+  ros_name: /rosout (rcl_interfaces/msg/Log); webserver Logs page and /logs-raw; /system_health log_period parameter
+  message_type: rcl_interfaces/msg/Log
+  rate_hz: event-driven; system_health period = log_period (value UNKNOWN)
+  qos: rosout default
+  mapping:
+  - condition: backup-limit warning logged (safety.md L45) with backward command -> corroborates safety_stop
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - Exact log strings of the real firmware are not published (only the simulator's); the observer must treat /rosout as corroboration,
+    not as a primary state source.
+  reliability: Logs are lost when the robot loses power (logs.md L6); no retention statement beyond that.
+  observe_passively: Subscribe to /rosout; download /logs-raw after the session (active, http).
+  how_it_could_be_faked: Any node can publish to /rosout.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/ros2.md#L30
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/ros2.md#L152
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/api/safety.md#L44-L45
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/webserver/logs.md#L6
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/webserver/logs.md#L7
+  - https://github.com/iRobotEducation/create3_docs/blob/9fb1510bbceb0e01c4764ddc458da59487519dca/docs/releases/g_3_1.md#L45
+  - https://iroboteducation.github.io/create3_docs/webserver/logs/
+  version: Create 3 firmware I.0.0 (irobot_create_msgs 2.1.0 on robot; 3.0.0 pinned, interface-identical per CHANGELOG)
+  track: base
+- id: T1
+  name: Base velocity command (merged, all sources)
+  layer: TB4 software stack / Create 3 interface
+  source: Published by nav2 collision_monitor (Nav2), teleop_twist_joy_node (Bluetooth controller), teleop_twist_keyboard
+    (SSH/PC), ros2 topic pub, any DDS participant; consumed by create3_republisher -> Create 3 firmware
+  interface: topic
+  ros_name: '/cmd_vel (namespaced: <ns>/cmd_vel); republished to Create 3 as <ns>/_do_not_use/cmd_vel_stamped'
+  message_type: geometry_msgs/msg/TwistStamped (Jazzy); legacy geometry_msgs/msg/Twist accepted on /cmd_vel_unstamped
+  rate_hz: 'publisher-dependent: Nav2 chain 20 Hz (controller_frequency 20.0, smoothing_frequency 20.0); teleop_twist_joy
+    event-driven per /joy message (joy_linux autorepeat_rate default 20 Hz while a button/axis is held, else on change); keyboard
+    event-driven'
+  qos: 'teleop_twist_joy: depth 10 (default reliable); nav2 collision_monitor: QoS(1); sim Create 3 motion_control subscribes
+    SensorDataQoS (best effort) -> observer should subscribe best-effort/volatile to match any publisher'
+  mapping:
+  - condition: TwistStamped on /cmd_vel whose DDS publisher is a Nav2 node (collision_monitor, node name from `ros2 topic
+      info -v`) and no human publisher active
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2
+  - condition: TwistStamped on /cmd_vel from teleop_twist_joy_node (Bluetooth controller on the Pi, registered as local device)
+    state: human_local
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id>
+  - condition: 'TwistStamped on /cmd_vel from teleop_twist_keyboard / ros2 topic pub on a remote PC (registry: remote)'
+    state: human_remote
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id>
+  - condition: Twist/TwistStamped on /cmd_vel from an undeclared publisher (unknown node name / GID)
+    state: human_remote
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:undeclared
+  - condition: Nav2 and a human publisher both active on /cmd_vel within the same second (no arbitration exists)
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id>
+  uncovered_cases:
+  - 'Two publishers interleave on the same topic with no mux: the Create 3 executes whichever message arrived last; the taxonomy
+    has no rule for message-level contention -> propose `shared` for the overlap window plus flag `cmd_vel_contention`.'
+  - 'Zero-velocity "disable" message sent once by teleop_twist_joy on enable-button release: is it human control? Propose:
+    it ends the human episode (last human message), not a new one.'
+  - Publisher identity is not stored by rosbag2 (only topic, recv/send timestamps); attribution must be captured live from
+    DDS discovery (`ros2 topic info -v`) or by recording the upstream topics (/joy, /cmd_vel_nav, /cmd_vel_smoothed) alongside
+    /cmd_vel.
+  reliability: Best-effort/volatile subscription recommended; messages are not acknowledged by the firmware; the republisher
+    relays them with no ordering guarantee between publishers.
+  observe_passively: Subscribe to /cmd_vel with a GenericSubscription; capture publisher GID via rmw_message_info_t.publisher_gid
+    in the callback and map GID->node name with `ros2 topic info -v /cmd_vel` / graph introspection at session start; also
+    record /cmd_vel_nav and /cmd_vel_smoothed (Nav2-only) and /joy (controller-only) to attribute by topic.
+  how_it_could_be_faked: Any machine on the same ROS_DOMAIN_ID can publish /cmd_vel under any node name (e.g. renamed to look
+    like collision_monitor); a hidden participant on a different ROS_DOMAIN_ID or a discovery server the observer does not
+    join is invisible; the Create 3 also accepts /cmd_vel directly in the _do_not_use namespace, bypassing the republished
+    topic.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/launch/robot.launch.py#L86
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/launch/robot.launch.py#L87
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L33
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L34
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L299
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L300
+  - https://github.com/ros2/teleop_twist_joy/blob/556a07100ee745f68619de84a95d3c84a4892ab9/src/teleop_twist_joy.cpp#L98
+  - https://github.com/ros2/teleop_twist_keyboard/blob/ed06da483e4acef8d0ab225557d64e6597c9bdf2/teleop_twist_keyboard.py#L156
+  - https://github.com/turtlebot/turtlebot4-user-manual/blob/4455a75dde3f052b5abf615dade22bece84120b0/tutorials/driving.md#L99
+  - https://turtlebot.github.io/turtlebot4-user-manual/tutorials/driving.html
+  version: turtlebot4_robot 2.0.1 (28e115f); turtlebot4 2.1.1 (7fd29fb); teleop_twist_joy 2.6.5; teleop_twist_keyboard 2.4.1
+  track: stack
+- id: T2
+  name: Nav2 output before smoothing (AI-only velocity)
+  layer: Nav2 as configured by turtlebot4_navigation
+  source: nav2 controller_server and behavior_server (remapped cmd_vel -> cmd_vel_nav in nav2_bringup navigation_launch.py)
+  interface: topic
+  ros_name: /cmd_vel_nav
+  message_type: 'geometry_msgs/msg/TwistStamped (enable_stamped_cmd_vel: true)'
+  rate_hz: 20.0
+  qos: nav2_util::TwistPublisher QoS depth 1
+  mapping:
+  - condition: Non-zero TwistStamped on /cmd_vel_nav
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2
+  - condition: Zero TwistStamped on /cmd_vel_nav while a Nav2 goal is active (controller holding)
+    state: ai
+    reason: null
+    scope: base
+    event_type: heartbeat
+    actor_id: ai:nav2
+  uncovered_cases:
+  - 'Behavior server recoveries (spin, backup, drive_on_heading) publish here too: taxonomy treats them as `ai` but they are
+    scripted-like fixed motions; propose keep `ai` (they react to costmap) and tag x_behavior.'
+  reliability: Only Nav2 publishes here; a human publishing on /cmd_vel_nav would be a spoof (see fakes).
+  observe_passively: 'Subscribe and compare with /cmd_vel: human control is present when /cmd_vel carries messages not matching
+    /cmd_vel_smoothed.'
+  how_it_could_be_faked: A spoof node could publish /cmd_vel_nav to make human motion look like Nav2 output; the velocity_smoother
+    would then relay it as cmd_vel_smoothed. Detect via publisher GID / node name of /cmd_vel_nav messages.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bringup/launch/navigation_launch.py#L137
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bringup/launch/navigation_launch.py#L181
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L23
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/launch/nav2.launch.py#L68
+  version: turtlebot4 2.1.1; nav2_bringup 1.3.14 (d5d768b)
+  track: stack
+- id: T3
+  name: Nav2 smoothed velocity (collision-monitor input)
+  layer: Nav2 as configured by turtlebot4_navigation
+  source: nav2 velocity_smoother
+  interface: topic
+  ros_name: /cmd_vel_smoothed
+  message_type: geometry_msgs/msg/TwistStamped
+  rate_hz: 20.0
+  qos: depth 1
+  mapping:
+  - condition: Messages present on /cmd_vel_smoothed
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2
+  uncovered_cases: []
+  reliability: Internal Nav2 topic; velocity_timeout 1.0 s stops output when /cmd_vel_nav goes silent.
+  observe_passively: Record; equality of /cmd_vel and /cmd_vel_smoothed payloads attributes /cmd_vel messages to Nav2 even
+    without publisher identity.
+  how_it_could_be_faked: Same as T2 (spoof publisher).
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L282
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L292
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L299
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_velocity_smoother/src/velocity_smoother.cpp#L155
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bringup/launch/navigation_launch.py#L215
+  version: turtlebot4 2.1.1; nav2 1.3.14
+  track: stack
+- id: T4
+  name: Nav2 collision monitor state
+  layer: Nav2 as configured by turtlebot4_navigation
+  source: nav2 collision_monitor (state_topic parameter set by TB4 config)
+  interface: topic
+  ros_name: /collision_monitor_state
+  message_type: nav2_msgs/msg/CollisionMonitorState
+  rate_hz: event-driven (published with each processed cmd_vel)
+  qos: depth 1
+  mapping:
+  - condition: action_type != DO_NOTHING (approach/stop) while Nav2 drives
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: action_type returns to DO_NOTHING
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2
+  uncovered_cases:
+  - 'Collision monitor only filters the Nav2 path (cmd_vel_smoothed -> cmd_vel); it does not inhibit a human publisher writing
+    /cmd_vel directly, so a `safety_stop` here is scope-partial: propose record as safety_stop only when no human publisher
+    is active, else `shared`.'
+  reliability: Message semantics belong to the Nav2 track; the TB4 layer only sets the topic name and the FootprintApproach
+    polygon (time_before_collision 1.2 s).
+  observe_passively: Subscribe to /collision_monitor_state.
+  how_it_could_be_faked: Spoof publisher; or disabling the FootprintApproach polygon via parameter.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L301
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L308
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L313
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_collision_monitor/src/collision_monitor_node.cpp#L255
+  version: turtlebot4 2.1.1
+  track: stack
+- id: T5
+  name: Bluetooth controller raw state
+  layer: TB4 bringup (joy_teleop.launch.py)
+  source: joy_linux_node (package joy_linux), device /dev/input/js0 on the Raspberry Pi
+  interface: topic
+  ros_name: /joy
+  message_type: sensor_msgs/msg/Joy
+  rate_hz: event-driven on input change, coalesced at 1 ms; autorepeat 20 Hz while any input is non-zero (joy_linux defaults
+    autorepeat_rate 20.0, coalesce_interval 0.001)
+  qos: depth 10 (default reliable)
+  mapping:
+  - condition: buttons[4] (L1, enable_button) or buttons[5] (R1, enable_turbo_button) held AND no Nav2 velocity in the last
+      1 s
+    state: human_local
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id> device:tb4_controller
+  - condition: L1/R1 held while Nav2 is also publishing /cmd_vel_nav
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id>
+  - condition: buttons[1] (B) short press -> function EStop toggles Create 3 e_stop
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: buttons[6] (L2) / buttons[7] (R2) -> Wall Follow Left/Right (Create 3 firmware autonomous behaviour, 10 s)
+    state: human_local
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id>
+  - condition: buttons[10] (Home) held 3000 ms -> Undock; short -> Dock
+    state: human_local
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id>
+  uncovered_cases:
+  - 'Wall Follow is a firmware behaviour triggered by a human button: it reacts to sensing (bump/IR) so it is `ai` by Section
+    2, but the trigger is human and the duration fixed (10 s): propose `shared` reason human_initiated for its runtime, or
+    new sub-tag x_firmware_behavior.'
+  - 'EStop toggle via controller B: the taxonomy maps e-stop to `safety_stop` with reason `safety`; here the human presses
+    it deliberately but not necessarily for safety (e.g. to pause) -> 6.8 hold caused by human = `shared`/human_initiated;
+    conflict with "transitions into safety_stop always carry safety". Propose: use safety_stop/safety and add x_trigger=human_button.'
+  - 'Bluetooth link is between controller and the Pi: a Wi-Fi-only observer sees /joy only if the Pi relays it over DDS (it
+    does, via joy_linux_node); if the Pi is on a discovery server the observer does not join, the path is invisible.'
+  reliability: /joy stops when the controller sleeps; no heartbeat; joy_linux publishes only on change/autorepeat, so absence
+    of messages is ambiguous (idle controller vs disconnected).
+  observe_passively: Subscribe to /joy; derive enable-button held intervals; cross-check with /cmd_vel publisher teleop_twist_joy_node;
+    record /function_calls for button-mapped functions.
+  how_it_could_be_faked: Publish fake /joy from any machine (teleop_twist_joy and turtlebot4_node will act on it, so the fake
+    also moves the robot); unplug/rename joy device; run teleop_twist_joy with a different config publishing to /cmd_vel without
+    an enable button (require_enable_button:=false).
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/launch/joy_teleop.launch.py#L29
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/launch/joy_teleop.launch.py#L53
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/launch/joy_teleop.launch.py#L54
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/launch/joy_teleop.launch.py#L63
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/launch/joy_teleop.launch.py#L68
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4_controller.config.yaml#L76
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4_controller.config.yaml#L77
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4.yaml#L60-L62
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4.yaml#L70
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/buttons.cpp#L42-L43
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/buttons.cpp#L93
+  - https://github.com/ros-drivers/joystick_drivers/blob/038a12722bac3983d7fee462ad074a8f18c7bd5f/joy_linux/src/joy_linux_node.cpp#L204
+  - https://github.com/ros-drivers/joystick_drivers/blob/038a12722bac3983d7fee462ad074a8f18c7bd5f/joy_linux/src/joy_linux_node.cpp#L215
+  - https://github.com/ros-drivers/joystick_drivers/blob/038a12722bac3983d7fee462ad074a8f18c7bd5f/joy_linux/src/joy_linux_node.cpp#L216
+  - https://github.com/ros2/teleop_twist_joy/blob/556a07100ee745f68619de84a95d3c84a4892ab9/src/teleop_twist_joy.cpp#L330-L333
+  - https://github.com/ros2/teleop_twist_joy/blob/556a07100ee745f68619de84a95d3c84a4892ab9/src/teleop_twist_joy.cpp#L341-L344
+  version: turtlebot4_robot 2.0.1; joystick_drivers 3.3.0; teleop_twist_joy 2.6.5
+  track: stack
+- id: T6
+  name: Button/menu function call announcement
+  layer: turtlebot4_node
+  source: turtlebot4_node (function_call_pub_)
+  interface: topic
+  ros_name: /function_calls
+  message_type: 'std_msgs/msg/String (data = function name: Dock, Undock, Wall Follow Left, Wall Follow Right, EStop, Power,
+    RPLIDAR Start/Stop, OAKD Start/Stop, Scroll Up, Scroll Down, Select, Back, Help)'
+  rate_hz: event-driven (one message per button short/long press or menu select)
+  qos: KeepLast(10), default reliable, volatile
+  mapping:
+  - condition: data == "Dock" or "Undock" (human pressed Create 3 button 1/2, controller Home, or menu Select)
+    state: human_local
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id>
+  - condition: 'data == "EStop" (toggles Create 3 e_stop: ON when wheels_enabled_, OFF otherwise)'
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: data == "EStop" when wheels were disabled (clears e-stop)
+    state: idle
+    reason: planned
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: data == "Wall Follow Left"/"Wall Follow Right" (firmware behaviour, max_runtime 10 s)
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id>
+  - condition: data == "Power" (robot_power service -> power off)
+    state: idle
+    reason: null
+    scope: whole_robot
+    event_type: session_end
+    actor_id: null
+  - condition: data in Scroll Up/Scroll Down/Back/Select/Help (display navigation only)
+    state: unknown
+    reason: null
+    scope: display
+    event_type: hint
+    actor_id: null
+  uncovered_cases:
+  - The message carries the function name only, not which physical button or which human triggered it; Create 3 faceplate
+    button vs controller vs menu are indistinguishable here (use /interface_buttons, /joy, /hmi/buttons to disambiguate).
+  - 'Dock/Undock are Create 3 firmware actions (autonomous docking) started by a human: human-triggered autonomy has no state
+    in v0.2 (human sets goal while AI executes = `shared` per Section 2 definition) -> propose `shared`/human_initiated during
+    the action, which is what the mapping above should use instead of human_local once the action is accepted.'
+  - 'Clearing an e-stop with the same button: state after clearing is whatever controller resumes; the taxonomy has no "safety_stop
+    released" reason -> propose transition to previous state with reason null and related_seq.'
+  - 'Display scroll/select events are not control of any motion scope: `display` is not an actuated scope (Section 14E) ->
+    record as x_ui_event, not a hint.'
+  reliability: Published before the function callback executes, so it records the attempt even if the action server is unavailable
+    (action client waits in a 1 s timer with no timeout).
+  observe_passively: Subscribe to /function_calls (namespaced).
+  how_it_could_be_faked: Any node can publish /function_calls (observer would log a phantom action); conversely a modified
+    turtlebot4.yaml can rebind buttons to other functions, so function name != physical button.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L153
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L154
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L179
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L660
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L662-L665
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/include/turtlebot4_node/buttons.hpp#L165
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L523
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L483-L484
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/include/turtlebot4_node/action.hpp#L82
+  - https://github.com/turtlebot/turtlebot4-user-manual/blob/4455a75dde3f052b5abf615dade22bece84120b0/software/turtlebot4_common.md#L583
+  version: turtlebot4 2.1.1
+  track: stack
+- id: T7
+  name: Create 3 faceplate buttons (republished)
+  layer: Create 3 -> create3_republisher
+  source: Create 3 firmware; relayed by create3_republisher (robot_publishers list)
+  interface: topic
+  ros_name: /interface_buttons
+  message_type: 'irobot_create_msgs/msg/InterfaceButtons (button_1, button_power, button_2: Button.is_pressed)'
+  rate_hz: UNKNOWN at TB4 layer (firmware rate; see Create 3 track)
+  qos: SensorDataQoS (best effort) subscription in turtlebot4_node
+  mapping:
+  - condition: button_1.is_pressed short (<2000 ms) -> Dock; long (>=2000 ms) -> Wall Follow Left
+    state: human_local
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id> device:create3_faceplate
+  - condition: button_2.is_pressed short -> Undock; long -> Wall Follow Right
+    state: human_local
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id> device:create3_faceplate
+  - condition: button_power.is_pressed short -> EStop toggle; long (>=3000 ms) -> Power off
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - Same as T6 for firmware behaviours and e-stop clearing.
+  - Faceplate buttons are physically on the robot, so the device is unambiguously local; the taxonomy requires a device registry
+    entry anyway (6.10) -> declare `create3_faceplate` as local.
+  reliability: Relayed only if "interface_buttons" stays in republisher.yaml robot_publishers (it does by default).
+  observe_passively: Subscribe to /interface_buttons; the TB4 node polls buttons every 10 ms (BUTTONS_TIMER_PERIOD).
+  how_it_could_be_faked: Spoof publisher on /interface_buttons triggers turtlebot4_node functions (it subscribes with best-effort
+    QoS, so a reliable or best-effort spoof both match).
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L16
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4.yaml#L42-L44
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4.yaml#L43
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4.yaml#L44
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/buttons.cpp#L38
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/buttons.cpp#L78
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/include/turtlebot4_node/turtlebot4.hpp#L64-L66
+  version: turtlebot4_robot 2.0.1; turtlebot4 2.1.1
+  track: stack
+- id: T8
+  name: HMI user buttons (Standard model)
+  layer: turtlebot4_base (GPIO)
+  source: turtlebot4_base_node polls GPIO 19/16/26/20 every 10 ms and publishes
+  interface: topic
+  ros_name: /hmi/buttons
+  message_type: turtlebot4_msgs/msg/UserButton (bool[4] button)
+  rate_hz: 100.0
+  qos: SensorDataQoS (best effort, depth 5)
+  mapping:
+  - condition: button[0..3] pressed -> Select/Back/Scroll Up/Scroll Down (menu navigation)
+    state: unknown
+    reason: null
+    scope: display
+    event_type: hint
+    actor_id: null
+  - condition: Select on menu entry Dock/Undock/Wall Follow/EStop/Power -> see T6 mapping
+    state: human_local
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id> device:hmi_board
+  uncovered_cases:
+  - Menu navigation is UI interaction, not control of a motion scope; propose x_ui_event rather than any state change until
+    Select fires a motion function (visible on /function_calls).
+  reliability: Continuous 100 Hz stream makes liveness of turtlebot4_base_node observable; Lite model has no HMI board (node
+    not launched).
+  observe_passively: Subscribe best-effort to /hmi/buttons.
+  how_it_could_be_faked: Spoof publisher drives the display menu (turtlebot4_node subscribes with best-effort QoS).
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_base/src/buttons.cpp#L35
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_base/src/buttons.cpp#L36
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_base/src/turtlebot4.cpp#L62
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4.yaml#L46
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4.yaml#L76
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/launch/robot.launch.py#L69-L72
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_msgs/msg/UserButton.msg#L4
+  version: turtlebot4_robot 2.0.1; turtlebot4_msgs 2.1.1
+  track: stack
+- id: T9
+  name: HMI display contents
+  layer: turtlebot4_node
+  source: turtlebot4_node Display (Standard model only)
+  interface: topic
+  ros_name: '/hmi/display (input: /hmi/display/message)'
+  message_type: turtlebot4_msgs/msg/UserDisplay (ip, battery, string[5] entries, int32 selected_entry)
+  rate_hz: on change, forced at 1 Hz (display timer 50 ms, update every 20 ticks)
+  qos: SensorDataQoS
+  mapping:
+  - condition: selected_entry changes (human scrolling)
+    state: unknown
+    reason: null
+    scope: display
+    event_type: hint
+    actor_id: null
+  uncovered_cases:
+  - Display is not a motion scope (14E); events are UI telemetry only.
+  reliability: Reflects menu state; menu entries configurable (default Dock, Undock, EStop, Wall Follow Left, Wall Follow
+    Right, Power, Help).
+  observe_passively: Subscribe best-effort to /hmi/display.
+  how_it_could_be_faked: Any node can publish /hmi/display/message to override the screen (menu_override_).
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/display.cpp#L49
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/display.cpp#L52
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L249
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_msgs/msg/UserDisplay.msg#L2-L5
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4.yaml#L53
+  version: turtlebot4 2.1.1
+  track: stack
+- id: T10
+  name: HMI LEDs (status and user)
+  layer: turtlebot4_node / turtlebot4_base
+  source: turtlebot4_node publishes per-LED state on hmi/led/_power, _motors, _comms, _wifi, _battery, _user1, _user2; users
+    command /hmi/led
+  interface: topic
+  ros_name: /hmi/led/_motors, /hmi/led/_comms (and siblings); input /hmi/led
+  message_type: std_msgs/msg/Int32 (internal LED topics) / turtlebot4_msgs/msg/UserLed (input)
+  rate_hz: LED timer 50 ms; messages on state change (UNKNOWN exact publish rule, blink handled in Turtlebot4Led::spin_once)
+  qos: UNKNOWN
+  mapping:
+  - condition: MOTORS LED OFF (wheel_status.wheels_enabled == false, e.g. after EStop)
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: COMMS LED OFF (no wheel_status from Create 3 for 30 s = COMMS_TIMER_PERIOD)
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - LEDs mirror wheel_status; prefer /wheel_status directly (Create 3 track).
+  reliability: Derived indicator; Standard model only.
+  observe_passively: Subscribe to /hmi/led/_motors or, better, /wheel_status.
+  how_it_could_be_faked: Not a control input; spoofable display only.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/leds.cpp#L43
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/leds.cpp#L48
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L415
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L418
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L325
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/include/turtlebot4_node/turtlebot4.hpp#L65
+  version: turtlebot4 2.1.1
+  track: stack
+- id: T11
+  name: Wheel enable state (e-stop effect) as consumed by TB4 node
+  layer: Create 3 -> republisher -> turtlebot4_node
+  source: Create 3 firmware /wheel_status relayed by create3_republisher
+  interface: topic
+  ros_name: /wheel_status
+  message_type: irobot_create_msgs/msg/WheelStatus (wheels_enabled, current/pwm)
+  rate_hz: UNKNOWN at TB4 layer (firmware; Create 3 track)
+  qos: SensorDataQoS subscription
+  mapping:
+  - condition: wheels_enabled false
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: wheels_enabled true after false
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - turtlebot4_node decides EStop ON/OFF from wheels_enabled_ (toggle); wheels can also be disabled by firmware (e.g. docked/kidnap)
+    -> cause of a safety_stop cannot be told from this topic alone; propose join with /function_calls (human EStop) and /dock_status.
+  reliability: Relayed by default (republisher.yaml); turtlebot4_node uses it to drive COMMS/MOTORS LEDs and a 30 s comms
+    timeout.
+  observe_passively: Subscribe best-effort to /wheel_status.
+  how_it_could_be_faked: Spoof publisher would flip the TB4 node's notion of e-stop (next EStop press would send the inverted
+    request).
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L26
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L143
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L406
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L523
+  version: turtlebot4_robot 2.0.1; turtlebot4 2.1.1
+  track: stack
+- id: T12
+  name: Dock status (republished) and power-saver side effect
+  layer: Create 3 -> republisher -> turtlebot4_node
+  source: Create 3 firmware /dock_status relayed by create3_republisher
+  interface: topic
+  ros_name: /dock_status
+  message_type: irobot_create_msgs/msg/DockStatus (is_docked, dock_visible)
+  rate_hz: UNKNOWN at TB4 layer (firmware; Create 3 track)
+  qos: SensorDataQoS
+  mapping:
+  - condition: is_docked true and no task open
+    state: idle
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: is_docked false->true during Dock action started by human button
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id>
+  - condition: is_docked false->true during Nav2/TurtleBot4Navigator dock() in a script
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2_script
+  uncovered_cases:
+  - 'Docked with camera and lidar powered off (power_saver: true default stops OAK-D and RPLIDAR when docked): the robot is
+    "powered and logging" but partly sensor-less; idle rule fits, but Nav2 cannot run -> propose x_power_saver flag.'
+  reliability: Relayed by default; drives power_saver behaviour in turtlebot4_node.
+  observe_passively: Subscribe best-effort to /dock_status.
+  how_it_could_be_faked: Spoof is_docked toggles sensor power via turtlebot4_node (stop_motor / oakd/stop_camera service calls).
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L13
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4.yaml#L8
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L76
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L390
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L390-L393
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L394
+  version: turtlebot4_robot 2.0.1; turtlebot4 2.1.1
+  track: stack
+- id: T13
+  name: Create 3 hazards, kidnap and stop status NOT republished by default
+  layer: create3_republisher config (turtlebot4_bringup)
+  source: republisher.yaml robot_publishers list (hazard_detection, kidnap_status, stop_status, cliff_intensity, ir_intensity,
+    ir_opcode, mouse, slip_status, wheel_ticks, wheel_vels are commented out)
+  interface: topic
+  ros_name: /hazard_detection, /kidnap_status, /stop_status (absent in robot namespace unless republisher.yaml is edited;
+    present only under /_do_not_use/)
+  message_type: irobot_create_msgs/msg/HazardDetectionVector, KidnapStatus, StopStatus
+  rate_hz: n/a (not relayed)
+  qos: n/a
+  mapping:
+  - condition: Hazard (bump/cliff/wheel drop) observed only if republisher.yaml is edited to relay hazard_detection
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - 'An observer on the robot namespace cannot see firmware safety reflexes (bump, cliff, wheel-drop, kidnap) with the default
+    config: safety_stop intervals from reflexes become `unknown`/`ai`. Propose: integration note requires enabling hazard_detection,
+    kidnap_status and stop_status in republisher.yaml, or observing /_do_not_use/* directly from the Pi.'
+  reliability: Default config omits them; turtlebot4_diagnostics subscribes to hazard_detection and mouse and will report
+    stale/no data by default.
+  observe_passively: Edit republisher.yaml (robot-side change, so not strictly observe-only) or run the observer on the Pi
+    subscribing to /_do_not_use/hazard_detection.
+  how_it_could_be_faked: Leaving them disabled hides safety events from a namespace-level observer.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L12-L14
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L19
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L23
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_diagnostics/turtlebot4_diagnostics/diagnostics_updater.py#L87
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_diagnostics/turtlebot4_diagnostics/diagnostics_updater.py#L90
+  - https://github.com/turtlebot/turtlebot4-user-manual/blob/4455a75dde3f052b5abf615dade22bece84120b0/software/create3.md#L199
+  version: turtlebot4_robot 2.0.1
+  track: stack
+- id: T14
+  name: RViz goal / initial pose / clicked point (human hints to Nav2)
+  layer: turtlebot4_desktop (turtlebot4_viz navigation.rviz) on the user PC
+  source: 'rviz2 tools: nav2_rviz_plugins/GoalTool, rviz_default_plugins/SetInitialPose (topic initialpose), rviz_default_plugins/PublishPoint
+    (topic clicked_point)'
+  interface: topic
+  ros_name: '/initialpose, /clicked_point; GoalTool sends NavigateToPose action goals (Nav2 track) '
+  message_type: geometry_msgs/msg/PoseWithCovarianceStamped, geometry_msgs/msg/PointStamped
+  rate_hz: event-driven (one message per click)
+  qos: Reliable, Keep Last 5, Volatile
+  mapping:
+  - condition: Nav2 goal clicked (NavigateToPose goal from rviz2 node on remote PC)
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: hint
+    actor_id: human:<operator_id> device:rviz_pc
+  - condition: /initialpose published (localization correction)
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: hint
+    actor_id: human:<operator_id>
+  - condition: /clicked_point published (TurtleBot4Navigator.createPath uses initialpose, not clicked_point)
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: hint
+    actor_id: human:<operator_id>
+  uncovered_cases:
+  - 'A goal click defines the task, not a hint, if issued before task_start (Section 6.2 last sentence); the same topic serves
+    both roles -> propose: first goal after idle = task definition (task_start), subsequent goals inside an open task = hints.'
+  - /initialpose is a localisation correction, not an actuator command; it changes AI behaviour so it is a hint (6.2) but
+    it does not reflect human "work" on the robot; propose hint_as_event with dwell_s 0.
+  reliability: Only present when the user PC runs rviz2; messages originate off-robot (remote by registry).
+  observe_passively: Record /initialpose, /clicked_point and the Nav2 action goal topics (/navigate_to_pose/_action/* are
+    hidden topics; see Nav2 track).
+  how_it_could_be_faked: Any node can publish these topics; a script publishing goals looks like a human unless publisher
+    identity is captured.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4_desktop/blob/d831a5a3d2323d2db1ce79e5b909beecbeed3dcf/turtlebot4_viz/rviz/navigation.rviz#L723
+  - https://github.com/turtlebot/turtlebot4_desktop/blob/d831a5a3d2323d2db1ce79e5b909beecbeed3dcf/turtlebot4_viz/rviz/navigation.rviz#L732
+  - https://github.com/turtlebot/turtlebot4_desktop/blob/d831a5a3d2323d2db1ce79e5b909beecbeed3dcf/turtlebot4_viz/rviz/navigation.rviz#L733
+  - https://github.com/turtlebot/turtlebot4_desktop/blob/d831a5a3d2323d2db1ce79e5b909beecbeed3dcf/turtlebot4_viz/rviz/navigation.rviz#L740
+  - https://github.com/turtlebot/turtlebot4_desktop/blob/d831a5a3d2323d2db1ce79e5b909beecbeed3dcf/turtlebot4_viz/rviz/navigation.rviz#L741
+  - https://github.com/turtlebot/turtlebot4_desktop/blob/d831a5a3d2323d2db1ce79e5b909beecbeed3dcf/turtlebot4_viz/launch/view_navigation.launch.py#L51
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py#L63-L64
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py#L64
+  - https://turtlebot.github.io/turtlebot4-user-manual/tutorials/navigation.html
+  version: turtlebot4_desktop 2.0.1; turtlebot4 2.1.1
+  track: stack
+- id: T15
+  name: Create 3 motion actions called from TB4 layer (dock, undock, wall_follow, drive_distance, rotate_angle)
+  layer: turtlebot4_node / TurtleBot4Navigator / turtlebot4_tests -> create3_republisher -> Create 3
+  source: Action clients in turtlebot4_node (dock, undock, wall_follow, led_animation), turtlebot4_navigator.py (dock, undock),
+    ros_tests.py (drive_distance, rotate_angle, dock, undock)
+  interface: action
+  ros_name: /dock, /undock, /wall_follow, /drive_distance, /rotate_angle, /drive_arc, /navigate_to_position (all relayed per
+    republisher.yaml robot_actions)
+  message_type: irobot_create_msgs/action/Dock, Undock, WallFollow, DriveDistance, RotateAngle, DriveArc, NavigateToPosition
+  rate_hz: event-driven (goal/feedback/result)
+  qos: action default (services reliable; feedback/status per rcl_action defaults)
+  mapping:
+  - condition: drive_distance / rotate_angle goals from turtlebot4_tests ros_tests.py (fixed 0.25 m, pi/2, 4 repetitions)
+    state: scripted
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: script:turtlebot4_tests
+  - condition: dock/undock goal from TurtleBot4Navigator in a user script with no human in the loop
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:create3_dock
+  - condition: dock/undock goal from turtlebot4_node after a human button press
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id>
+  - condition: wall_follow goal (firmware reactive behaviour, 10 s) after human button
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id>
+  uncovered_cases:
+  - 'drive_distance/rotate_angle are open-loop-ish firmware motions parameterised by a script: `scripted` fits (fixed sequence)
+    although the firmware uses odometry feedback (limit checks allowed by 6.9).'
+  - Dock is autonomous (IR-guided) but mechanical/charging state, not "work"; whether docking time is active AI time is undefined
+    -> propose active `ai` if inside a task (e.g. patrol with recharge), `idle` between tasks after idle_threshold_s.
+  reliability: Action status is visible on hidden topics /<action>/_action/status (Nav2 track describes the same mechanism);
+    goal acceptance is logged by turtlebot4_node at INFO level only.
+  observe_passively: Subscribe to /dock/_action/status, /undock/_action/status, /wall_follow/_action/status, /drive_distance/_action/status,
+    /rotate_angle/_action/status (action_msgs/msg/GoalStatusArray) with `--include-hidden-topics`.
+  how_it_could_be_faked: A spoof action server is not possible while the republisher relays the real one on the same name
+    (two servers would conflict), but a hidden client can send goals from anywhere on the domain.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L43
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L45
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L48
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L49
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L50
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L158
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L160
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py#L68
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py#L69
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_tests/turtlebot4_tests/ros_tests.py#L404
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_tests/turtlebot4_tests/ros_tests.py#L405
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_tests/turtlebot4_tests/ros_tests.py#L407
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_tests/turtlebot4_tests/ros_tests.py#L408
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_tests/turtlebot4_tests/ros_tests.py#L419
+  version: turtlebot4_robot 2.0.1; turtlebot4 2.1.1
+  track: stack
+- id: T16
+  name: E-stop and power services (TB4 layer clients)
+  layer: turtlebot4_node -> create3_republisher -> Create 3
+  source: turtlebot4_node service clients e_stop (irobot_create_msgs/srv/EStop) and robot_power (RobotPower); relayed per
+    republisher.yaml robot_services
+  interface: service
+  ros_name: /e_stop, /robot_power
+  message_type: irobot_create_msgs/srv/EStop (bool e_stop_on), irobot_create_msgs/srv/RobotPower
+  rate_hz: event-driven
+  qos: services default reliable
+  mapping:
+  - condition: e_stop request e_stop_on=true
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: e_stop request e_stop_on=false
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: robot_power request (power off; also automatic after 60 s at <=12% battery when undocked)
+    state: idle
+    reason: null
+    scope: whole_robot
+    event_type: session_end
+    actor_id: null
+  uncovered_cases:
+  - 'Service calls are not observable as topics: a passive observer cannot see the request; only the effect on /wheel_status
+    (T11) and the announcement on /function_calls (T6) are visible. Propose: log safety_stop from wheel_status, attribute
+    cause from function_calls within 1 s.'
+  - Automatic low-battery power-off is a machine-initiated session end, not a human action; propose session_end with x_cause=low_battery.
+  reliability: There is no hardware emergency-stop button on the TurtleBot 4 (manual hardware pages list only Create 3 buttons,
+    user buttons, display, LEDs); "EStop" is a software service that cuts motor power in firmware.
+  observe_passively: Not directly (service); infer from /wheel_status and /function_calls.
+  how_it_could_be_faked: Any client can call /e_stop; calling it with e_stop_on=false while turtlebot4_node believes wheels
+    disabled breaks the toggle logic.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L37
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L39
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L164
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L165
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L351-L354
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L354-L357
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/include/turtlebot4_node/turtlebot4.hpp#L68
+  - https://github.com/turtlebot/turtlebot4-user-manual/blob/4455a75dde3f052b5abf615dade22bece84120b0/overview/features.md#L175
+  - https://github.com/turtlebot/turtlebot4-user-manual/blob/4455a75dde3f052b5abf615dade22bece84120b0/software/create3.md#L154
+  version: turtlebot4 2.1.1; turtlebot4_robot 2.0.1
+  track: stack
+- id: T17
+  name: Odometry and TF (motion ground truth for heartbeat/distance)
+  layer: Create 3 -> republisher; robot_state_publisher
+  source: Create 3 /odom, /tf, /tf_static relayed by create3_republisher; robot_state_publisher publishes TB4 link TFs
+  interface: topic
+  ros_name: /odom, /tf, /tf_static
+  message_type: nav_msgs/msg/Odometry, tf2_msgs/msg/TFMessage
+  rate_hz: UNKNOWN at TB4 layer (firmware; Create 3 track)
+  qos: 'odom: SensorDataQoS in consumers (nav2 velocity_smoother odom_topic "odom")'
+  mapping:
+  - condition: cumulative odometric distance
+    state: idle
+    reason: null
+    scope: base
+    event_type: heartbeat
+    actor_id: null
+  uncovered_cases:
+  - Odometry shows motion, not who commanded it; use for distance_m on heartbeats and to detect motion with no observed /cmd_vel
+    (hidden control path -> `unknown`).
+  reliability: Relayed by default.
+  observe_passively: Subscribe best-effort; integrate twist/pose for distance_m; raise `unknown` when |v|>0 with no /cmd_vel
+    within gap_tolerance_s.
+  how_it_could_be_faked: Spoofing odom does not move the robot; a hidden /cmd_vel publisher is detected exactly by this check.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L21
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L24
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L25
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_description/launch/robot_description.launch.py#L51
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L289
+  version: turtlebot4_robot 2.0.1; turtlebot4 2.1.1
+  track: stack
+- id: T18
+  name: Battery state (power-saver and auto power-off trigger)
+  layer: Create 3 -> republisher -> turtlebot4_node
+  source: Create 3 /battery_state relayed by create3_republisher
+  interface: topic
+  ros_name: /battery_state
+  message_type: sensor_msgs/msg/BatteryState
+  rate_hz: UNKNOWN at TB4 layer (firmware; Create 3 track)
+  qos: SensorDataQoS
+  mapping:
+  - condition: percentage <= 0.12 and not docked for 60 s -> robot_power (power off)
+    state: idle
+    reason: null
+    scope: whole_robot
+    event_type: session_end
+    actor_id: null
+  uncovered_cases:
+  - 'Machine-initiated shutdown: see T16.'
+  reliability: Relayed by default.
+  observe_passively: Subscribe best-effort.
+  how_it_could_be_faked: Spoofed low battery would power the robot off via turtlebot4_node (denial of service, not a control-attribution
+    fake).
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/republisher.yaml#L11
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L133-L134
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L351-L354
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L354
+  version: turtlebot4_robot 2.0.1; turtlebot4 2.1.1
+  track: stack
+- id: T19
+  name: Diagnostics aggregate
+  layer: turtlebot4_diagnostics (enabled when TURTLEBOT4_DIAGNOSTICS=1, the default)
+  source: diagnostic_aggregator aggregator_node + turtlebot4_diagnostics diagnostics_updater
+  interface: topic
+  ros_name: /diagnostics, /diagnostics_agg, /diagnostics_toplevel_state
+  message_type: diagnostic_msgs/msg/DiagnosticArray, DiagnosticStatus
+  rate_hz: 'diagnostic_updater default 1 Hz (UNKNOWN: not set in TB4 code)'
+  qos: default
+  mapping:
+  - condition: Wheels / Dock / Hazards analyzer status (contains wheels_enabled, is_docked, hazard list)
+    state: unknown
+    reason: null
+    scope: base
+    event_type: supervision
+    actor_id: null
+  uncovered_cases:
+  - Diagnostics summarise, they do not attribute control; the hazards analyzer depends on /hazard_detection which is not republished
+    by default (T13) so it will show stale.
+  reliability: Can be disabled by setting TURTLEBOT4_DIAGNOSTICS=0 in /etc/turtlebot4/setup.bash (manual recommends this under
+    CPU/bandwidth pressure).
+  observe_passively: Subscribe to /diagnostics_agg.
+  how_it_could_be_faked: Not a control input.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/launch/standard.launch.py#L35
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/launch/standard.launch.py#L107
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_diagnostics/launch/diagnostics.launch.py#L41
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_diagnostics/launch/diagnostics.launch.py#L48-L51
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_diagnostics/config/diagnostics.yaml#L12
+  - https://github.com/turtlebot/turtlebot4_setup/blob/5fe58657aeff57d28cb2cfb4f0c6cc6c62a4b96c/etc/turtlebot4/setup.bash#L7
+  - https://github.com/turtlebot/turtlebot4-user-manual/blob/4455a75dde3f052b5abf615dade22bece84120b0/troubleshooting/diagnostics.md#L48
+  version: turtlebot4_robot 2.0.1; turtlebot4_setup 2.0.3
+  track: stack
+- id: T20
+  name: Gazebo GUI Teleop plugin (simulation only)
+  layer: turtlebot4_simulator (turtlebot4_gz_bringup gui.config)
+  source: gz-sim GUI plugin "Teleop" publishing gz topic /cmd_vel; bridged by create3_ros_gz_bridge cmd_vel_bridge to ROS
+    <ns>/cmd_vel as TwistStamped
+  interface: gui
+  ros_name: 'gz: /cmd_vel -> ROS /cmd_vel (TwistStamped)'
+  message_type: gz.msgs.Twist -> geometry_msgs/msg/TwistStamped
+  rate_hz: UNKNOWN (gz Teleop plugin publishes on key/button events; not documented in TB4 sources)
+  qos: ros_gz_bridge default
+  mapping:
+  - condition: Teleop plugin keys/buttons used while sim runs
+    state: human_remote
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id> device:gz_gui
+  uncovered_cases:
+  - The bridge node (cmd_vel_bridge) is the DDS publisher, so publisher identity on ROS /cmd_vel shows the bridge, not the
+    GUI; Nav2 and GUI teleop are both visible on /cmd_vel with different publishers (collision_monitor vs cmd_vel_bridge).
+  - 'Sim-time: all stamps are /clock based; `ts` must be the recorder wall clock with x_src_clock=sim.'
+  reliability: Only in simulation; the sim Create 3 motion_control_node subscribes /cmd_vel with SensorDataQoS (best effort).
+  observe_passively: Record /cmd_vel and note publisher node name cmd_vel_bridge; also record gz topic via `gz topic -e -t
+    /cmd_vel` if needed.
+  how_it_could_be_faked: Same as T1.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4_simulator/blob/b7d0f3b973258481f6cd8137bef9240fb567f566/turtlebot4_gz_bringup/gui/standard/gui.config#L117
+  - https://github.com/turtlebot/turtlebot4_simulator/blob/b7d0f3b973258481f6cd8137bef9240fb567f566/turtlebot4_gz_bringup/gui/standard/gui.config#L118
+  - https://github.com/iRobotEducation/create3_sim/blob/6c305843afcfe094bf8eb2a0c6997f531e526b9d/irobot_create_gz/irobot_create_gz_bringup/launch/create3_ros_gz_bridge.launch.py#L60
+  - https://github.com/iRobotEducation/create3_sim/blob/6c305843afcfe094bf8eb2a0c6997f531e526b9d/irobot_create_gz/irobot_create_gz_bringup/launch/create3_ros_gz_bridge.launch.py#L66
+  - https://github.com/iRobotEducation/create3_sim/blob/6c305843afcfe094bf8eb2a0c6997f531e526b9d/irobot_create_common/irobot_create_nodes/src/motion_control_node.cpp#L115
+  - https://github.com/turtlebot/turtlebot4_simulator/blob/b7d0f3b973258481f6cd8137bef9240fb567f566/turtlebot4_gz_bringup/launch/sim.launch.py#L84
+  - https://github.com/turtlebot/turtlebot4_simulator/blob/b7d0f3b973258481f6cd8137bef9240fb567f566/turtlebot4_gz_bringup/launch/sim.launch.py#L105
+  version: turtlebot4_simulator 2.0.2; create3_sim 3.0.4
+  track: stack
+- id: T21
+  name: Simulated HMI buttons (Turtlebot4Hmi GUI plugin)
+  layer: turtlebot4_simulator (turtlebot4_gz_gui_plugins + turtlebot4_gz_toolbox hmi_node)
+  source: Turtlebot4Hmi gz GUI plugin publishes gz Int32 on <ns>/hmi/buttons and <ns>/create3_buttons; ros_gz_bridge maps
+    to ROS hmi/buttons/_set; hmi_node republishes turtlebot4_msgs/UserButton on hmi/buttons
+  interface: gui
+  ros_name: /hmi/buttons/_set (Int32) -> /hmi/buttons (UserButton); gz /create3_buttons
+  message_type: std_msgs/msg/Int32, turtlebot4_msgs/msg/UserButton
+  rate_hz: event-driven
+  qos: UNKNOWN
+  mapping:
+  - condition: GUI button press mapped as in T8 (menu) or T6 (function)
+    state: human_remote
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<operator_id> device:gz_gui
+  uncovered_cases:
+  - Standard model only in sim (hmi_node launched when model==standard).
+  reliability: Simulation only.
+  observe_passively: Record /hmi/buttons and /function_calls.
+  how_it_could_be_faked: n/a (sim).
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4_simulator/blob/b7d0f3b973258481f6cd8137bef9240fb567f566/turtlebot4_gz_gui_plugins/Turtlebot4Hmi/Turtlebot4Hmi.cc#L123
+  - https://github.com/turtlebot/turtlebot4_simulator/blob/b7d0f3b973258481f6cd8137bef9240fb567f566/turtlebot4_gz_gui_plugins/Turtlebot4Hmi/Turtlebot4Hmi.cc#L124
+  - https://github.com/turtlebot/turtlebot4_simulator/blob/b7d0f3b973258481f6cd8137bef9240fb567f566/turtlebot4_gz_bringup/launch/ros_gz_bridge.launch.py#L132
+  - https://github.com/turtlebot/turtlebot4_simulator/blob/b7d0f3b973258481f6cd8137bef9240fb567f566/turtlebot4_gz_bringup/launch/ros_gz_bridge.launch.py#L138
+  - https://github.com/turtlebot/turtlebot4_simulator/blob/b7d0f3b973258481f6cd8137bef9240fb567f566/turtlebot4_gz_toolbox/src/hmi_node.cpp#L36
+  - https://github.com/turtlebot/turtlebot4_simulator/blob/b7d0f3b973258481f6cd8137bef9240fb567f566/turtlebot4_gz_toolbox/src/hmi_node.cpp#L41
+  - https://github.com/turtlebot/turtlebot4_simulator/blob/b7d0f3b973258481f6cd8137bef9240fb567f566/turtlebot4_gz_bringup/launch/turtlebot4_nodes.launch.py#L63
+  version: turtlebot4_simulator 2.0.2
+  track: stack
+- id: T22
+  name: Robot IP heartbeat
+  layer: turtlebot4_node
+  source: turtlebot4_node wifi timer
+  interface: topic
+  ros_name: /ip
+  message_type: std_msgs/msg/String
+  rate_hz: 0.2
+  qos: KeepLast(10)
+  mapping:
+  - condition: message present every 5 s
+    state: unknown
+    reason: null
+    scope: whole_robot
+    event_type: heartbeat
+    actor_id: null
+  uncovered_cases: []
+  reliability: Liveness of turtlebot4_node and Wi-Fi interface (wlan0 by default); UNKNOWN_IP when interface down.
+  observe_passively: Subscribe to /ip.
+  how_it_could_be_faked: Spoofable but harmless.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L149
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L149-L150
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/src/turtlebot4.cpp#L298-L300
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_node/include/turtlebot4_node/turtlebot4.hpp#L69
+  - https://github.com/turtlebot/turtlebot4_robot/blob/28e115f86930bb3273f1a1aa4738dbd8747513f0/turtlebot4_bringup/config/turtlebot4.yaml#L4
+  version: turtlebot4 2.1.1
+  track: stack
+- id: N1
+  name: NavigateToPose action goal status
+  layer: task (bt_navigator)
+  source: nav2_bt_navigator/bt_navigator (nav2_behavior_tree BtActionServer)
+  interface: action
+  ros_name: /navigate_to_pose/_action/status
+  message_type: 'action_msgs/msg/GoalStatusArray (status: 1 ACCEPTED, 2 EXECUTING, 3 CANCELING, 4 SUCCEEDED, 5 CANCELED, 6
+    ABORTED)'
+  rate_hz: event-driven (published on every goal status change)
+  qos: 'rcl_action status default: KeepLast(1), RELIABLE, TRANSIENT_LOCAL'
+  mapping:
+  - condition: status 2 EXECUTING for a goal on this server
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2_bt_navigator
+  - condition: status 4 SUCCEEDED (and the Nav2 goal is the registered task)
+    state: ai
+    reason: null
+    scope: base
+    event_type: task_end
+    actor_id: ai:nav2_bt_navigator
+    note: outcome=success
+  - condition: status 6 ABORTED after RecoveryNode exhausted 6 retries or non-recoverable error_code
+    state: ai
+    reason: null
+    scope: base
+    event_type: task_end
+    actor_id: ai:nav2_bt_navigator
+    note: outcome=failure
+  - condition: status 3 CANCELING -> 5 CANCELED by a human client (RViz Cancel, BasicNavigator.cancelTask)
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<device_id> (device registry)
+  - condition: no goal EXECUTING, bt_navigator ACTIVE, no task open for >= idle_threshold_s
+    state: idle
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - 'Status alone does not identify who sent the goal (RViz human vs. autonomous mission script); the action send_goal request
+    is a service call that a passive topic observer cannot see. Proposed: treat the set of action clients on /navigate_to_pose/_action/send_goal
+    seen in the ROS graph as the actor registry; if a declared human GUI node (e.g. rviz2) is the only client, attribute goals
+    to it.'
+  - CANCELED by an autonomous supervisor (e.g. waypoint_follower cancels navigate_to_pose on its own failure) is not human_initiated;
+    the status topic cannot tell the two apart.
+  reliability: 'Reliable + transient_local: a late-joining observer receives the last GoalStatusArray. Terminal statuses are
+    kept for action_server_result_timeout = 900 s (nav2.yaml:10). Server inactive (lifecycle) -> no status published.'
+  observe_passively: Subscribe with reliable/transient_local QoS; track goal_id -> status transitions; EXECUTING span = ai
+    span on scope base.
+  how_it_could_be_faked: Any node can publish on the status topic (plain topic, no authentication); a BT that never ticks
+    FollowPath still reports EXECUTING; running a second bt_navigator under a namespace.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behavior_tree/include/nav2_behavior_tree/bt_action_server_impl.hpp#L150-L160
+  - https://github.com/ros2/rcl_interfaces/blob/7aa3caf43377ea6ad615bc1040832e2c7566bfbe/action_msgs/msg/GoalStatus.msg
+  - https://github.com/ros2/rcl/blob/18d96c9c2b98e616324ae9a2c7701dd0b0886ff0/rcl_action/include/rcl_action/default_qos.h#L26-L37
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L10-L13
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N2
+  name: NavigateThroughPoses action goal status
+  layer: task (bt_navigator)
+  source: nav2_bt_navigator (NavigateThroughPosesNavigator plugin)
+  interface: action
+  ros_name: /navigate_through_poses/_action/status
+  message_type: action_msgs/msg/GoalStatusArray
+  rate_hz: event-driven
+  qos: KeepLast(1), RELIABLE, TRANSIENT_LOCAL (rcl_action default)
+  mapping:
+  - condition: status 2 EXECUTING
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2_bt_navigator
+  - condition: status 4 SUCCEEDED
+    state: ai
+    reason: null
+    scope: base
+    event_type: task_end
+    actor_id: ai:nav2_bt_navigator
+    note: outcome=success
+  - condition: status 6 ABORTED
+    state: ai
+    reason: null
+    scope: base
+    event_type: task_end
+    actor_id: ai:nav2_bt_navigator
+    note: outcome=failure
+  - condition: status 5 CANCELED by human client
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<device_id>
+  uncovered_cases:
+  - Same actor-identity gap as N1.
+  reliability: As N1.
+  observe_passively: As N1.
+  how_it_could_be_faked: As N1.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bt_navigator/src/navigators/navigate_through_poses.cpp#L71-L80
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L11-L15
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N3
+  name: FollowWaypoints action goal status
+  layer: task (waypoint_follower -> navigate_to_pose)
+  source: nav2_waypoint_follower
+  interface: action
+  ros_name: '/follow_waypoints/_action/status (feedback: /follow_waypoints/_action/feedback current_waypoint)'
+  message_type: action_msgs/msg/GoalStatusArray; nav2_msgs/action/FollowWaypoints
+  rate_hz: event-driven; internal loop_rate 20 Hz (nav2.yaml:270)
+  qos: KeepLast(1), RELIABLE, TRANSIENT_LOCAL
+  mapping:
+  - condition: EXECUTING (including the 200 ms WaitAtWaypoint pause, nav2.yaml:277)
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2_bt_navigator
+  - condition: SUCCEEDED
+    state: ai
+    reason: null
+    scope: base
+    event_type: task_end
+    actor_id: ai:nav2_bt_navigator
+    note: outcome=success
+  - condition: ABORTED
+    state: ai
+    reason: null
+    scope: base
+    event_type: task_end
+    actor_id: ai:nav2_bt_navigator
+    note: outcome=failure
+  uncovered_cases:
+  - 'stop_on_failure: false (nav2.yaml:271) means a missed waypoint does not abort the task; the taxonomy has no per-sub-goal
+    outcome, so missed_waypoints in the result must be reported as x_ fields or the whole task as success with a note.'
+  reliability: As N1; the inner navigate_to_pose goals also appear on N1, so an observer must not double count.
+  observe_passively: Subscribe to status; use N1 for motion spans.
+  how_it_could_be_faked: As N1.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_waypoint_follower/src/waypoint_follower.cpp#L79-L90
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L267-L277
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N4
+  name: Behavior tree status-change log
+  layer: task (BT ticks)
+  source: nav2_behavior_tree RosTopicLogger on bt_navigator_navigate_to_pose_rclcpp_node / bt_navigator_navigate_through_poses_rclcpp_node
+  interface: topic
+  ros_name: /behavior_tree_log
+  message_type: 'nav2_msgs/msg/BehaviorTreeLog {timestamp, event_log[]: BehaviorTreeStatusChange {timestamp,node_name,uid,previous_status,current_status}}'
+  rate_hz: event-driven; flushed once per BT loop (bt_loop_duration 10 ms, nav2.yaml:7) only when changes occurred
+  qos: 'rclcpp::QoS(10): KeepLast(10), RELIABLE, VOLATILE'
+  mapping:
+  - condition: FollowPath or ComputePathToPose RUNNING
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2_bt_navigator
+  - condition: Spin / BackUp / Wait / ClearEntireCostmap RUNNING (recovery subtree)
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2_bt_navigator
+    note: recovery is the controller reacting to sensing; count as quality signal x_recovery
+  - condition: GoalUpdated SUCCESS during a running goal (goal replaced by preemption)
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<device_id>
+    note: only if the new goal came from a declared human device; see N1 uncovered
+  - condition: NavigateRecovery FAILURE (root)
+    state: ai
+    reason: null
+    scope: base
+    event_type: task_end
+    actor_id: ai:nav2_bt_navigator
+    note: outcome=failure
+  uncovered_cases:
+  - Only published while a BT is executing; between goals there is no log, so idle vs unknown must come from N1/N13.
+  - 'VOLATILE: a late joiner misses earlier events and cannot reconstruct the node state; the per-event timestamp is BehaviorTree.CPP''s
+    own clock, not ROS time.'
+  - 'Nav2 has no ''ask for help'' BT node in the default trees: planner/controller failure with retries exhausted ends as
+    ABORTED, never as a help_request.'
+  reliability: Reliable but volatile; depth 10 messages. Lost if bt_navigator restarts. Node names in the default XML are
+    unique enough (NavigateRecovery, FollowPath, ComputePathToPose, RecoveryFallback, RecoveryActions, Spin, Wait, BackUp,
+    ClearLocalCostmap-Subtree, ClearGlobalCostmap-Subtree).
+  observe_passively: Subscribe; map node_name/current_status to spans; use uid to disambiguate.
+  how_it_could_be_faked: Any node can publish; a custom BT XML (goal.behavior_tree field) can omit recovery nodes or rename
+    them.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behavior_tree/include/nav2_behavior_tree/ros_topic_logger.hpp#L49-L51
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behavior_tree/include/nav2_behavior_tree/ros_topic_logger.hpp#L61-L76
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behavior_tree/include/nav2_behavior_tree/bt_action_server_impl.hpp#L315-L321
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_msgs/msg/BehaviorTreeStatusChange.msg
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bt_navigator/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N5
+  name: NavigateToPose feedback (recovery counter, navigation time)
+  layer: task (bt_navigator)
+  source: nav2_bt_navigator NavigateToPoseNavigator::onLoop
+  interface: action
+  ros_name: /navigate_to_pose/_action/feedback (also /navigate_through_poses/_action/feedback with number_of_poses_remaining)
+  message_type: nav2_msgs/action/NavigateToPose Feedback {current_pose, navigation_time, estimated_time_remaining, number_of_recoveries,
+    distance_remaining}
+  rate_hz: once per BT loop while a goal runs (bt_loop_duration 10 ms -> up to 100 Hz)
+  qos: 'rcl_action feedback default (KeepLast(10), RELIABLE, VOLATILE) [CLAIM: not read in rcl source]'
+  mapping:
+  - condition: number_of_recoveries increments
+    state: ai
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: ai:nav2_bt_navigator
+    note: none (quality metric x_number_of_recoveries; not an intervention)
+  uncovered_cases:
+  - 'number_of_recoveries is incremented on_success of Spin/BackUp/Wait/ClearEntireCostmap and AssistedTeleop BT nodes; an
+    AssistedTeleop success (a human drove) therefore also counts as a ''recovery'' in this field. Proposed: never derive human
+    time from number_of_recoveries; use N6.'
+  reliability: Reset to 0 at each new goal (navigate_to_pose.cpp:260); only emitted while executing.
+  observe_passively: Subscribe to feedback topic; record navigation_time and number_of_recoveries per goal_id.
+  how_it_could_be_faked: Publish fake feedback; custom BT without recovery nodes.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_msgs/action/NavigateToPose.action
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bt_navigator/src/navigators/navigate_to_pose.cpp#L187-L193
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bt_navigator/src/navigators/navigate_to_pose.cpp#L258-L260
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behavior_tree/include/nav2_behavior_tree/bt_action_node.hpp#L447-L453
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behavior_tree/plugins/action/assisted_teleop_action.cpp#L47
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N6
+  name: AssistedTeleop action status (shared control span)
+  layer: behavior_server
+  source: nav2_behaviors::AssistedTeleop (nav2.yaml:256-257)
+  interface: action
+  ros_name: /assisted_teleop/_action/status; feedback /assisted_teleop/_action/feedback current_teleop_duration
+  message_type: action_msgs/msg/GoalStatusArray; nav2_msgs/action/AssistedTeleop {goal time_allowance; result total_elapsed_time,
+    error_code NONE=0/UNKNOWN=730/TIMEOUT=731/TF_ERROR=732}
+  rate_hz: event-driven; behavior cycle 10 Hz (cycle_frequency nav2.yaml:246)
+  qos: KeepLast(1), RELIABLE, TRANSIENT_LOCAL
+  mapping:
+  - condition: 'EXECUTING: human twist on cmd_vel_teleop is collision-filtered and republished to cmd_vel (-> cmd_vel_nav)'
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<device_id> (device registry; undeclared -> human_remote per 6.10 but state stays shared)
+  - condition: SUCCEEDED after preempt_teleop, or ABORTED on TIMEOUT/TF_ERROR, or CANCELED
+    state: ai or idle per N1/N13
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2_bt_navigator
+  uncovered_cases:
+  - 'If no human message ever arrives on cmd_vel_teleop during EXECUTING the behavior publishes a zero twist each cycle: the
+    robot holds still under a human-opened session. Per 6.8 this is a hold caused by a human -> shared; flag x_no_teleop_input.'
+  - 'AssistedTeleop started by the BT as a recovery (not in TB4 default XML) would be ai_requested_help; started via BasicNavigator.assistedTeleop()
+    it is human_initiated. The status topic cannot distinguish these; propose: reason = ai_requested_help only if a BT log
+    shows AssistedTeleop node RUNNING.'
+  reliability: Transient-local status; TB4 ships the plugin but no default BT or launch file starts it, so it is normally
+    never EXECUTING.
+  observe_passively: Subscribe to status; EXECUTING span -> shared. Additionally subscribe to cmd_vel_teleop (N7) for human_actor_seconds.
+  how_it_could_be_faked: Human teleop published straight to cmd_vel (bypassing Nav2) is invisible here; see TB4 stack track
+    for the cmd_vel bridge.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behaviors/plugins/assisted_teleop.cpp#L43-L66
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behaviors/plugins/assisted_teleop.cpp#L83-L155
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behaviors/include/nav2_behaviors/timed_behavior.hpp#L154
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_msgs/action/AssistedTeleop.action
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L246-L257
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bringup/launch/navigation_launch.py#L181
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N7
+  name: Assisted-teleop human velocity input
+  layer: behavior_server input
+  source: nav2_behaviors::AssistedTeleop parameter cmd_vel_teleop (default 'cmd_vel_teleop')
+  interface: topic
+  ros_name: /cmd_vel_teleop
+  message_type: 'geometry_msgs/msg/TwistStamped (enable_stamped_cmd_vel: true) or Twist (TwistSubscriber accepts both)'
+  rate_hz: publisher-defined (teleop node)
+  qos: SystemDefaultsQoS subscription
+  mapping:
+  - condition: messages arriving while N6 EXECUTING
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: null
+    actor_id: human:<device_id>
+    note: none (actor evidence for the N6 span)
+  - condition: messages arriving while N6 not EXECUTING
+    state: no state change (ignored by Nav2)
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: null
+    note: none
+  uncovered_cases:
+  - The topic does not carry device identity; local vs remote must come from the device registry (6.10).
+  reliability: Only consumed while the behavior runs.
+  observe_passively: Subscribe; count non-zero twists for human_actor_seconds.
+  how_it_could_be_faked: A script can publish on it (then it is scripted, not human).
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behaviors/plugins/assisted_teleop.cpp#L43-L60
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L241
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N8
+  name: Assisted-teleop preempt (human ends shared span)
+  layer: behavior_server input
+  source: nav2_behaviors::AssistedTeleop
+  interface: topic
+  ros_name: /preempt_teleop
+  message_type: std_msgs/msg/Empty
+  rate_hz: event-driven
+  qos: SystemDefaultsQoS subscription
+  mapping:
+  - condition: message while N6 EXECUTING -> behavior publishes zero twist and SUCCEEDS
+    state: ai or idle per N1/N13
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2_bt_navigator
+  reliability: Discrete; no acknowledgement other than the N6 status change.
+  observe_passively: Subscribe; correlate with N6 SUCCEEDED.
+  how_it_could_be_faked: Any node may publish it.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behaviors/plugins/assisted_teleop.cpp#L62-L66
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behaviors/plugins/assisted_teleop.cpp#L98-L102
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behaviors/plugins/assisted_teleop.cpp#L177-L180
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  uncovered_cases: []
+  track: nav2
+- id: N9
+  name: Collision monitor state (software safety stop / approach)
+  layer: collision_monitor (last node before the base bridge)
+  source: nav2_collision_monitor::CollisionMonitor (nav2.yaml:294-324)
+  interface: topic
+  ros_name: /collision_monitor_state
+  message_type: 'nav2_msgs/msg/CollisionMonitorState {action_type: DO_NOTHING=0, STOP=1, SLOWDOWN=2, APPROACH=3, LIMIT=4;
+    polygon_name}'
+  rate_hz: 'event-driven: published only when the acting polygon_name changes (collision_monitor_node.cpp:510-513); process()
+    runs once per incoming cmd_vel_smoothed message'
+  qos: 'create_publisher(state_topic, 1): KeepLast(1), RELIABLE, VOLATILE'
+  mapping:
+  - condition: action_type STOP with polygon_name 'invalid source' (scan older than source_timeout 1.0 s, nav2.yaml:303) or
+      a stop polygon (none configured on TB4)
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: 'action_type APPROACH, polygon FootprintApproach (time_before_collision 1.2 s, nav2.yaml:313): velocity scaled,
+      motion continues'
+    state: ai
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: ai:nav2_bt_navigator
+    note: none (x_collision_monitor_approach quality flag)
+  - condition: action_type DO_NOTHING after a STOP
+    state: previous state (ai per N1)
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2_bt_navigator
+  - condition: SLOWDOWN / LIMIT
+    state: 'not configured on TB4; if configured: ai (speed-limited, still AI-commanded)'
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: ai:nav2_bt_navigator
+    note: none
+  uncovered_cases:
+  - 'APPROACH can scale the commanded velocity to exactly zero when collision_time is 0 (change_ratio = 0) without ever reporting
+    STOP: the robot is held by a safety function but the state topic says APPROACH. Proposed: treat APPROACH with cmd_vel
+    output == 0 for > gap_tolerance_s as safety_stop (reason safety) and flag x_approach_zero.'
+  - The 'invalid source' STOP stops the robot when the lidar is silent; this is a safety_stop that no human triggered and
+    that can persist indefinitely (no takeover) -> counted in safety_stops only, per 6.7.
+  - 'Change-only publication + VOLATILE: a late joiner does not know the current action_type until it changes. Proposed: observer
+    also reads /cmd_vel_smoothed vs /cmd_vel to infer the current action.'
+  reliability: Only emitted on change; nothing emitted when no cmd_vel_smoothed arrives (the monitor is message-driven, no
+    timer).
+  observe_passively: Subscribe (reliable, depth 1); compare /cmd_vel_smoothed and /cmd_vel to confirm.
+  how_it_could_be_faked: ~/toggle service (N24) disables the monitor silently (state topic not published while enabled_ is
+    false); publish fake state.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_collision_monitor/src/collision_monitor_node.cpp#L79-L81
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_collision_monitor/src/collision_monitor_node.cpp#L413-L449
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_collision_monitor/src/collision_monitor_node.cpp#L482-L516
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_collision_monitor/src/collision_monitor_node.cpp#L583-L607
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_collision_monitor/src/collision_monitor_node.cpp#L612-L658
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_msgs/msg/CollisionMonitorState.msg
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L294-L324
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N10
+  name: Raw Nav2 velocity command
+  layer: controller_server / behavior_server output
+  source: controller_server and behavior_server publish 'cmd_vel', remapped to cmd_vel_nav in navigation_launch.py:137,181
+  interface: topic
+  ros_name: /cmd_vel_nav
+  message_type: 'geometry_msgs/msg/TwistStamped (enable_stamped_cmd_vel: true, nav2.yaml:22,241)'
+  rate_hz: 20 Hz while FollowPath runs (controller_frequency nav2.yaml:23); 10 Hz during behaviors (cycle_frequency nav2.yaml:246);
+    single zero twist on goal end/cancel
+  qos: 'TwistPublisher(node,''cmd_vel'',1): KeepLast(1), RELIABLE, VOLATILE'
+  mapping:
+  - condition: messages present
+    state: ai
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: ai:nav2_bt_navigator
+    note: none (evidence that the AI controller is commanding)
+  - condition: single zero twist (publishZeroVelocity / stopRobot) at goal end
+    state: ai
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: ai:nav2_bt_navigator
+    note: none
+  uncovered_cases:
+  - During N6 EXECUTING the same topic carries the collision-filtered human twist; it cannot be distinguished from AI output
+    by content alone.
+  reliability: Volatile, depth 1; absence means no Nav2 controller is running (or lifecycle inactive).
+  observe_passively: Subscribe; use message cadence as heartbeat evidence.
+  how_it_could_be_faked: Any node can publish to /cmd_vel_nav and the smoother will forward it; a human teleop remapped onto
+    cmd_vel_nav looks like AI output.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bringup/launch/navigation_launch.py#L129-L138
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bringup/launch/navigation_launch.py#L172-L182
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_controller/src/controller_server.cpp#L227
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behaviors/include/nav2_behaviors/timed_behavior.hpp#L154
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_util/include/nav2_util/twist_publisher.hpp#L55-L75
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L22-L23
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N11
+  name: Smoothed velocity command and velocity-timeout zeroing
+  layer: velocity_smoother
+  source: nav2_velocity_smoother (input 'cmd_vel' remapped to cmd_vel_nav, launch:214-215; output cmd_vel_smoothed)
+  interface: topic
+  ros_name: /cmd_vel_smoothed
+  message_type: geometry_msgs/msg/TwistStamped
+  rate_hz: 20 Hz wall timer (smoothing_frequency nav2.yaml:282); stops publishing once zero reached after velocity_timeout
+    1.0 s (nav2.yaml:292)
+  qos: KeepLast(1), RELIABLE, VOLATILE
+  mapping:
+  - condition: non-zero output
+    state: ai
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: ai:nav2_bt_navigator
+    note: none
+  - condition: input silent > velocity_timeout -> smoother ramps to zero then stops publishing (stopped_ = true)
+    state: ai (if goal EXECUTING) / idle (if no task) / per 6.8 otherwise
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: ai:nav2_bt_navigator
+    note: none
+  uncovered_cases:
+  - 'The timeout zeroing is a watchdog (a safety function) but the robot is not ''stopped by safety'' in the taxonomy sense
+    unless a task is open and the AI has died; if bt_navigator still reports EXECUTING while cmd_vel_nav is silent, the cause
+    is unobservable -> unknown. Proposed: EXECUTING + no cmd_vel_nav for > gap_tolerance_s -> unknown with flag x_controller_silent.'
+  reliability: Timer-driven, so cadence itself is a liveness signal while commands flow; after the timeout nothing is published.
+  observe_passively: Subscribe; detect the transition to zero and the end of publication.
+  how_it_could_be_faked: Publish directly to /cmd_vel_smoothed (bypasses the smoother but not the collision monitor).
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_velocity_smoother/src/velocity_smoother.cpp#L155-L161
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_velocity_smoother/src/velocity_smoother.cpp#L184-L187
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_velocity_smoother/src/velocity_smoother.cpp#L312-L341
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bringup/launch/navigation_launch.py#L205-L216
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L279-L292
+  - https://docs.nav2.org/rolling/configuration_and_development/configuration_guide/core_servers/configuring_velocity_smoother/
+  - https://github.com/ros-navigation/docs.nav2.org/blob/74f751f161154075af6c2b4b9cd60bebf417cab8/docs/configuration_and_development/configuration_guide/core_servers/configuring_velocity_smoother.md#L58-L62
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N12
+  name: Final base velocity command (collision-monitor output)
+  layer: collision_monitor output -> TB4 cmd_vel bridge -> Create 3
+  source: nav2_collision_monitor cmd_vel_out_topic 'cmd_vel' (nav2.yaml:300); docking_server also publishes here directly
+    (docking_server.cpp:64, no remap in launch:228-238)
+  interface: topic
+  ros_name: /cmd_vel
+  message_type: geometry_msgs/msg/TwistStamped (header copied from the input message)
+  rate_hz: follows cmd_vel_smoothed (20 Hz); after a zero command, publication ceases after stop_pub_timeout 2.0 s (nav2.yaml:305);
+    docking_server 50 Hz (nav2.yaml:329) while docking
+  qos: KeepLast(1), RELIABLE, VOLATILE
+  mapping:
+  - condition: non-zero while N1/N2/N3 EXECUTING
+    state: ai
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: ai:nav2_bt_navigator
+    note: none
+  - condition: non-zero while N6 EXECUTING
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: null
+    actor_id: human:<device_id>
+    note: none
+  - condition: zero with N9 STOP
+    state: safety_stop
+    reason: safety
+    scope: base
+    event_type: null
+    actor_id: null
+    note: none
+  - condition: non-zero with no Nav2 goal executing and docking_server dock_robot/undock_robot EXECUTING
+    state: ai (or per N21/N22 if human-triggered)
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: ai:opennav_docking
+    note: none
+  uncovered_cases:
+  - '/cmd_vel is the merge point of Nav2 (via collision monitor), the Nav2 docking server (bypassing collision monitor and
+    smoother), and whatever the TB4 stack bridges from joystick/keyboard teleop (TB4 track). There is no mux or priority arbiter
+    in the Nav2 side, so simultaneous publishers interleave; the taxonomy''s ''one actor per scope'' cannot be asserted from
+    this topic alone. Proposed: attribute each message by publisher GID/node (rmw message_info) and declare simultaneous human+AI
+    messages within simultaneity_window_s as shared.'
+  reliability: Volatile; message header.stamp is the upstream command's stamp, not publish time.
+  observe_passively: Subscribe with message_info to read publisher GID; compare with /cmd_vel_smoothed.
+  how_it_could_be_faked: Any node can publish; teleop published here bypasses every Nav2 safety layer.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_collision_monitor/src/collision_monitor_node.cpp#L213-L235
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_collision_monitor/src/collision_monitor_node.cpp#L249-L253
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_docking/opennav_docking/src/docking_server.cpp#L64
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bringup/launch/navigation_launch.py#L228-L238
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L299-L305
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L329
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N13
+  name: Lifecycle transition events of every Nav2 server
+  layer: lifecycle
+  source: rcl_lifecycle (via rclcpp_lifecycle / nav2_util::LifecycleNode) for bt_navigator, controller_server, planner_server,
+    smoother_server, route_server, behavior_server, velocity_smoother, collision_monitor, waypoint_follower, docking_server,
+    map_server, amcl
+  interface: topic
+  ros_name: /<node>/transition_event (e.g. /bt_navigator/transition_event, /collision_monitor/transition_event)
+  message_type: lifecycle_msgs/msg/TransitionEvent {timestamp (uint64, never set by rcl_lifecycle -> 0), transition, start_state,
+    goal_state}; states UNCONFIGURED=1, INACTIVE=2, ACTIVE=3, FINALIZED=4
+  rate_hz: event-driven
+  qos: 'rcl_publisher_get_default_options(): rmw default (KeepLast(10), RELIABLE, VOLATILE) [CLAIM for the rmw default profile
+    values]'
+  mapping:
+  - condition: bt_navigator (or controller_server, velocity_smoother, collision_monitor) goal_state != ACTIVE while no task
+      is open
+    state: idle
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: bt_navigator or controller_server leaves ACTIVE while a Nav2 goal is EXECUTING (lifecycle manager PAUSE/RESET
+      or bond failure)
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: collision_monitor leaves ACTIVE while others run
+    state: no state change; flag x_safety_layer_inactive
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: null
+    note: none
+  uncovered_cases:
+  - 'A PAUSE issued by a human via manage_nodes (N14) during an open task is a hold caused by a human (6.8 -> shared, human_initiated),
+    but the transition_event does not say who requested it. Proposed: log human lifecycle commands from the device registry
+    side (the GUI/CLI used) and fall back to unknown.'
+  - 'Volatile: a late joiner does not learn the current lifecycle state from this topic; it must call /<node>/get_state (lifecycle_msgs/srv/GetState),
+    which is an active (non-passive) query.'
+  reliability: Reliable but volatile; the TransitionEvent.timestamp field is 0, so the observer must stamp on receipt.
+  observe_passively: Subscribe to every /<node>/transition_event; optionally query get_state once at start (active query,
+    declare it).
+  how_it_could_be_faked: Publish fake events; run nodes outside the lifecycle manager.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros2/rcl/blob/18d96c9c2b98e616324ae9a2c7701dd0b0886ff0/rcl_lifecycle/src/com_interface.c#L40
+  - https://github.com/ros2/rcl/blob/18d96c9c2b98e616324ae9a2c7701dd0b0886ff0/rcl_lifecycle/src/com_interface.c#L110-L113
+  - https://github.com/ros2/rcl/blob/18d96c9c2b98e616324ae9a2c7701dd0b0886ff0/rcl_lifecycle/src/com_interface.c#L325-L336
+  - https://github.com/ros2/rcl_interfaces/blob/7aa3caf43377ea6ad615bc1040832e2c7566bfbe/lifecycle_msgs/msg/TransitionEvent.msg
+  - https://github.com/ros2/rcl_interfaces/blob/7aa3caf43377ea6ad615bc1040832e2c7566bfbe/lifecycle_msgs/msg/State.msg
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bringup/launch/navigation_launch.py#L43-L54
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bringup/launch/localization_launch.py#L47
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N14
+  name: Lifecycle manager control services
+  layer: lifecycle
+  source: nav2_lifecycle_manager (lifecycle_manager_navigation, lifecycle_manager_localization; autostart true from launch
+    default, launch:97-101,245)
+  interface: service
+  ros_name: /lifecycle_manager_navigation/manage_nodes, /lifecycle_manager_navigation/is_active (and _localization equivalents)
+  message_type: 'nav2_msgs/srv/ManageLifecycleNodes {command: STARTUP=0, PAUSE=1, RESUME=2, RESET=3, SHUTDOWN=4, CONFIGURE=5,
+    CLEANUP=6}; std_srvs/srv/Trigger'
+  rate_hz: event-driven
+  qos: service (SystemDefaultsQoS)
+  mapping:
+  - condition: PAUSE/RESET/SHUTDOWN from a human while a task is open
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<device_id>
+    note: hold caused by human, 6.8
+  - condition: STARTUP/RESUME
+    state: idle or ai per N1
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  - condition: automatic RESET after bond timeout (4.0 s, lifecycle_manager.cpp:44,488-499)
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - Service calls are not visible to a passive topic subscriber (ROS 2 service introspection is off by default); only the
+    resulting N13 events are. The caller identity is lost.
+  reliability: Effects visible via N13.
+  observe_passively: Not passively observable; infer from N13.
+  how_it_could_be_faked: Any node can call the service.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_lifecycle_manager/src/lifecycle_manager.cpp#L42-L46
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_lifecycle_manager/src/lifecycle_manager.cpp#L64-L74
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_lifecycle_manager/src/lifecycle_manager.cpp#L488-L511
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_msgs/srv/ManageLifecycleNodes.srv
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bringup/launch/navigation_launch.py#L97-L101
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bringup/launch/navigation_launch.py#L239-L246
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_simple_commander/nav2_simple_commander/robot_navigator.py#L735-L773
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N15
+  name: Bond heartbeat between lifecycle manager and servers
+  layer: lifecycle
+  source: nav2_util::LifecycleNode createBond (topic 'bond', heartbeat period 0.1 s, timeout 4.0 s) / bondcpp
+  interface: topic
+  ros_name: /bond
+  message_type: 'bond/msg/Status [CLAIM: type from bondcpp, not read at a pinned version]'
+  rate_hz: 10 Hz per server (bond_heartbeat_period default 0.1)
+  qos: UNKNOWN (bondcpp default)
+  mapping:
+  - condition: heartbeat of bt_navigator/controller_server missing > 4.0 s -> lifecycle manager resets all servers
+    state: unknown
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: null
+  uncovered_cases: []
+  reliability: Liveness only; crash of a server shows here before N13.
+  observe_passively: Subscribe; per-node heartbeat gaps.
+  how_it_could_be_faked: Publish fake heartbeats.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_util/src/lifecycle_node.cpp#L42-L43
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_util/src/lifecycle_node.cpp#L73-L82
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_lifecycle_manager/src/lifecycle_manager.cpp#L44
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N16
+  name: Topic-based navigation goal (RViz 'SetGoal' tool / scripts)
+  layer: task input
+  source: nav2_bt_navigator NavigateToPoseNavigator goal_sub_ on 'goal_pose' -> self action client sends NavigateToPose goal
+  interface: topic
+  ros_name: /goal_pose
+  message_type: geometry_msgs/msg/PoseStamped
+  rate_hz: event-driven
+  qos: 'SystemDefaultsQoS subscription (RViz publisher: KeepLast(5), RELIABLE, VOLATILE per rviz config)'
+  mapping:
+  - condition: message before task_start (defines the task)
+    state: no state change; task definition (not a hint)
+    reason: null
+    scope: base
+    event_type: task_start
+    actor_id: null
+  - condition: message while a goal is EXECUTING (preempts the running goal with the same default BT)
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<device_id>
+    note: 'hint under hint_as_shared: human re-sets the goal while AI executes; returns to ai when consumed, i.e. when FollowPath
+      resumes on the new path'
+  - condition: message from an autonomous mission node
+    state: ai
+    reason: null
+    scope: base
+    event_type: task_start
+    actor_id: ai:nav2_bt_navigator
+  uncovered_cases:
+  - 'The taxonomy''s ''human sets goals while AI executes'' (shared) versus ''instruction before task_start is the task definition''
+    hinges on the task boundary; in Nav2 each goal is one action, so a re-goal is both a new Nav2 goal and a mid-task hint.
+    Proposed: the task registry decides: if the registered task is ''reach pose P'', a new /goal_pose during execution is
+    a hint (shared for hint_ttl_s or until GoalUpdated consumed); if the registered task is ''follow the operator''s goals
+    for N minutes'' it is the task definition and the state stays ai.'
+  - 'TB4''s model.rviz uses rviz_default_plugins/SetGoal on goal_pose, but navigation.rviz and robot.rviz use nav2_rviz_plugins/GoalTool,
+    which sends the action goal directly (no topic): the same human click is observable on /goal_pose in one RViz config and
+    invisible in the other.'
+  reliability: Discrete; only the RViz configs that use SetGoal publish here.
+  observe_passively: Subscribe; correlate with the new goal_id on N1 within ~100 ms.
+  how_it_could_be_faked: Any node can publish.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bt_navigator/src/navigators/navigate_to_pose.cpp#L49-L52
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bt_navigator/src/navigators/navigate_to_pose.cpp#L268-L274
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bt_navigator/src/navigators/navigate_to_pose.cpp#L196-L225
+  - https://github.com/turtlebot/turtlebot4_desktop/blob/d831a5a3d2323d2db1ce79e5b909beecbeed3dcf/turtlebot4_viz/rviz/model.rviz#L331-L337
+  - https://github.com/turtlebot/turtlebot4_desktop/blob/d831a5a3d2323d2db1ce79e5b909beecbeed3dcf/turtlebot4_viz/rviz/navigation.rviz#L741
+  - https://github.com/turtlebot/turtlebot4_desktop/blob/d831a5a3d2323d2db1ce79e5b909beecbeed3dcf/turtlebot4_viz/rviz/robot.rviz#L348
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_rviz_plugins/src/goal_tool.cpp#L44-L49
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_rviz_plugins/src/nav2_panel.cpp#L1299-L1326
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N17
+  name: Initial pose estimate (human corrects the robot's belief)
+  layer: localization input (amcl)
+  source: nav2_amcl initial_pose_sub_ 'initialpose'; also nav2_simple_commander setInitialPose publisher and TurtleBot4Navigator
+    createPath subscriber
+  interface: topic
+  ros_name: /initialpose
+  message_type: geometry_msgs/msg/PoseWithCovarianceStamped
+  rate_hz: event-driven
+  qos: SystemDefaultsQoS subscription; RViz publisher KeepLast(5) RELIABLE VOLATILE
+  mapping:
+  - condition: message while a task is open (AMCL particle reset)
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<device_id>
+    note: hint under hint_as_shared; return to ai after hint_ttl_s or when AMCL converges
+  - condition: message before task_start (required set-up step per TB4 manual)
+    state: no state change; set-up, not a hint
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: null
+    note: none
+  - condition: message published by BasicNavigator.setInitialPose() from a mission script
+    state: ai
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: ai:nav2_bt_navigator
+    note: none
+  uncovered_cases:
+  - 'A localization correction does not command actuators and does not change the goal; whether it is a ''hint'' (6.2: human
+    information that changes AI behaviour) is a judgement call. Proposed: treat as hint (it changes the planned path) with
+    hint_as_event and dwell_s = 0 by default, and report the sensitivity.'
+  - TurtleBot4Navigator.createPath() reuses /initialpose clicks as waypoint input (not a localization reset) while creating_path
+    is true; the same message has two meanings depending on client state.
+  reliability: Discrete, reliable; AMCL only consumes it when ACTIVE.
+  observe_passively: Subscribe; also watch /amcl_pose jump.
+  how_it_could_be_faked: Any node can publish.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_amcl/src/amcl_node.cpp#L1571-L1572
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_simple_commander/nav2_simple_commander/robot_navigator.py#L109-L110
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py#L63-L66
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py#L153-L156
+  - https://github.com/turtlebot/turtlebot4-user-manual/blob/4455a75dde3f052b5abf615dade22bece84120b0/tutorials/navigation.md#L220
+  - https://github.com/turtlebot/turtlebot4_desktop/blob/d831a5a3d2323d2db1ce79e5b909beecbeed3dcf/turtlebot4_viz/rviz/navigation.rviz#L723-L732
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N18
+  name: RViz Publish Point
+  layer: GUI input (not consumed by TB4 Nav2 config)
+  source: rviz_default_plugins/PublishPoint (TB4 rviz configs); consumed in Nav2 1.3.14 only by nav2_rviz_plugins route_tool
+  interface: topic
+  ros_name: /clicked_point
+  message_type: geometry_msgs/msg/PointStamped
+  rate_hz: event-driven
+  qos: RViz publisher KeepLast(5) RELIABLE VOLATILE
+  mapping:
+  - condition: message
+    state: no state change (no Nav2 subscriber in TB4 configuration)
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: null
+    note: none
+  uncovered_cases:
+  - User scripts commonly turn clicked points into waypoints; if such a script exists it is a human goal input and must be
+    declared in the device registry.
+  reliability: n/a
+  observe_passively: Subscribe for context only.
+  how_it_could_be_faked: n/a
+  tag: VERIFIED
+  source_url:
+  - https://github.com/turtlebot/turtlebot4_desktop/blob/d831a5a3d2323d2db1ce79e5b909beecbeed3dcf/turtlebot4_viz/rviz/navigation.rviz#L733
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_rviz_plugins/src/route_tool.cpp#L57-L58
+  - https://github.com/turtlebot/turtlebot4-user-manual/blob/4455a75dde3f052b5abf615dade22bece84120b0/tutorials/navigation.md#L227-L237
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N19
+  name: Speed limit input to the controller
+  layer: controller_server input
+  source: nav2_controller speed_limit_topic (default 'speed_limit'); normally fed by the costmap SpeedFilter (not configured
+    on TB4)
+  interface: topic
+  ros_name: /speed_limit
+  message_type: nav2_msgs/msg/SpeedLimit {header, percentage, speed_limit (0.0 = no limit)}
+  rate_hz: event-driven
+  qos: rclcpp::QoS(10) subscription
+  mapping:
+  - condition: message from a human/operator tool while a task is open
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<device_id>
+    note: hint under hint_as_shared
+  - condition: message from the speed filter (map-based)
+    state: ai
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: ai:nav2_bt_navigator
+    note: none
+  uncovered_cases:
+  - 'A speed limit does not command motion; like N17 its classification as hint is a judgement call. Proposed: hint_as_event
+    with dwell 0 and report sensitivity.'
+  reliability: Discrete; the limit persists until the next message.
+  observe_passively: Subscribe.
+  how_it_could_be_faked: Any node can publish.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_controller/src/controller_server.cpp#L63
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_controller/src/controller_server.cpp#L254-L257
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_controller/src/controller_server.cpp#L836-L840
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_msgs/msg/SpeedLimit.msg
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N20
+  name: BT controller / planner selector topics
+  layer: task (BT ControllerSelector / PlannerSelector nodes in the default XML)
+  source: 'nav2_behavior_tree controller_selector_node.cpp / planner_selector_node.cpp (topic_name from XML: controller_selector,
+    planner_selector)'
+  interface: topic
+  ros_name: /controller_selector, /planner_selector
+  message_type: std_msgs/msg/String
+  rate_hz: event-driven
+  qos: KeepLast(1), RELIABLE, TRANSIENT_LOCAL
+  mapping:
+  - condition: human publishes a plugin name while a task is open
+    state: shared
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<device_id>
+    note: hint
+  uncovered_cases:
+  - TB4 configures exactly one controller (FollowPath) and one planner (GridBased), so any other value makes the BT fail;
+    the topic is effectively unused but present.
+  reliability: 'Transient-local: a late joiner sees the last selection.'
+  observe_passively: Subscribe.
+  how_it_could_be_faked: Any node can publish.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behavior_tree/plugins/action/controller_selector_node.cpp#L41-L52
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bt_navigator/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml#L11-L12
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L30
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L222
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N21
+  name: Behavior action servers called directly (Spin / BackUp / DriveOnHeading / Wait)
+  layer: behavior_server
+  source: nav2_behaviors TimedBehavior action servers (behavior_plugins nav2.yaml:247)
+  interface: action
+  ros_name: /spin, /backup, /drive_on_heading, /wait (+ /_action/status, /_action/feedback)
+  message_type: nav2_msgs/action/Spin, BackUp, DriveOnHeading, Wait; action_msgs/msg/GoalStatusArray
+  rate_hz: event-driven; 10 Hz cycle (cycle_frequency nav2.yaml:246)
+  qos: KeepLast(1), RELIABLE, TRANSIENT_LOCAL (status)
+  mapping:
+  - condition: EXECUTING as a child of the BT recovery subtree (N4 shows Spin/BackUp/Wait RUNNING)
+    state: ai
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: ai:nav2_bt_navigator
+    note: none (recovery)
+  - condition: EXECUTING with no Nav2 goal running, triggered by a human (BasicNavigator.spin()/backup()/driveOnHeading())
+    state: human_remote (or human_local per device registry)
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<device_id>
+  - condition: Wait EXECUTING while a task is open, triggered by the BT
+    state: ai
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: ai:nav2_bt_navigator
+    note: none (AI chose to wait, 6.8 row 4)
+  uncovered_cases:
+  - 'A human-triggered motion primitive (fixed distance/angle, collision-checked) has live human command input only at the
+    trigger, then runs a fixed macro: 6.9 would call the motion scripted, 6.10/Section 2 would call it human_*. Proposed:
+    human_* for the whole primitive (the human chose the action and its parameters), with x_primitive = spin|backup|drive_on_heading.'
+  - 'Preemption of a behavior is not implemented: a second goal aborts the running one and stops the robot (timed_behavior.hpp:241-251).'
+  reliability: Transient-local status.
+  observe_passively: Subscribe to the four status topics; correlate with N1 to decide BT-triggered vs direct.
+  how_it_could_be_faked: As N1.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behaviors/include/nav2_behaviors/timed_behavior.hpp#L146-L149
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behaviors/include/nav2_behaviors/timed_behavior.hpp#L235-L288
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_behaviors/plugins/wait.cpp#L31-L50
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_simple_commander/nav2_simple_commander/robot_navigator.py#L269-L336
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L246-L257
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N22
+  name: Nav2 docking server actions (configured but without docks on TB4)
+  layer: docking_server (opennav_docking)
+  source: opennav_docking DockingServer; TB4 nav2.yaml:326-371 sets SimpleChargingDock with use_external_detection_pose true
+    and NO docks list (commented out, lines 359-365)
+  interface: action
+  ros_name: '/dock_robot, /undock_robot (+ /_action/status, /_action/feedback state: NAV_TO_STAGING_POSE=1, INITIAL_PERCEPTION=2,
+    CONTROLLING=3, WAIT_FOR_CHARGE=4, RETRY=5)'
+  message_type: nav2_msgs/action/DockRobot, nav2_msgs/action/UndockRobot
+  rate_hz: event-driven; controller 50 Hz (nav2.yaml:329)
+  qos: KeepLast(1), RELIABLE, TRANSIENT_LOCAL (status)
+  mapping:
+  - condition: EXECUTING triggered by a mission script
+    state: ai
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: ai:opennav_docking
+    note: none (or task if docking is a registered task)
+  - condition: EXECUTING triggered by a human (RViz Docking panel, BasicNavigator.dockRobotByPose)
+    state: human_remote/human_local per registry (same uncovered case as N21)
+    reason: human_initiated
+    scope: base
+    event_type: transition
+    actor_id: human:<device_id>
+  uncovered_cases:
+  - TB4's own navigator (TurtleBot4Navigator) docks with the Create 3 firmware actions /dock and /undock (irobot_create_msgs),
+    not with /dock_robot; dock_robot with use_dock_id would return DOCK_NOT_IN_DB=901 because no docks are configured. Which
+    path is in use must be declared per deployment (Create 3 track covers /dock).
+  - docking_server writes to /cmd_vel directly, bypassing velocity_smoother and collision_monitor (see N12).
+  reliability: Transient-local status.
+  observe_passively: Subscribe to status; also to /dock_status (Create 3) for the firmware path.
+  how_it_could_be_faked: As N1.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_docking/opennav_docking/src/docking_server.cpp#L74-L85
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_docking/opennav_docking/src/docking_server.cpp#L64
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_msgs/action/DockRobot.action
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L326-L371
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py#L29-L30
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py#L68-L69
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bringup/launch/navigation_launch.py#L228-L238
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N23
+  name: Internal task-server actions (FollowPath, ComputePathToPose, ComputePathThroughPoses, SmoothPath)
+  layer: controller_server / planner_server / smoother_server
+  source: nav2_controller 'follow_path'; nav2_planner 'compute_path_to_pose', 'compute_path_through_poses', service 'is_path_valid';
+    nav2_smoother 'smooth_path'
+  interface: action
+  ros_name: /follow_path/_action/status, /compute_path_to_pose/_action/status, /compute_path_through_poses/_action/status,
+    /smooth_path/_action/status; /is_path_valid (nav2_msgs/srv/IsPathValid); /plan (nav_msgs/Path)
+  message_type: nav2_msgs/action/FollowPath (error codes 100-107), ComputePathToPose (200-208); action_msgs/msg/GoalStatusArray
+  rate_hz: 'FollowPath: 20 Hz control loop (controller_frequency nav2.yaml:23); ComputePathToPose: 1 Hz replanning (RateController
+    hz=1.0 in the default XML)'
+  qos: KeepLast(1), RELIABLE, TRANSIENT_LOCAL (status)
+  mapping:
+  - condition: /follow_path EXECUTING
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:nav2_bt_navigator
+  - condition: '/follow_path ABORTED with FAILED_TO_MAKE_PROGRESS=105 (SimpleProgressChecker: 0.5 m in 10 s, nav2.yaml:34-35)
+      or NO_VALID_CONTROL=106'
+    state: ai
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: ai:nav2_bt_navigator
+    note: none (x_error_code; recovery follows)
+  - condition: /compute_path_to_pose ABORTED NO_VALID_PATH=208
+    state: ai
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: ai:nav2_bt_navigator
+    note: none (x_error_code)
+  uncovered_cases:
+  - 'BasicNavigator.followPath() lets a human/script send a hand-drawn path to /follow_path without bt_navigator: the controller
+    then tracks a human-authored path. Proposed: shared (human sets the path, AI executes) if the path came from a declared
+    human device; ai if from a planner.'
+  reliability: Transient-local status; /follow_path EXECUTING is the most direct 'AI is driving' signal on TB4.
+  observe_passively: Subscribe to status topics.
+  how_it_could_be_faked: As N1.
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_controller/src/controller_server.cpp#L240-L247
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_controller/src/controller_server.cpp#L502-L551
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_planner/src/planner_server.cpp#L164
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_planner/src/planner_server.cpp#L172
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_planner/src/planner_server.cpp#L201-L202
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_msgs/action/FollowPath.action
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_msgs/action/ComputePathToPose.action
+  - https://github.com/turtlebot/turtlebot4/blob/7fd29fb420e906f3aca4a904adb54b69b11c7c00/turtlebot4_navigation/config/nav2.yaml#L23-L40
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_simple_commander/nav2_simple_commander/robot_navigator.py#L358
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: N24
+  name: Collision monitor enable/disable toggle
+  layer: collision_monitor
+  source: nav2_collision_monitor service ~/toggle (ToggleCollisionMonitor BT node exists but is not in the default XML)
+  interface: service
+  ros_name: /collision_monitor/toggle
+  message_type: nav2_msgs/srv/Toggle {enable}
+  rate_hz: event-driven
+  qos: service
+  mapping:
+  - condition: enable=false
+    state: no state change; flag x_safety_layer_disabled (the software safety stop N9 can no longer occur)
+    reason: null
+    scope: base
+    event_type: null
+    actor_id: null
+    note: none
+  uncovered_cases:
+  - 'Service calls are invisible to a passive subscriber; while disabled the monitor forwards cmd_vel unmodified and publishes
+    no state. Proposed: the observer compares /cmd_vel_smoothed and /cmd_vel; identical streams with lidar silent (> source_timeout)
+    imply the monitor is disabled.'
+  reliability: n/a
+  observe_passively: Not directly; infer as described.
+  how_it_could_be_faked: n/a
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_collision_monitor/src/collision_monitor_node.cpp#L88-L90
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_collision_monitor/src/collision_monitor_node.cpp#L669-L677
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_collision_monitor/src/collision_monitor_node.cpp#L482-L485
+  version: Nav2 1.3.14 (navigation2 jazzy d5d768b) as configured by turtlebot4 2.1.1 (jazzy 7fd29fb)
+  track: nav2
+- id: E1
+  name: Marathon 2 per-second log field recovery_executed
+  layer: dataset / experiment log
+  source: IntelligentRoboticsLabs/marathon_ros2 logging node (paper §V.A)
+  interface: log
+  ros_name: n/a (CSV column recovery_executed)
+  message_type: CSV row {timestamp, distance, recovery_executed, vel_x, vel_theta}
+  rate_hz: 1
+  qos: n/a
+  mapping:
+  - condition: recovery_executed indicates a Nav2 recovery behaviour ran in that second
+    state: ai
+    reason: null
+    scope: base
+    event_type: heartbeat
+    actor_id: ai:nav2
+  uncovered_cases:
+  - Recoveries are AI time but are the only difficulty signal in the log; no field distinguishes human help, so human share
+    is undefined for this dataset
+  reliability: Self-reported by the navigation application once per second; no clock sync information; data files not found
+    in repository tree at commit b331bcf
+  observe_passively: Not applicable to live TB4; for Nav2 the same information is in NavigateToPose feedback number_of_recoveries
+  how_it_could_be_faked: Edit CSV; no hash chain
+  tag: CLAIM
+  source_url:
+  - https://arxiv.org/abs/2003.00368
+  - https://github.com/IntelligentRoboticsLabs/marathon_ros2/tree/b331bcfed4b94d2acf09cc13581a40751e9e0f87
+  version: paper arXiv 2003.00368v2; repo commit b331bcfed4b94d2acf09cc13581a40751e9e0f87
+  track: evidence
+- id: E2
+  name: HuRoN help-and-rescue remote teleoperation (SACSoN)
+  layer: dataset collection system
+  source: HuRoN data collection system (SACSoN paper §VI.B)
+  interface: log
+  ros_name: UNKNOWN (web teleop interface; not in released data)
+  message_type: UNKNOWN
+  rate_hz: event-driven
+  qos: n/a
+  mapping:
+  - condition: robot messages the operator for assistance when stuck
+    state: ai
+    reason: null
+    scope: base
+    event_type: help_request
+    actor_id: ai:huron_policy
+  - condition: operator teleoperates remotely to rescue the robot
+    state: human_remote
+    reason: ai_requested_help
+    scope: base
+    event_type: transition
+    actor_id: human:remote_operator
+  - condition: automatic backup manoeuvre after bumper contact
+    state: ai
+    reason: null
+    scope: base
+    event_type: transition
+    actor_id: ai:huron_recovery
+  uncovered_cases:
+  - Rescue events are documented in the paper but absent from lerobot/berkeley_gnm_sac_son features, so the dataset can only
+    be coded unknown for those intervals
+  reliability: Paper description only; counts/durations not reported
+  observe_passively: n/a (Roomba-base robot, ROS 1 era driver)
+  how_it_could_be_faked: n/a
+  tag: CLAIM
+  source_url:
+  - https://arxiv.org/abs/2306.01874
+  - https://huggingface.co/datasets/lerobot/berkeley_gnm_sac_son/resolve/main/meta/info.json
+  version: arXiv 2306.01874v3; LeRobot codebase_version v3.0, 2955 episodes
+  track: evidence
+- id: E3
+  name: SCAND joystick command stream (human demonstration label)
+  layer: dataset
+  source: SCAND (Spot and Jackal bags)
+  interface: topic
+  ros_name: joystick command topic in bag (name not verified)
+  message_type: UNKNOWN (joystick commands per paper)
+  rate_hz: UNKNOWN
+  qos: UNKNOWN
+  mapping:
+  - condition: entire dataset is human-teleoperated demonstration; demonstrator co-located but no device registry
+    state: human_remote
+    reason: human_initiated
+    scope: whole_robot
+    event_type: transition
+    actor_id: human:demonstrator
+  uncovered_cases:
+  - Section 6.10 forces human_remote for an undeclared device although the demonstrator is co-located; a dataset-level device
+    registry is proposed
+  reliability: 'Dataset design: 100% teleop by construction'
+  observe_passively: n/a (not TB4)
+  how_it_could_be_faked: n/a
+  tag: VERIFIED
+  source_url:
+  - https://arxiv.org/abs/2203.15041
+  version: arXiv 2203.15041v2
+  track: evidence
+- id: E4
+  name: Nav2 NavigateToPose feedback number_of_recoveries (measurement practice)
+  layer: Nav2 bt_navigator
+  source: nav2_bt_navigator / nav2_msgs
+  interface: action
+  ros_name: navigate_to_pose (feedback)
+  message_type: nav2_msgs/action/NavigateToPose feedback int16 number_of_recoveries
+  rate_hz: event-driven (feedback publish rate per BT loop)
+  qos: action default
+  mapping:
+  - condition: number_of_recoveries increments while goal active
+    state: ai
+    reason: null
+    scope: base
+    event_type: heartbeat
+    actor_id: ai:nav2
+  uncovered_cases:
+  - Recoveries vanish into ai time; proposed x_recovery annotation on heartbeat
+  reliability: Set directly from the navigator's recovery_count
+  observe_passively: Subscribe to /navigate_to_pose/_action/feedback (hidden action topic) read-only
+  how_it_could_be_faked: Custom BT without recovery nodes keeps the count at 0 regardless of difficulty
+  tag: VERIFIED
+  source_url:
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_msgs/action/NavigateToPose.action#L18
+  - https://github.com/ros-navigation/navigation2/blob/d5d768b7b38a05e7cfd2b6c693b786b402161bed/nav2_bt_navigator/src/navigators/navigate_to_pose.cpp#L189
+  version: navigation2 jazzy d5d768b7b38a05e7cfd2b6c693b786b402161bed (nav2_bringup 1.3.14)
+  track: evidence
+- id: E5
+  name: RoboVAST Navigation Dataset per-run success/failure label (simulated TB4)
+  layer: dataset (simulation)
+  source: ROBOVAST test framework, Gazebo TurtleBot 4 + Nav2
+  interface: log
+  ros_name: n/a (run metadata)
+  message_type: success/failure flag per run
+  rate_hz: event-driven (one per run)
+  qos: n/a
+  mapping:
+  - condition: run ends with goal reached within distance threshold
+    state: ai
+    reason: null
+    scope: base
+    event_type: task_end
+    actor_id: ai:nav2
+  - condition: run ends without reaching goal
+    state: ai
+    reason: null
+    scope: base
+    event_type: task_end
+    actor_id: ai:nav2
+  uncovered_cases:
+  - Outcome label only; no control-authority label, no human in loop (simulation)
+  reliability: Simulation; Zenodo record not opened
+  observe_passively: n/a
+  how_it_could_be_faked: n/a
+  tag: CLAIM
+  source_url:
+  - https://arxiv.org/abs/2605.29973
+  - https://doi.org/10.5281/zenodo.19146985
+  version: arXiv 2605.29973v2; Zenodo 10.5281/zenodo.19146985 (not opened)
+  track: evidence
+- id: E6
+  name: LeRobot GNM datasets next.done / next.reward (no control label)
+  layer: dataset
+  source: lerobot/berkeley_gnm_recon, _cory_hall, _sac_son
+  interface: log
+  ros_name: n/a (parquet columns)
+  message_type: 'features: observation.images.image, observation.state, action, timestamp, episode_index, frame_index, next.reward,
+    next.done, index, task_index'
+  rate_hz: 3 / 5 / 10 fps respectively
+  qos: n/a
+  mapping:
+  - condition: any frame (no human/autonomous label present)
+    state: unknown
+    reason: null
+    scope: whole_robot
+    event_type: transition
+    actor_id: null
+  uncovered_cases:
+  - Datasets carry no control-authority label; robot_type is 'unknown' in meta/info.json
+  reliability: Metadata read directly from HF
+  observe_passively: n/a
+  how_it_could_be_faked: n/a
+  tag: VERIFIED
+  source_url:
+  - https://huggingface.co/datasets/lerobot/berkeley_gnm_recon/resolve/main/meta/info.json
+  - https://huggingface.co/datasets/lerobot/berkeley_gnm_cory_hall/resolve/main/meta/info.json
+  - https://huggingface.co/datasets/lerobot/berkeley_gnm_sac_son/resolve/main/meta/info.json
+  version: LeRobot codebase_version v3.0 (11834 / 7331 / 2955 episodes)
+  track: evidence

@@ -1,0 +1,38 @@
+{
+  "start": "2026-11-03T10:00:00.000Z",
+  "end_offset_s": 130.0,
+  "log": [
+    {"t": 0.0, "type": "session_start", "initial_states": {"base": "unknown"}, "simulated": true},
+    {"t": 0.0, "type": "transition", "state": "idle", "reason": null, "actor_id": null, "x_docked": true},
+    {"t": 12.45, "type": "transition", "state": "shared", "reason": "human_initiated", "actor_id": "op_02", "device_id": "create3_button_2", "x_routine": "undock", "task_id": null},
+    {"t": 25.0, "type": "transition", "state": "human_remote", "reason": "planned", "actor_id": "op_01", "device_id": "rviz_pc_1", "plan_item_id": "initial_pose", "task_id": null},
+    {"t": 31.0, "type": "task_start", "task_id": "nav-a1b2c3d4e5f60718293a4b5c6d7e8f90", "task_definition_id": "nav_to_pose"},
+    {"t": 31.0, "type": "transition", "state": "ai", "reason": null, "actor_id": "ai:nav2", "device_id": "nav2", "task_id": "nav-a1b2c3d4e5f60718293a4b5c6d7e8f90"},
+    {"t": 52.6, "type": "transition", "state": "shared", "reason": "human_initiated", "actor_id": "op_01", "device_id": "teleop_kbd_pc_1", "x_contention": true, "x_attribution_inferred": true},
+    {"t": 54.1, "type": "transition", "state": "ai", "reason": null, "actor_id": "ai:nav2", "device_id": "nav2"},
+    {"t": 61.0, "type": "transition", "state": "safety_stop", "reason": "safety", "actor_id": null},
+    {"t": 62.5, "type": "transition", "state": "human_remote", "reason": "human_initiated", "actor_id": "op_01", "device_id": "teleop_kbd_pc_1", "x_attribution_inferred": true},
+    {"t": 70.4, "type": "transition", "state": "safety_stop", "reason": "safety", "actor_id": "op_02", "device_id": "create3_button_power", "x_trigger_kind": "human_button"},
+    {"t": 70.45, "type": "hint", "scope": "base", "actor_id": "op_01", "device_id": "rviz_pc_1", "x_kind": "cancel", "x_attribution_inferred": true, "task_id": "nav-a1b2c3d4e5f60718293a4b5c6d7e8f90"},
+    {"t": 70.5, "type": "task_end", "task_id": "nav-a1b2c3d4e5f60718293a4b5c6d7e8f90", "outcome": "aborted"},
+    {"t": 80.0, "type": "transition", "state": "unknown", "reason": null, "actor_id": null, "x_cause": "stop_released", "task_id": null},
+    {"t": 100.5, "type": "transition", "state": "idle", "reason": null, "actor_id": null, "x_docked": false},
+    {"t": 130.0, "type": "session_end"}
+  ],
+  "timeline": {
+    "observed_s": 130.0,
+    "active_s": 67.55,
+    "states_s": {"ai": 28.5, "human_local": 0.0, "human_remote": 13.9, "shared": 14.05, "scripted": 0.0, "safety_stop": 11.1, "idle": 41.95, "unknown": 20.5},
+    "interventions_whole_robot": 2,
+    "interventions_by_kind": {"shared": 1, "takeover": 1},
+    "hints": [{"in_episode": true}],
+    "safety_stops": {"whole_robot": 2, "human_triggered": 1, "automatic": 1, "joined_by_takeover": 1},
+    "tasks": [
+      {"task_id": "nav-a1b2c3d4e5f60718293a4b5c6d7e8f90", "task_definition_id": "nav_to_pose", "definition_known": true, "outcome": "aborted", "closed": true, "autonomous": false, "contains_unknown": false, "human_s": 9.4, "interventions_whole_robot": 2, "unplanned_reset_s": 12.55}
+    ],
+    "resets": {"planned_s": 6.0, "unplanned_s": 12.55},
+    "distinct_human_actors": 2,
+    "distance_m": 9.0,
+    "flag_codes": ["attribution_inferred"]
+  }
+}

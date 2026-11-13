@@ -1,0 +1,253 @@
+{"kind": "DockStatus", "t": -31.0, "is_docked": true}
+{"kind": "WheelStatus", "t": -31.0, "wheels_enabled": true}
+{"kind": "CollisionMonitorState", "t": -31.0, "action_type": 0}
+{"kind": "KidnapStatus", "t": -31.0, "is_kidnapped": false}
+{"kind": "ChainPublishers", "t": -31.0, "topic": "cmd_vel_nav", "publishers": [{"node": "/controller_server"}, {"node": "/behavior_server"}]}
+{"kind": "ChainPublishers", "t": -31.0, "topic": "cmd_vel_smoothed", "publishers": [{"node": "/velocity_smoother"}]}
+{"kind": "Odometry", "t": -31.0, "x": 0.0, "y": 0.0, "linear_speed": 0.0, "angular_speed": 0.0}
+{"kind": "ButtonEdge", "t": 12.3, "source": {"topic": "/interface_buttons/button_2"}, "pressed": true}
+{"kind": "ButtonEdge", "t": 12.38, "source": {"topic": "/interface_buttons/button_2"}, "pressed": false}
+{"kind": "FunctionCall", "t": 12.4, "name": "Undock"}
+{"kind": "ActionStatus", "t": 12.45, "action": "undock", "goals": [{"goal_id": "0f0e0d0c0b0a09080706050403020100", "status": 2}], "requesters": [{"node": "/turtlebot4_node"}]}
+{"kind": "Odometry", "t": 13.0, "x": -0.05, "y": 0.0, "linear_speed": -0.05, "angular_speed": 0.0}
+{"kind": "DockStatus", "t": 14.0, "is_docked": false}
+{"kind": "Odometry", "t": 14.0, "x": -0.1, "y": 0.0, "linear_speed": -0.05, "angular_speed": 0.0}
+{"kind": "Odometry", "t": 15.0, "x": -0.15, "y": 0.0, "linear_speed": -0.05, "angular_speed": 0.0}
+{"kind": "Odometry", "t": 16.0, "x": -0.2, "y": 0.0, "linear_speed": -0.05, "angular_speed": 0.0}
+{"kind": "Odometry", "t": 17.0, "x": -0.25, "y": 0.0, "linear_speed": -0.05, "angular_speed": 0.0}
+{"kind": "Odometry", "t": 18.0, "x": -0.3, "y": 0.0, "linear_speed": -0.05, "angular_speed": 0.0}
+{"kind": "Odometry", "t": 19.0, "x": -0.3, "y": 0.0, "linear_speed": 0.0, "angular_speed": 0.0}
+{"kind": "ActionStatus", "t": 19.0, "action": "undock", "goals": [{"goal_id": "0f0e0d0c0b0a09080706050403020100", "status": 4}], "requesters": [{"node": "/turtlebot4_node"}]}
+{"kind": "InitialPose", "t": 25.0, "source": {"node": "/rviz2"}}
+{"kind": "ActionStatus", "t": 31.0, "action": "navigate_to_pose", "goals": [{"goal_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90", "status": 2}], "requesters": [{"node": "/rviz2"}]}
+{"kind": "CmdVelSmoothed", "t": 31.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 31.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 32.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 32.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 32.0, "x": -0.05, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 32.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 32.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 33.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 33.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 33.0, "x": 0.2, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 33.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 33.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 34.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 34.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 34.0, "x": 0.45, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 34.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 34.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 35.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 35.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 35.0, "x": 0.7, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 35.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 35.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 36.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 36.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 36.0, "x": 0.95, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 36.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 36.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 37.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 37.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 37.0, "x": 1.2, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 37.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 37.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 38.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 38.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 38.0, "x": 1.45, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 38.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 38.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 39.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 39.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 39.0, "x": 1.7, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 39.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 39.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 40.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 40.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 40.0, "x": 1.95, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 40.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 40.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 41.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 41.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 41.0, "x": 2.2, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 41.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 41.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 42.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 42.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 42.0, "x": 2.45, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 42.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 42.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 43.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 43.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 43.0, "x": 2.7, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 43.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 43.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 44.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 44.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 44.0, "x": 2.95, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 44.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 44.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 45.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 45.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 45.0, "x": 3.2, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 45.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 45.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 46.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 46.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 46.0, "x": 3.45, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 46.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 46.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 47.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 47.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 47.0, "x": 3.7, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 47.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 47.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 48.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 48.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 48.0, "x": 3.95, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 48.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 48.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 49.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 49.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 49.0, "x": 4.2, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 49.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 49.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 50.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 50.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 50.0, "x": 4.45, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 50.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 50.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 51.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 51.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 51.0, "x": 4.7, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 51.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 51.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 52.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 52.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 52.0, "x": 4.95, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVel", "t": 52.3, "linear_x": 0.1, "linear_y": 0.0, "angular_z": 0.4, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 52.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 52.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 52.7, "linear_x": 0.1, "linear_y": 0.0, "angular_z": 0.4, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 53.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 53.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 53.0, "x": 5.2, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVel", "t": 53.05, "linear_x": 0.1, "linear_y": 0.0, "angular_z": 0.4, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 53.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 53.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 54.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 54.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 54.0, "x": 5.45, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 54.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 54.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 55.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 55.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 55.0, "x": 5.7, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 55.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 55.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 56.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 56.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 56.0, "x": 5.95, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 56.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 56.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 57.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 57.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 57.0, "x": 6.2, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 57.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 57.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 58.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 58.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 58.0, "x": 6.45, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 58.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 58.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 59.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 59.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 59.0, "x": 6.7, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 59.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 59.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 60.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 60.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 60.0, "x": 6.95, "y": 0.0, "linear_speed": 0.25, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 60.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 60.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CollisionMonitorState", "t": 61.0, "action_type": 1}
+{"kind": "Odometry", "t": 61.0, "x": 7.2, "y": 0.0, "linear_speed": 0.0, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 61.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 61.0, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 61.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 61.5, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 62.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 62.0, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 62.2, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 62.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 62.5, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 62.6, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 63.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 63.0, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 63.0, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 63.2, "x": 7.05, "y": 0.0, "linear_speed": -0.15, "angular_speed": 0.0}
+{"kind": "CmdVel", "t": 63.4, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 63.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 63.5, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 63.8, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 64.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 64.0, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 64.2, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 64.2, "x": 6.9, "y": 0.0, "linear_speed": -0.15, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 64.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 64.5, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 64.6, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 65.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 65.0, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 65.0, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 65.2, "x": 6.75, "y": 0.0, "linear_speed": -0.15, "angular_speed": 0.0}
+{"kind": "CmdVel", "t": 65.4, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 65.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 65.5, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 65.8, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 66.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 66.0, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 66.2, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 66.2, "x": 6.6, "y": 0.0, "linear_speed": -0.15, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 66.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 66.5, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 66.6, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 67.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 67.0, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 67.0, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 67.2, "x": 6.45, "y": 0.0, "linear_speed": -0.15, "angular_speed": 0.0}
+{"kind": "CmdVel", "t": 67.4, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 67.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 67.5, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 67.8, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 68.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 68.0, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 68.2, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 68.2, "x": 6.3, "y": 0.0, "linear_speed": -0.15, "angular_speed": 0.0}
+{"kind": "CmdVelSmoothed", "t": 68.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 68.5, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 68.6, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 69.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 69.0, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 69.0, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 69.2, "x": 6.15, "y": 0.0, "linear_speed": -0.15, "angular_speed": 0.0}
+{"kind": "CmdVel", "t": 69.4, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 69.5, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 69.5, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 69.8, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVelSmoothed", "t": 70.0, "linear_x": 0.25, "linear_y": 0.0, "angular_z": 0.0}
+{"kind": "CmdVel", "t": 70.0, "linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "CmdVel", "t": 70.2, "linear_x": -0.15, "linear_y": 0.0, "angular_z": 0.0, "source": null, "candidates": [{"node": "/collision_monitor"}, {"node": "/teleop_twist_keyboard"}]}
+{"kind": "Odometry", "t": 70.2, "x": 6.0, "y": 0.0, "linear_speed": -0.15, "angular_speed": 0.0}
+{"kind": "Odometry", "t": 70.3, "x": 6.0, "y": 0.0, "linear_speed": 0.0, "angular_speed": 0.0}
+{"kind": "ButtonEdge", "t": 70.3, "source": {"topic": "/interface_buttons/button_power"}, "pressed": true}
+{"kind": "ButtonEdge", "t": 70.38, "source": {"topic": "/interface_buttons/button_power"}, "pressed": false}
+{"kind": "FunctionCall", "t": 70.4, "name": "EStop"}
+{"kind": "WheelStatus", "t": 70.4, "wheels_enabled": false}
+{"kind": "ActionStatus", "t": 70.45, "action": "navigate_to_pose", "goals": [{"goal_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90", "status": 3}], "requesters": [{"node": "/rviz2"}]}
+{"kind": "ActionStatus", "t": 70.5, "action": "navigate_to_pose", "goals": [{"goal_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90", "status": 5}], "requesters": [{"node": "/rviz2"}]}
+{"kind": "ButtonEdge", "t": 79.9, "source": {"topic": "/interface_buttons/button_power"}, "pressed": true}
+{"kind": "ButtonEdge", "t": 79.98, "source": {"topic": "/interface_buttons/button_power"}, "pressed": false}
+{"kind": "FunctionCall", "t": 80.0, "name": "EStop"}
+{"kind": "WheelStatus", "t": 80.0, "wheels_enabled": true}
+{"kind": "CollisionMonitorState", "t": 85.0, "action_type": 0}

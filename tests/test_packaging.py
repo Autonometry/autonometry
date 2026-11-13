@@ -48,6 +48,8 @@ def test_sdist_carries_spec_but_not_research(dist: Path) -> None:
     with tarfile.open(sdist) as archive:
         names = archive.getnames()
     assert any(name.endswith("spec/v0.3/rules.toml") for name in names)
+    assert any(name.endswith("demo/tb4-sim/config/devices.json") for name in names)
+    assert any(name.endswith("autonometry_ros/observer.py") for name in names)
     assert not any("/research/" in name for name in names)
 
 
