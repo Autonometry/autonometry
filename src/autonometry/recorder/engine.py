@@ -19,6 +19,8 @@ session log adds. Its rules:
 - ``ts`` is the receive time from the system UTC clock, never earlier than the previous event's;
   a backward step is clamped and the next heartbeat carries its size (``x_clock_stepped_back_s``).
 - Heartbeats every ``heartbeat_interval_s`` carry the clock status and the distance travelled.
+  A client may send a heartbeat with only ``x_`` fields (for example a connector's
+  ``x_publishers``): the recorder writes a heartbeat of its own at once, with those fields added.
 """
 
 import logging
@@ -30,7 +32,7 @@ import rfc8785
 
 from autonometry.reader import RejectedEventError, check_event
 from autonometry.recorder.clock import ClockStatus
-from autonometry.recorder.wire import STATE_TYPE, Message, WireError, parse_datagram
+from autonometry.recorder.wire import NOTE_TYPE, STATE_TYPE, Message, WireError, parse_datagram
 from autonometry.strictjson import MAX_SAFE_INTEGER
 from autonometry.timestamps import ns_to_seconds, ns_to_ts
 
@@ -43,6 +45,9 @@ MAX_CLIENTS = 256
 SEAL_OVERHEAD_BYTES = len(rfc8785.dumps({"a": 0, "hash": "0" * 64, "prev_hash": "0" * 64})) - len(
     rfc8785.dumps({"a": 0})
 )
+#: Bytes kept free on a client heartbeat for the fields the recorder adds to it (clock status,
+#: distance, counts): its ``x_`` fields must fit in a line with them.
+HEARTBEAT_RESERVE_BYTES = 1024
 #: Stands in for the real session id while a client event is checked: the longest id a session
 #: counter below 10**16 gives (``<counter>-YYYYMMDDTHHMMSSZ-xxxx``), so a real line is never longer
 #: than the line checked.
@@ -386,6 +391,8 @@ class Engine:
             return self._reject(str(exc))
         if event["type"] == STATE_TYPE:
             return self._assert(message.client, event)
+        if event["type"] == NOTE_TYPE:
+            return [self.heartbeat(**{k: v for k, v in event.items() if k.startswith("x_")})]
         if event["type"] == "task_start":
             self._open_task = event["task_id"]
         elif event["type"] == "task_end" and event["task_id"] == self._open_task:
@@ -411,7 +418,11 @@ class Engine:
             check_event(trial, self._settings.spec_version)
         except RejectedEventError as exc:
             raise _RejectedError(f"{exc.code}: {exc.message}") from None
-        if len(rfc8785.dumps(trial)) + SEAL_OVERHEAD_BYTES > self._settings.max_line_bytes:
+        reserve = HEARTBEAT_RESERVE_BYTES if event["type"] == NOTE_TYPE else 0
+        if (
+            len(rfc8785.dumps(trial)) + SEAL_OVERHEAD_BYTES + reserve
+            > self._settings.max_line_bytes
+        ):
             raise _RejectedError(
                 f"event is longer than {self._settings.max_line_bytes} bytes once sealed"
             )

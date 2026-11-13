@@ -1,6 +1,7 @@
 """The recorder's wire format: one UTF-8 JSON object per Unix datagram (README, "Wire format").
 
-``{"client": <name>, "n": <counter>, "event": {...}}`` carries one event, and
+``{"client": <name>, "n": <counter>, "event": {...}}`` carries one event (a heartbeat from a
+client carries only ``x_`` fields), and
 ``{"client": <name>, "n": <counter>, "distance_m": <metres>}`` one odometer reading. ``client`` is
 an identifier (definitions.md 8, Identifiers); ``n`` counts every datagram the client tried to
 send, from 0, so a gap shows the recorder what was lost. The event never carries the fields the
@@ -28,6 +29,25 @@ DISCRETE_TYPES = frozenset(
         "supervision",
         "support_start",
         "support_end",
+    }
+)
+#: A client heartbeat carries only ``x_`` fields, such as a connector's ``x_publishers``; the
+#: recorder writes them on a heartbeat of its own, with the clock status and distance.
+NOTE_TYPE = "heartbeat"
+#: ``x_`` fields the recorder itself writes; a client heartbeat may not carry them, so a connector
+#: can neither hide nor fake the recorder's own counts.
+RECORDER_X_FIELDS = frozenset(
+    {
+        "x_lost_client_events",
+        "x_rejected_client_events",
+        "x_rate_limited_events",
+        "x_foreign_assertions",
+        "x_resumed_clients",
+        "x_clock_stepped_back_s",
+        "x_recovered",
+        "x_truncated_bytes",
+        "x_cause",
+        "x_carried_task",
     }
 )
 #: Fields only the recorder writes (definitions.md 8 common fields, section 10 sealing).
@@ -73,8 +93,17 @@ def _check_event(event: Any, client: str, n: int) -> Mapping[str, Any]:
     if RECORDER_FIELDS & event.keys():
         raise WireError("event carries a field only the recorder writes", client, n)
     kind = event.get("type")
-    if kind != STATE_TYPE and kind not in DISCRETE_TYPES:
+    if kind not in (STATE_TYPE, NOTE_TYPE) and kind not in DISCRETE_TYPES:
         raise WireError("event type is not one a client may send", client, n)
+    if kind == NOTE_TYPE and (
+        len(event) == 1
+        or any(k != "type" and (not k.startswith("x_") or k in RECORDER_X_FIELDS) for k in event)
+    ):
+        raise WireError(
+            "a client heartbeat must carry x_ fields, and only ones the recorder does not write",
+            client,
+            n,
+        )
     return event
 
 
