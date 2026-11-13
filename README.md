@@ -198,7 +198,7 @@ counts are reported beside them.
 | (c) `interventions_per_active_hour` | whole-robot interventions / active hours | NB2 Wald (multi-start fit) with labelled Poisson-exact fallbacks | bounds (unknown hours added; the lower bound counts one intervention per run of unknown and safety stop between AI control); Garwood; percentile bootstrap; dispersion index; per-scope count |
 | (c) `safety_stops_per_active_hour`, `approvals_`, `hints_`, `takeovers_per_active_hour` | whole-robot count / active hours | NB2 Wald | stops human-triggered and automatic; per-scope stops; Garwood |
 | (d) `gaps_between_interventions` | active hours and metres between interventions, the last gap per session right-censored; Kaplan-Meier median, the smallest gap with S(t) ≤ 0.5 (statsmodels `SurvfuncRight`) | medians of the pointwise cloglog band, as lifelines | S(h) at horizons; exponential mean gap (log-scale Wald); Weibull shape (SciPy `CensoredData`) with a cluster-bootstrap interval |
-| (e) `human_minutes_per_task` | mean over tasks with a known definition of human time + unplanned reset + moved dwell | cluster bootstrap-t with relabelled clusters; t on tasks with one session | bounds (task unknown time added); percentile bootstrap; median; share of tasks with no human time |
+| (e) `human_minutes_per_task` | mean over tasks with a known definition of human time + unplanned reset + moved dwell | cluster bootstrap-t with relabelled clusters; t on tasks with one session; limits clipped at 0 (the method name then ends in `, clipped at 0`) | bounds (task unknown time added); percentile bootstrap; median; share of tasks with no human time |
 | (f) `breakdowns` | interventions per active hour by reason and kind; narrow count (hand-overs with reason `human_initiated` or `safety`); rates and means per task definition | Poisson exact per cell; Wilson per task definition | — |
 | (g) `drift` | interventions per active hour by UTC day or ISO week, active time split at bin edges | Poisson GLM trend on the bin index (NB when the dispersion index exceeds 1.5), Wald interval of the rate ratio | two-sided CUSUM with its first signal |
 | (h) `unmeasured` | unknown time / observed time | — | `complete` or `incomplete` against `unknown_share_max`; flag counts; `supervision_ratio`; supervisor-hours per robot-hour; human actor hours and distinct actors; sessions with blind spots (`unobserved`); every parameter of definitions.md 9 |
@@ -252,9 +252,11 @@ What the report holds, in the order of the page:
   variants, the Kaplan-Meier curve of the gaps between interventions, and the drift rate per bin.
 - **Statements** beside the metrics: no true worst case for interventions per active hour and human
   minutes per task when unknown time exists; "data quality, not sample size, limits this number"
-  when a metric's bounds are wider than its confidence interval; "not generalisable" for a
-  single-cluster interval; the one-sided 95 % Garwood upper bound of a rate from fewer than 5
-  events; the signal classes sessions declare `unobserved`.
+  when a metric's bounds are wider than its confidence interval; "not generalisable" for an
+  interval from fewer than `min_clusters` clusters (2); the one-sided 95 % Garwood upper bound of a
+  rate from fewer than `rare_rate_events` events (5); the signal classes sessions declare
+  `unobserved`. Both thresholds come from `rules.toml` `[report]` and are printed with the
+  parameters. The page lists each kind of statement once per group, naming its metrics.
 - **Invariants**, each `pass`, `fail` or `not checked`: partition (state times sum to the session
   window, per scope and whole robot), chain (no session contradicts its seals; not checked for
   unsealed sessions), time (no `ts_regression`, `clock_skew` or `late_anchor`), census, tasks
@@ -268,10 +270,12 @@ What the report holds, in the order of the page:
   file (paths as given on the command line) and of every spec file.
 
 The report contains no actor ids, only counts. The same inputs and options give byte-identical
-JSON and HTML apart from `generated_at`. Exit status: 0 only when the report is verified at L2,
-complete, has no census gap and leaves no session out; 1 when it was written but any of those
-fails (the last output line says why); 2 on bad usage, unreadable input or without the `report`
-extra.
+JSON and HTML apart from `generated_at`. The page shows times to the second (the JSON keeps full
+precision), and the state table notes how much AI time approval and hint dwell moved to human
+time. The verdict box is green only for a clean report, amber for one that is not clean and red
+when a session failed. Exit status: 0 only when the report is clean: verified at L2, complete, no
+census gap, no session left out and no invariant failed; 1 when it was written but is not clean
+(the last output line says why); 2 on bad usage, unreadable input or without the `report` extra.
 
 ## Recorder
 
