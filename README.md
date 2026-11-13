@@ -143,8 +143,9 @@ For each session it prints:
 - **Approvals and hints** with their dwell. A dwell sits on [ts − dwell, ts); only the part that
   overlaps `ai` time moves from AI to human time (`moved_from_ai_s`). One inside an intervention
   episode belongs to it and is not counted again (`in_episode`). An `ai_requested_help` approval
-  more than `approval_wait_max_s` after the help request, with the scope left in `ai` all along,
-  turns that wait into `shared` time (`approval_wait_recoded`).
+  more than `approval_wait_max_s` after the help request, with no transition, seq gap, task start,
+  task end or other approval on the scope since, turns that wait's `ai` time into `shared`
+  (`approval_wait_recoded`).
 - **Safety stops**, each human-triggered or automatic, and whether a takeover joined it.
 - **Tasks**: outcome (`unknown` when not closed), autonomous (no human time, no intervention, no
   approval or hint inside, and no unplanned human time since the previous task), whether it

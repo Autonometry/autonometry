@@ -26,8 +26,9 @@ How each rule is applied, in event (``seq``) order:
   transitions, approvals and hints; a transition the registry makes human without a reason takes
   ``human_initiated`` (6.10).
 - Approval waits (6.1): an ``ai_requested_help`` approval more than ``approval_wait_max_s`` after
-  the latest help request, with no transition or seq gap on its scope in between, turns the
-  scope's ``ai`` time since the request into ``shared`` (``approval_wait_recoded``).
+  the latest help request, with no transition, seq gap, task start, task end or other approval on
+  its scope in between, turns the scope's ``ai`` time since the request into ``shared``
+  (``approval_wait_recoded`` when some ``ai`` time changed).
 - Holds (6.8): ``idle`` while a task is open is ``unknown`` (``idle_in_task``).
 - Interventions (3, 6.1, 6.2, 6.6, 6.7, 6.13): a run of ``unknown`` and ``safety_stop`` between
   AI control and human control does not hide one; an approval or hint inside an episode belongs
@@ -883,6 +884,7 @@ class _Builder:
         task = self.tasks[self.task]
         task.end_ns, task.end_seq = now_ns, seq if closed else None
         task.outcome, task.closed = outcome, closed
+        self.end_waits()
         for scope in self.scopes.values():
             self.close_episode(scope, now_ns, seq)
             scope.watch = None
@@ -894,6 +896,7 @@ class _Builder:
         self.split_all(now_ns)
         for scope in self.scopes.values():
             self.hold(scope)
+        self.end_waits()
         definition = event.get("task_definition_id", "")
         known = self.registries.task_definitions
         if known is None or definition not in known:
@@ -909,6 +912,10 @@ class _Builder:
             _OpenTask(task_id, definition, known is not None and definition in known, now_ns, seq)
         )
 
+    def end_waits(self) -> None:
+        """A task start or end ends every scope's wait for an approval (6.1)."""
+        self.quiet_since_help = dict.fromkeys(self.quiet_since_help, False)
+
     def task_end(self, event: Event, now_ns: int) -> None:
         if self.task is not None and self.tasks[self.task].task_id == event["task_id"]:
             self.end_task(now_ns, event["seq"], event.get("outcome", "unknown"), True)
@@ -923,8 +930,10 @@ class _Builder:
         dwell = event.get("dwell_s")
         reason = self.recoded_reason(event, now_ns)
         scope = self.scopes.get(name)
-        if kind == "approval" and reason == "ai_requested_help" and scope is not None:
-            self.wait_repair(event, name, now_ns)
+        if kind == "approval":
+            if reason == "ai_requested_help" and scope is not None:
+                self.wait_repair(event, name, now_ns)
+            self.quiet_since_help[name] = False
         self.discrete.append(
             _Discrete(
                 kind,
@@ -940,22 +949,30 @@ class _Builder:
         )
 
     def wait_repair(self, event: Event, name: str, now_ns: int) -> None:
-        """A wait longer than ``approval_wait_max_s`` with no transition or seq gap since the
-        help request becomes ``shared`` (6.1)."""
+        """A wait longer than ``approval_wait_max_s`` with no transition, seq gap, task start,
+        task end or other approval since the help request is repaired later, when the spans are
+        known (6.1)."""
         asked = self.help.get(name)
-        if asked is None or now_ns - asked <= self.wait_ns or not self.quiet_since_help[name]:
+        quiet = self.quiet_since_help.get(name, False)
+        if asked is None or now_ns - asked <= self.wait_ns or not quiet:
             return
-        seq = event["seq"]
         self.repairs.append(
-            _Repair(name, asked, now_ns, seq, event.get("actor_id"), event.get("device_id"))
+            _Repair(
+                name, asked, now_ns, event["seq"], event.get("actor_id"), event.get("device_id")
+            )
         )
-        self.flag(
-            seq,
-            "approval_wait_recoded",
-            f"approval {ns_to_seconds(now_ns - asked):.3f} s after the help_request on scope "
-            f"{name!r} (limit {self.rules.params.approval_wait_max_s:g} s); the ai time since "
-            "the help_request counted as shared with reason ai_requested_help",
-        )
+
+    def flag_repairs(self, done: Iterable[_Repair]) -> None:
+        """``approval_wait_recoded`` for each repair that changed some ``ai`` time (6.1)."""
+        limit = self.rules.params.approval_wait_max_s
+        for repair in done:
+            self.flag(
+                repair.seq,
+                "approval_wait_recoded",
+                f"approval {ns_to_seconds(repair.end_ns - repair.start_ns):.3f} s after the "
+                f"help_request on scope {repair.scope!r} (limit {limit:g} s); the ai time since "
+                "the help_request counted as shared with reason ai_requested_help",
+            )
 
     def support_event(self, event: Event, now_ns: int) -> None:
         key = event.get("scope") or _WHOLE_ROBOT
@@ -1244,7 +1261,10 @@ def _assemble(  # noqa: PLR0913, PLR0917 -- one place that puts the timeline tog
     log_flags: Iterable[Flag],
 ) -> Timeline:
     human = frozenset(s for s, rule in rules.states.items() if rule.category == "human")
-    spans = {name: _repaired(scope_spans, b.repairs) for name, scope_spans in b.spans.items()}
+    spans: dict[str, tuple[Span, ...]] = {}
+    for name, scope_spans in b.spans.items():
+        spans[name], done = _repaired(scope_spans, b.repairs)
+        b.flag_repairs(done)
     all_spans = tuple(span for scope_spans in spans.values() for span in scope_spans)
     whole = _whole_spans(spans, rules, human)
     per_scope = {name: _totals_int(scope_spans, rules) for name, scope_spans in spans.items()}
@@ -1331,13 +1351,18 @@ def _assemble(  # noqa: PLR0913, PLR0917 -- one place that puts the timeline tog
     )
 
 
-def _repaired(spans: Sequence[Span], repairs: Sequence[_Repair]) -> tuple[Span, ...]:
-    """The scope's spans with the ``ai`` time of each approval wait made ``shared`` (6.1)."""
+def _repaired(
+    spans: Sequence[Span], repairs: Sequence[_Repair]
+) -> tuple[tuple[Span, ...], list[_Repair]]:
+    """The scope's spans with the ``ai`` time of each approval wait made ``shared`` (6.1), and
+    the repairs that changed some ``ai`` time."""
     out = list(spans)
+    done: list[_Repair] = []
     for repair in repairs:
         if not out or repair.scope != out[0].scope:
             continue
         pieces: list[Span] = []
+        changed = False
         for span in out:
             if (
                 span.state != "ai"
@@ -1346,6 +1371,7 @@ def _repaired(spans: Sequence[Span], repairs: Sequence[_Repair]) -> tuple[Span, 
             ):
                 pieces.append(span)
                 continue
+            changed = True
             low, high = max(span.start_ns, repair.start_ns), min(span.end_ns, repair.end_ns)
             if span.start_ns < low:
                 pieces.append(replace(span, end_ns=low))
@@ -1364,7 +1390,9 @@ def _repaired(spans: Sequence[Span], repairs: Sequence[_Repair]) -> tuple[Span, 
             if high < span.end_ns:
                 pieces.append(replace(span, start_ns=high))
         out = pieces
-    return tuple(out)
+        if changed:
+            done.append(repair)
+    return tuple(out), done
 
 
 def _end(episode: _OpenEpisode) -> int:

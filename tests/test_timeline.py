@@ -728,3 +728,34 @@ def test_approval_wait_repair_changes_only_ai_time_of_its_scope__defs_6_1() -> N
     pieces = [(at(timeline, s.start_ns), s.state) for s in timeline.spans if s.scope == "a"]
     assert pieces == [(0, "ai"), (2, "shared"), (6, "unknown"), (9, "shared"), (14, "ai")]
     assert _states(timeline.per_scope["b"]) == {"ai": 13, "unknown": 3}
+
+
+def _from_one_second() -> Log:
+    return Log(heartbeat_s=200).add(1, "task_start").ai(1)
+
+
+def _approve(log: Log, t: float) -> Log:
+    return log.add(t, "approval", scope="whole_robot", actor_id="op_b", reason="ai_requested_help")
+
+
+def test_first_approval_answers_the_help_request__defs_6_1() -> None:
+    log = _from_one_second().add(5, "help_request", scope="whole_robot")
+    timeline = _approve(_approve(log, 8), 30).add(40, "task_end").end(41).build()
+    assert timeline.whole_robot.states["shared"] == 0
+    assert timeline.flags == ()
+
+
+def test_task_end_and_start_end_the_approval_wait__defs_6_1() -> None:
+    log = _from_one_second().add(5, "help_request", scope="whole_robot").add(8, "task_end")
+    log.add(9, "task_start", task="t2")
+    timeline = _approve(log, 20).add(30, "task_end").end(31).build()
+    assert timeline.whole_robot.states["shared"] == 0
+    assert timeline.flags == ()
+    assert [t.unplanned_reset_ns for t in timeline.tasks] == [0, 0]
+
+
+def test_no_flag_when_the_wait_holds_no_ai_time__defs_6_1() -> None:
+    log = _from_one_second().human(4.9, "shared").add(5, "help_request", scope="whole_robot")
+    timeline = _approve(log, 20).add(30, "task_end").end(31).build()
+    assert _states(timeline.whole_robot) == {"idle": 1, "ai": 3.9, "shared": 26.1}
+    assert timeline.flags == ()
