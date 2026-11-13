@@ -1,0 +1,6 @@
+{
+  "items": [
+    { "plan_item_id": "initial_pose", "kind": "reset", "description": "Set the pose estimate in RViz (2D Pose Estimate) before a task." },
+    { "plan_item_id": "place_on_dock", "kind": "reset", "description": "Carry the robot back onto its dock between tasks." }
+  ]
+}

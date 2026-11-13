@@ -1,0 +1,105 @@
+{
+  "devices": [
+    {
+      "device_id": "nav2",
+      "kind": "ai",
+      "match": { "node": "/collision_monitor" },
+      "x_note": "Nav2 relays its commands to /cmd_vel through the collision monitor; its tasks are NavigateToPose goals"
+    },
+    {
+      "device_id": "mission_navigator",
+      "kind": "ai",
+      "match": { "node": "/basic_navigator" },
+      "x_note": "a TurtleBot4Navigator or BasicNavigator mission script: its goals and dock or undock requests are the AI's"
+    },
+    {
+      "device_id": "create3_button_1",
+      "kind": "human",
+      "location": "local",
+      "actor_id": "op_02",
+      "match": { "topic": "/interface_buttons/button_1" }
+    },
+    {
+      "device_id": "create3_button_2",
+      "kind": "human",
+      "location": "local",
+      "actor_id": "op_02",
+      "match": { "topic": "/interface_buttons/button_2" }
+    },
+    {
+      "device_id": "create3_button_power",
+      "kind": "human",
+      "location": "local",
+      "actor_id": "op_02",
+      "match": { "topic": "/interface_buttons/button_power" }
+    },
+    {
+      "device_id": "hmi_button_1",
+      "kind": "human",
+      "location": "local",
+      "actor_id": "op_02",
+      "match": { "topic": "/hmi/buttons/1" }
+    },
+    {
+      "device_id": "hmi_button_2",
+      "kind": "human",
+      "location": "local",
+      "actor_id": "op_02",
+      "match": { "topic": "/hmi/buttons/2" }
+    },
+    {
+      "device_id": "hmi_button_3",
+      "kind": "human",
+      "location": "local",
+      "actor_id": "op_02",
+      "match": { "topic": "/hmi/buttons/3" }
+    },
+    {
+      "device_id": "hmi_button_4",
+      "kind": "human",
+      "location": "local",
+      "actor_id": "op_02",
+      "match": { "topic": "/hmi/buttons/4" }
+    },
+    {
+      "device_id": "tb4_controller",
+      "kind": "human",
+      "location": "local",
+      "actor_id": "op_02",
+      "match": { "node": "/teleop_twist_joy_node" },
+      "x_note": "the Bluetooth controller paired with the robot; its buttons and dead-man count as this device"
+    },
+    {
+      "device_id": "manual_handling",
+      "kind": "human",
+      "location": "local",
+      "actor_id": "op_02",
+      "match": { "topic": "/kidnap_status" },
+      "x_note": "a person lifting or carrying the robot"
+    },
+    {
+      "device_id": "teleop_kbd_pc_1",
+      "kind": "human",
+      "location": "remote",
+      "actor_id": "op_01",
+      "match": { "node": "/teleop_twist_keyboard" }
+    },
+    {
+      "device_id": "rviz_pc_1",
+      "kind": "human",
+      "location": "remote",
+      "actor_id": "op_01",
+      "match": { "node": "/rviz2" }
+    },
+    {
+      "device_id": "gz_gui_teleop",
+      "kind": "human",
+      "location": "remote",
+      "actor_id": "op_01",
+      "match": { "node": "/cmd_vel_bridge" },
+      "x_note": "the Gazebo GUI Teleop panel, seen on ROS as the cmd_vel bridge"
+    }
+  ],
+  "x_robot_model": "turtlebot4_standard",
+  "x_note": "TurtleBot 4 template (integration notes B.1, dossier UC-11). Button topics name the field: /interface_buttons/<button>, /hmi/buttons/<1-4>."
+}
