@@ -78,6 +78,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A reader refuses a spec whose `[flags]` codes differ from the ones the reader and the timeline raise.
 - Whole-robot state (spec v0.3, section 6.6): `unknown` now comes right after the human states, so an unknown scope beside an AI-controlled one is unknown time, never AI time (`rules.toml` `whole_robot.precedence`). No timeline golden changed.
 - The timeline takes `distance_m` from every event that carries it, not only heartbeats.
+- Spec v0.3: overlapping dwell windows count once (6.1); the supported share is supported active time over active time (6.15); distance at an instant is the latest `distance_m` at or before it, 0 before the first sample (8).
+
+### Fixed
+
+- Overlapping approval and hint dwell windows moved the same AI time more than once, which could push the time share below 0 and a task's human time above its duration. The AI time inside the union of the windows now moves once, for every scope, the whole robot, the scope-weighted and unsupported totals, and each task (within the task's own time); each item's own `moved_from_ai_s` is unchanged.
+- The Kaplan-Meier median is the smallest gap with S(t) ≤ 0.5, as lifelines and the reference package (it was the first with S(t) < 0.5), and its interval is the medians of the pointwise cloglog band, the method the simulation study validated.
 
 ### Security
 

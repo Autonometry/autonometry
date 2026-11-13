@@ -142,7 +142,8 @@ For each session it prints:
   `human_initiated` (`help_reason_recoded`), and so does `planned` without its plan item
   (`unplanned`); a transition the registry makes human without a reason takes `human_initiated`.
 - **Approvals and hints** with their dwell. A dwell sits on [ts − dwell, ts); only the part that
-  overlaps `ai` time moves from AI to human time (`moved_from_ai_s`). One inside an intervention
+  overlaps `ai` time moves from AI to human time (`moved_from_ai_s`), and windows that
+  overlap count once (the AI time inside their union moves). One inside an intervention
   episode belongs to it and is not counted again (`in_episode`). An `ai_requested_help` approval
   more than `approval_wait_max_s` after the help request, with no transition, seq gap, task start,
   task end or other approval on the scope since, turns that wait's `ai` time into `shared`
@@ -195,7 +196,7 @@ counts are reported beside them.
 | (b) `task_autonomy_rate`, `autonomous_success_rate` | closed tasks with a known definition and no human help (and outcome success) / closed tasks | cluster-robust GLM from 20 sessions, Wilson below | bounds (all tasks; an unclosed task or one with unknown time is not autonomous); Clopper-Pearson; Wilson |
 | (c) `interventions_per_active_hour` | whole-robot interventions / active hours | NB2 Wald (multi-start fit) with labelled Poisson-exact fallbacks | bounds (unknown hours added; the lower bound counts one intervention per run of unknown and safety stop between AI control); Garwood; percentile bootstrap; dispersion index; per-scope count |
 | (c) `safety_stops_per_active_hour`, `approvals_`, `hints_`, `takeovers_per_active_hour` | whole-robot count / active hours | NB2 Wald | stops human-triggered and automatic; per-scope stops; Garwood |
-| (d) `gaps_between_interventions` | active hours and metres between interventions, the last gap per session right-censored; Kaplan-Meier median (statsmodels `SurvfuncRight`) | cloglog median interval | S(h) at horizons; exponential mean gap (log-scale Wald); Weibull shape (SciPy `CensoredData`) with a cluster-bootstrap interval |
+| (d) `gaps_between_interventions` | active hours and metres between interventions, the last gap per session right-censored; Kaplan-Meier median, the smallest gap with S(t) ≤ 0.5 (statsmodels `SurvfuncRight`) | medians of the pointwise cloglog band, as lifelines | S(h) at horizons; exponential mean gap (log-scale Wald); Weibull shape (SciPy `CensoredData`) with a cluster-bootstrap interval |
 | (e) `human_minutes_per_task` | mean over tasks with a known definition of human time + unplanned reset + moved dwell | cluster bootstrap-t with relabelled clusters; t on tasks with one session | bounds (task unknown time added); percentile bootstrap; median; share of tasks with no human time |
 | (f) `breakdowns` | interventions per active hour by reason and kind; narrow count (hand-overs with reason `human_initiated` or `safety`); rates and means per task definition | Poisson exact per cell; Wilson per task definition | — |
 | (g) `drift` | interventions per active hour by UTC day or ISO week, active time split at bin edges | Poisson GLM trend on the bin index (NB when the dispersion index exceeds 1.5), Wald interval of the rate ratio | two-sided CUSUM with its first signal |
