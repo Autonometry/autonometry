@@ -316,17 +316,24 @@ class Supervision:
 class DwellShift:
     """Dwell of approvals and hints with given minimum dwells (definitions.md 6.1, 6.2):
     ``human_ns`` in total, and the part moved from AI to human time per scope, for the whole
-    robot and scope-weighted."""
+    robot and scope-weighted. Overlapping windows count once: the AI time moved is the AI time
+    inside the union of the windows, ``windows`` (sorted, disjoint)."""
 
     human_ns: int
     moved_ns_by_scope: Mapping[str, int]
     whole_robot_moved_ns: int
     scope_weighted_moved_ns: Fraction
+    windows: tuple[tuple[int, int], ...]
 
 
 @dataclass(frozen=True, slots=True)
 class Timeline:
-    """Everything one session says, exactly (definitions.md 1 to 8). Times in nanoseconds."""
+    """Everything one session says, exactly (definitions.md 1 to 8). Times in nanoseconds.
+
+    ``human_actors`` are the sorted pseudonymous ids of 6.5; ``support`` the sorted, disjoint
+    union of support intervals (6.15); ``distance_samples`` every ``(time, distance_m)`` the
+    session's events carry, in ``seq`` order (8), and ``distance_m`` the largest of them.
+    """
 
     robot_id: str
     session_id: str
@@ -358,14 +365,25 @@ class Timeline:
     reset_unplanned_ns: int
     supervision: Supervision
     human_actor_ns: int
-    distinct_human_actors: int
-    supported_ns: int
+    human_actors: tuple[str, ...]
+    support: tuple[tuple[int, int], ...]
     distance_m: float | None
+    distance_samples: tuple[tuple[int, float], ...]
     flags: tuple[Flag, ...]
 
     @property
     def observed_ns(self) -> int:
         return self.whole_robot.observed_ns
+
+    @property
+    def distinct_human_actors(self) -> int:
+        """Distinct actors in a human state, approving, hinting or triggering a stop (6.5)."""
+        return len(self.human_actors)
+
+    @property
+    def supported_ns(self) -> int:
+        """Time under physical support, the union over every scope (definitions.md 6.15)."""
+        return sum(end - start for start, end in self.support)
 
     @property
     def counted_discrete(self) -> tuple[DiscreteIntervention, ...]:
@@ -413,25 +431,36 @@ def dwell_shift(
     timeline: Timeline, approval_min_dwell_s: float, hint_min_dwell_s: float
 ) -> DwellShift:
     """Place every approval and hint dwell on ``[ts - max(dwell, min_dwell), ts)`` of its scope
-    and return how much of it overlaps ``ai`` time, which moves from AI to human time
-    (definitions.md 6.1, 6.2). Minimum dwells in seconds, for the sensitivity variants."""
+    and return how much ``ai`` time the union of those windows covers, which moves from AI to
+    human time; overlapping windows count once (definitions.md 6.1, 6.2). Minimum dwells in
+    seconds, for the sensitivity variants."""
     minimum = _min_dwell_ns(approval_min_dwell_s, hint_min_dwell_s)
     scope_ai, whole_ai = _ai_intervals(timeline.spans, timeline.whole_spans)
     human = 0
-    moved = dict.fromkeys(timeline.scopes, 0)
-    whole = 0
+    by_scope: dict[str, list[tuple[int, int]]] = {scope: [] for scope in timeline.scopes}
+    every: list[tuple[int, int]] = []
     for item in timeline.discrete:
         length = dwell_human_ns(item, minimum[item.type])
         human += length
-        low = item.ts_ns - length
-        if item.scope in moved:
-            moved[item.scope] += overlap_ns(scope_ai.get(item.scope, []), low, item.ts_ns)
-        whole += overlap_ns(whole_ai, low, item.ts_ns)
+        window = (item.ts_ns - length, item.ts_ns)
+        every.append(window)
+        if item.scope in by_scope:
+            by_scope[item.scope].append(window)
+    moved = {
+        scope: covered_ns(scope_ai.get(scope, []), _union(windows))
+        for scope, windows in by_scope.items()
+    }
+    union = tuple(_union(every))
     weighted = sum(
         (timeline.weights.get(scope, Fraction(0)) * value for scope, value in moved.items()),
         Fraction(0),
     )
-    return DwellShift(human, MappingProxyType(moved), whole, weighted)
+    return DwellShift(human, MappingProxyType(moved), covered_ns(whole_ai, union), weighted, union)
+
+
+def covered_ns(intervals: Sequence[tuple[int, int]], windows: Iterable[tuple[int, int]]) -> int:
+    """Nanoseconds of sorted, disjoint ``intervals`` inside sorted, disjoint ``windows``."""
+    return sum(overlap_ns(intervals, low, high) for low, high in windows)
 
 
 def _min_dwell_ns(approval_s: float, hint_s: float) -> Mapping[str, int]:
@@ -552,7 +581,7 @@ class _Builder:
         self.supervision: list[tuple[int, str, int]] = [(self.start_ns, "none", 0)]
         self.support_open: dict[str, int] = {}
         self.support: list[tuple[int, int]] = []
-        self.distance_m: float | None = None
+        self.distance: list[tuple[int, float]] = []
         self.help: dict[str, int] = {}
         self.quiet_since_help: dict[str, bool] = {}
         self.repairs: list[_Repair] = []
@@ -998,8 +1027,11 @@ class _Builder:
             self.supervision.append((now_ns, event["level"], event["n_supervisors"]))
         elif kind in ("support_start", "support_end"):
             self.support_event(event, now_ns)
-        elif kind == "heartbeat" and "distance_m" in event:
-            self.distance_m = max(self.distance_m or 0.0, event["distance_m"])
+
+    def odometry(self, event: Event, now_ns: int) -> None:
+        """Keep the cumulative ``distance_m`` any event carries (8, common fields)."""
+        if "distance_m" in event:
+            self.distance.append((now_ns, float(event["distance_m"])))
 
     def finish(self, end_ns: int, end_seq: int | None) -> None:
         self.end_task(end_ns, end_seq, "unknown", False)
@@ -1047,6 +1079,7 @@ def build_timeline(
     builder = _Builder(start, registries, rules)
     names = _scope_names(start, body)
     builder.open_scopes(start, names)
+    builder.odometry(start, builder.start_ns)
     last_ns, last_seq = builder.start_ns, start["seq"]
     for event in [*body, *([] if end is None else [end])]:
         now_ns = max(ts_to_ns(event["ts"]), last_ns)
@@ -1055,6 +1088,7 @@ def build_timeline(
             builder.gap(last_ns, now_ns, event["seq"], lost)
         if event is not end:
             builder.handle(event, now_ns)
+        builder.odometry(event, now_ns)
         last_ns, last_seq = now_ns, event["seq"]
     builder.finish(last_ns, None if end is None else end["seq"])
     return _assemble(session, start, end, builder, registries, rules, log_flags)
@@ -1099,9 +1133,10 @@ def _empty(
         0,
         Supervision(MappingProxyType({}), 0, 0),
         0,
-        0,
-        0,
+        (),
+        (),
         None,
+        (),
         _sorted_flags(session, [], log_flags),
     )
 
@@ -1213,17 +1248,21 @@ def _intervals_by_scope(
     return out
 
 
-def _union_ns(intervals: Iterable[tuple[int, int]]) -> int:
-    total = 0
-    reach: int | None = None
+def _union(intervals: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
+    """The sorted, disjoint union of ``[start, end)`` intervals; empty ones are dropped."""
+    out: list[tuple[int, int]] = []
     for start, end in sorted(intervals):
-        if reach is None or start >= reach:
-            total += end - start
-            reach = end
-        elif end > reach:
-            total += end - reach
-            reach = end
-    return total
+        if end <= start:
+            continue
+        if out and start <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], end))
+        else:
+            out.append((start, end))
+    return out
+
+
+def _union_ns(intervals: Iterable[tuple[int, int]]) -> int:
+    return sum(end - start for start, end in _union(intervals))
 
 
 def _group(items: Sequence[tuple[int, str, str | None]], window_ns: int) -> tuple[list[int], int]:
@@ -1344,9 +1383,10 @@ def _assemble(  # noqa: PLR0913, PLR0917 -- one place that puts the timeline tog
         unplanned,
         _supervision(b.supervision, whole, rules),
         _human_actor_ns(all_spans, discrete, human),
-        _distinct_humans(all_spans, discrete, stops, human),
-        _union_ns(b.support),
-        b.distance_m,
+        _human_actors(all_spans, discrete, stops, human),
+        tuple(_union(b.support)),
+        max((metres for _, metres in b.distance), default=None),
+        tuple(b.distance),
         _sorted_flags(session, b.flags, log_flags),
     )
 
@@ -1480,6 +1520,7 @@ def _tasks(  # noqa: PLR0913, PLR0917 -- every fact a task needs
             human_ns[piece.task_index] += piece.duration_ns
     own_episodes = _count_by_task((e.task_index for e in episodes), count)
     own_groups = _count_by_task((i.task_index for i in interventions), count)
+    whole_ai = [(s.start_ns, s.end_ns) for s in whole if s.state == "ai"]
     own_discrete: list[list[DiscreteIntervention]] = [[] for _ in range(count)]
     for item in discrete:
         if item.task_index is not None:
@@ -1511,7 +1552,7 @@ def _tasks(  # noqa: PLR0913, PLR0917 -- every fact a task needs
                 not (inside & human) and not own_episodes[index] and not signals and not reset,
                 "unknown" in inside,
                 human_ns[index],
-                sum(d.whole_robot_moved_ns for d in signals),
+                _task_moved_ns(whole_ai, signals, task.start_ns, end_ns),
                 own_episodes[index] + len(counted),
                 own_groups[index] + len(counted),
                 reset,
@@ -1519,6 +1560,18 @@ def _tasks(  # noqa: PLR0913, PLR0917 -- every fact a task needs
         )
         previous_end = end_ns
     return tuple(out)
+
+
+def _task_moved_ns(
+    whole_ai: Sequence[tuple[int, int]],
+    signals: Iterable[DiscreteIntervention],
+    start_ns: int,
+    end_ns: int,
+) -> int:
+    """Whole-robot ``ai`` time inside the task's own ``[start, end)`` that the union of its
+    approval and hint dwell windows covers; overlapping windows count once (6.1, 6.3)."""
+    windows = _union((max(d.ts_ns - d.human_ns, start_ns), min(d.ts_ns, end_ns)) for d in signals)
+    return covered_ns(whole_ai, windows)
 
 
 def _count_by_task(indexes: Iterable[int | None], count: int) -> list[int]:
@@ -1568,18 +1621,17 @@ def _human_actor_ns(
     return sum(_union_ns(intervals) for intervals in by_actor.values())
 
 
-def _distinct_humans(
+def _human_actors(
     spans: Sequence[Span],
     discrete: Sequence[DiscreteIntervention],
     stops: Sequence[SafetyStop],
     human: frozenset[str],
-) -> int:
-    """Distinct actors in a human state, approving, hinting or triggering a stop (6.5)."""
+) -> tuple[str, ...]:
+    """Actors in a human state, approving, hinting or triggering a stop, sorted (6.5)."""
     actors = {s.actor_id for s in spans if s.state in human and s.duration_ns}
     actors |= {d.actor_id for d in discrete}
     actors |= {s.actor_id for s in stops}
-    actors.discard(None)
-    return len(actors)
+    return tuple(sorted(actor for actor in actors if actor is not None))
 
 
 # -- JSON ---------------------------------------------------------------------------------------

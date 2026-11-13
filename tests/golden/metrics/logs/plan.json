@@ -1,0 +1,8 @@
+{
+  "items": [
+    {
+      "plan_item_id": "reset_scene",
+      "kind": "reset"
+    }
+  ]
+}

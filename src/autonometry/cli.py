@@ -1,5 +1,6 @@
 """Command line interface: ``autonometry``."""
 
+import enum
 import hashlib
 import json
 import logging
@@ -18,7 +19,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from autonometry import __version__, keys, sealfile, sealing, signednote, tsa
 from autonometry import verify as verify_
 from autonometry.events import LogCheck, Session, TrustLevel, VerifyResult
-from autonometry.fileio import append_durably, atomic_write
+from autonometry.fileio import PUBLIC_FILE_MODE, append_durably, atomic_write
 from autonometry.reader import LogReadError, read_logs
 from autonometry.registry import (
     LAYOUTS,
@@ -480,13 +481,28 @@ def timeline_cmd(  # noqa: PLR0913, PLR0917 -- matches the timeline CLI's docume
     does not match its hash (that session gets no timeline) or lines were rejected; 2 on bad
     usage. Identifiers from the log are printed; other event contents never are.
     """
-    version = _spec_version(spec)
+    given: dict[RegistryKind, Path | None] = {"devices": devices, "tasks": tasks, "plan": plan}
+    result, _, timelines, registry_errors = _build_timelines(logs, given, _spec_version(spec))
+    if as_json:
+        report = _timeline_report(result, timelines, registry_errors)
+        typer.echo(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        for line in _timeline_summary(result, timelines, registry_errors):
+            typer.echo(line)
+    if result.errors or registry_errors:
+        raise typer.Exit(1)
+
+
+def _build_timelines(
+    logs: Sequence[Path], given: Mapping[RegistryKind, Path | None], version: str
+) -> tuple[LogCheck, Rules, list[Timeline], list[tuple[Session, str]]]:
+    """Read the logs and build the timeline of every session whose registries match their
+    hashes (definitions.md 8, Registries); the others are returned with their problems."""
     try:
         result = read_logs(logs, version)
         rules = load_rules(version)
     except (SpecError, LogReadError) as exc:
         _fail(str(exc))
-    given: dict[RegistryKind, Path | None] = {"devices": devices, "tasks": tasks, "plan": plan}
     cache: dict[tuple[str, RegistryKind], RegistryCheck] = {}
     timelines: list[Timeline] = []
     registry_errors: list[tuple[Session, str]] = []
@@ -501,14 +517,7 @@ def timeline_cmd(  # noqa: PLR0913, PLR0917 -- matches the timeline CLI's docume
             if (f.robot_id, f.session_id) == (session.robot_id, session.session_id)
         ]
         timelines.append(build_timeline(session, registries, rules, own_flags))
-    if as_json:
-        report = _timeline_report(result, timelines, registry_errors)
-        typer.echo(json.dumps(report, indent=2, sort_keys=True))
-    else:
-        for line in _timeline_summary(result, timelines, registry_errors):
-            typer.echo(line)
-    if result.errors or registry_errors:
-        raise typer.Exit(1)
+    return result, rules, timelines, registry_errors
 
 
 def _timeline_report(
@@ -564,6 +573,147 @@ def _timeline_summary(
         describe=lambda e: f"{e.file}:{e.line}: {e.message}",
     )
     return lines
+
+
+class ClusterOption(enum.StrEnum):
+    """``--cluster`` of ``autonometry metrics``."""
+
+    auto = "auto"
+    session = "session"
+    robot = "robot"
+
+
+class DriftBinOption(enum.StrEnum):
+    """``--drift-bin`` of ``autonometry metrics``."""
+
+    day = "day"
+    week = "week"
+
+
+def _alpha(value: float) -> float:
+    if not 0 < value < 1:
+        raise typer.BadParameter("must be between 0 and 1, both excluded")
+    return value
+
+
+@app.command("metrics")
+def metrics_cmd(  # noqa: PLR0913, PLR0917 -- matches the metrics CLI's documented options
+    logs: Annotated[
+        list[Path],
+        typer.Argument(
+            help="JSON Lines event log files.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            show_default=False,
+        ),
+    ],
+    alpha: Annotated[
+        float,
+        typer.Option(
+            "--alpha", callback=_alpha, help="Two-sided level: 0.05 gives 95 % intervals."
+        ),
+    ] = 0.05,
+    n_boot: Annotated[
+        int, typer.Option("--n-boot", min=2, help="Bootstrap replicates per interval.")
+    ] = 2000,
+    seed: Annotated[int, typer.Option("--seed", min=0, help="Seed of every bootstrap.")] = 0,
+    cluster: Annotated[
+        ClusterOption,
+        typer.Option(
+            "--cluster",
+            help="Cluster unit. auto: robots for the time share when there are 3 or more "
+            "robots, sessions for everything else; session or robot: that unit everywhere.",
+        ),
+    ] = ClusterOption.auto,
+    drift_bin: Annotated[
+        DriftBinOption, typer.Option("--drift-bin", help="Calendar bin of the drift metric (UTC).")
+    ] = DriftBinOption.day,
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", dir_okay=False, help="Write the JSON here instead of stdout."),
+    ] = None,
+    devices: Annotated[
+        Path | None,
+        typer.Option(
+            "--devices",
+            help="Device registry for every session. Default: devices.json beside each log.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+    tasks: Annotated[
+        Path | None,
+        typer.Option(
+            "--tasks",
+            help="Task registry for every session. Default: tasks.json beside each log.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+    plan: Annotated[
+        Path | None,
+        typer.Option(
+            "--plan",
+            help="Plan for every session. Default: plan.json beside each log.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+    spec: Annotated[
+        str | None, typer.Option("--spec", help="Spec version, for example 0.3.")
+    ] = None,
+) -> None:
+    """Compute the metrics of the standard (definitions.md 3 to 7) with confidence intervals and
+    unknown-time bounds, one block per group (real, simulated), as JSON.
+
+    Registries are found as for ``autonometry timeline``. A session that gets no timeline (a
+    registry does not match its hash) is left out and named on stderr. Exit status: 0; 1 when a
+    session was left out or lines were rejected; 2 on bad usage or without the report extra.
+    The same logs and options always give the same JSON.
+    """
+    try:
+        from autonometry.stats import metrics, report  # noqa: PLC0415 -- optional extra
+    except ImportError:
+        typer.echo(
+            "error: autonometry metrics needs the report extra: pip install 'autonometry[report]'",
+            err=True,
+        )
+        raise typer.Exit(2) from None
+    given: dict[RegistryKind, Path | None] = {"devices": devices, "tasks": tasks, "plan": plan}
+    result, rules, timelines, registry_errors = _build_timelines(logs, given, _spec_version(spec))
+    options = metrics.Options(alpha, n_boot, seed, cluster.value, drift_bin.value)
+    left_out = sorted({(s.robot_id, s.session_id) for s, _ in registry_errors})
+    body = report.metrics_report(timelines, rules, options) | {
+        "spec_version": result.spec_version,
+        "counts": {
+            "files": result.counts.files,
+            "events": result.counts.events,
+            "sessions": result.counts.sessions,
+            "rejected_lines": result.counts.rejected_lines,
+            "sessions_left_out": len(left_out),
+        },
+        "sessions_left_out": [
+            {"robot_id": s.robot_id, "session_id": s.session_id, "problem": problem}
+            for s, problem in registry_errors
+        ],
+    }
+    text = report.to_json(body)
+    for robot_id, session_id in left_out:
+        typer.echo(f"error: session {robot_id}/{session_id} left out: no timeline", err=True)
+    for session, problem in registry_errors:
+        typer.echo(f"  {session.robot_id}/{session.session_id}: {problem}", err=True)
+    if result.errors:
+        typer.echo(f"error: {result.counts.rejected_lines} rejected line(s)", err=True)
+    if out is None:
+        typer.echo(text, nl=False)
+    else:
+        atomic_write(out, text.encode("utf-8"), PUBLIC_FILE_MODE)
+    if result.errors or registry_errors:
+        raise typer.Exit(1)
 
 
 keys_app = typer.Typer(

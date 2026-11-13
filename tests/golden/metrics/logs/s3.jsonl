@@ -1,0 +1,14 @@
+{"device_registry_hash":"9f3021707b264f8a8d4879909f759f1fb77c4f309632f4f7563500bcbb490481","heartbeat_interval_s":30.0,"hint_policy":"hint_as_shared","initial_states":{"arm":"idle","base":"idle"},"plan_hash":"a4270c51d38a2825e82c3864f8dbc781acd7dbb9f1868dba6d46598ac3d3e5f3","robot_id":"r02","scopes":["arm","base"],"seq":0,"session_id":"s3","simulated":false,"task_id":null,"task_registry_hash":"23edd05536c36dc1d83201c7443e834b6b1b7d55d0fb2fa7bf87025d1bda448d","ts":"2026-11-12T08:00:00.000000000Z","type":"session_start"}
+{"actor_id":"ai:policy","device_id":"policy","reason":null,"robot_id":"r02","scope":"arm","seq":1,"session_id":"s3","state":"ai","task_id":null,"ts":"2026-11-12T08:00:00.000000000Z","type":"transition"}
+{"actor_id":"ai:policy","device_id":"policy","reason":null,"robot_id":"r02","scope":"base","seq":2,"session_id":"s3","state":"ai","task_id":null,"ts":"2026-11-12T08:00:00.000000000Z","type":"transition"}
+{"robot_id":"r02","seq":3,"session_id":"s3","task_definition_id":"pick_v1","task_id":"t5","ts":"2026-11-12T08:00:02.000000000Z","type":"task_start"}
+{"actor_id":"op_b","device_id":"vr_remote","reason":"human_initiated","robot_id":"r02","scope":"arm","seq":4,"session_id":"s3","state":"human_remote","task_id":"t5","ts":"2026-11-12T08:00:20.000000000Z","type":"transition"}
+{"actor_id":"op_b","device_id":"vr_remote","reason":"human_initiated","robot_id":"r02","scope":"base","seq":5,"session_id":"s3","state":"human_remote","task_id":"t5","ts":"2026-11-12T08:00:20.300000000Z","type":"transition"}
+{"actor_id":"ai:policy","device_id":"policy","reason":null,"robot_id":"r02","scope":"arm","seq":6,"session_id":"s3","state":"ai","task_id":"t5","ts":"2026-11-12T08:00:30.000000000Z","type":"transition"}
+{"actor_id":"ai:policy","device_id":"policy","reason":null,"robot_id":"r02","scope":"base","seq":7,"session_id":"s3","state":"ai","task_id":"t5","ts":"2026-11-12T08:00:30.000000000Z","type":"transition"}
+{"outcome":"success","robot_id":"r02","seq":8,"session_id":"s3","task_id":"t5","ts":"2026-11-12T08:00:50.000000000Z","type":"task_end"}
+{"actor_id":"op_c","device_id":"joy_local","reason":"human_initiated","robot_id":"r02","scope":"base","seq":9,"session_id":"s3","state":"human_local","task_id":null,"ts":"2026-11-12T08:00:55.000000000Z","type":"transition"}
+{"actor_id":"ai:policy","device_id":"policy","reason":null,"robot_id":"r02","scope":"base","seq":10,"session_id":"s3","state":"ai","task_id":null,"ts":"2026-11-12T08:00:58.000000000Z","type":"transition"}
+{"robot_id":"r02","seq":11,"session_id":"s3","task_definition_id":"pick_v1","task_id":"t6","ts":"2026-11-12T08:01:00.000000000Z","type":"task_start"}
+{"outcome":"success","robot_id":"r02","seq":12,"session_id":"s3","task_id":"t6","ts":"2026-11-12T08:01:20.000000000Z","type":"task_end"}
+{"robot_id":"r02","seq":13,"session_id":"s3","task_id":null,"ts":"2026-11-12T08:01:30.000000000Z","type":"session_end"}

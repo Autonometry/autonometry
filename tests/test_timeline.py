@@ -242,6 +242,48 @@ def test_dwell_moves_only_its_overlap_with_ai_time__defs_6_1() -> None:
     )
 
 
+def _overlapping_approvals() -> Log:
+    """Task and ai from 0.5 s; approvals at 5..9 s with 5 s dwells; task end 10 s."""
+    log = Log().add(0.5, "task_start").ai(0.5)
+    for t in (5, 6, 7, 8, 9):
+        log.add(
+            t,
+            "approval",
+            scope="whole_robot",
+            actor_id="op_b",
+            reason="ai_requested_help",
+            dwell_s=5.0,
+        )
+    log.add(10, "task_end", outcome="success")
+    return log.end(10.5)
+
+
+def test_overlapping_dwell_windows_count_once__defs_6_1() -> None:
+    timeline = _overlapping_approvals().build()
+    # windows [0, 5) .. [4, 9): union [0, 9); ai from 0.5 s, so 8.5 s move once
+    assert [seconds(d.whole_robot_moved_ns) for d in timeline.discrete] == [4.5, 5, 5, 5, 5]
+    shift = dwell_shift(timeline, 0.0, 0.0)
+    assert seconds(shift.whole_robot_moved_ns) == 8.5
+    assert shift.moved_ns_by_scope == {"whole_robot": 8_500_000_000}
+    assert shift.scope_weighted_moved_ns == Fraction(8_500_000_000)
+    (task,) = timeline.tasks
+    assert seconds(task.dwell_moved_ns) == 8.5
+    assert timeline.to_json()["dwell"]["moved_from_ai_s"]["whole_robot"] == 8.5
+
+
+def test_task_dwell_moves_only_ai_time_inside_the_task__defs_6_1() -> None:
+    log = Log().ai(0).add(4, "task_start")
+    log.add(
+        6, "approval", scope="whole_robot", actor_id="op_b", reason="ai_requested_help", dwell_s=5.0
+    )
+    log.add(8, "task_end", outcome="success")
+    timeline = log.end(9).build()
+    (item,) = timeline.discrete
+    assert seconds(item.whole_robot_moved_ns) == 5
+    # window [1, 6) clipped to the task [4, 8)
+    assert seconds(timeline.tasks[0].dwell_moved_ns) == 2
+
+
 def test_dwell_sensitivity_uses_another_minimum__defs_6_1() -> None:
     log = (
         Log()
@@ -337,8 +379,12 @@ def test_two_humans_on_one_scope_count_actor_time_twice__defs_6_5() -> None:
         (["shared", "human_local", "ai"], "human_local"),
         (["shared", "safety_stop", "ai"], "shared"),
         (["scripted", "safety_stop", "ai"], "safety_stop"),
-        (["scripted", "unknown", "ai"], "scripted"),
-        (["idle", "unknown", "ai"], "ai"),
+        (["shared", "unknown", "ai"], "shared"),
+        (["scripted", "unknown", "ai"], "unknown"),
+        (["safety_stop", "unknown", "ai"], "unknown"),
+        (["idle", "unknown", "ai"], "unknown"),
+        (["idle", "scripted", "ai"], "scripted"),
+        (["idle", "idle", "ai"], "ai"),
         (["idle", "idle", "idle"], "idle"),
         (["idle", "unknown", "idle"], "unknown"),
     ],
@@ -353,6 +399,14 @@ def test_whole_robot_any_human_rule__defs_6_6(states: list[str], whole: str) -> 
     timeline = log.end(1).build()
     assert timeline.flags == ()
     assert [(s.state, s.start_ns) for s in timeline.whole_spans] == [(whole, timeline.start_ns)]
+
+
+def test_unknown_arm_beside_ai_leg_is_whole_robot_unknown__defs_6_6() -> None:
+    log = Log(["arm", "leg"], initial={"leg": "idle"}).ai(0, "leg").ai(10, "arm").end(30)
+    timeline = log.build()
+    assert _states(timeline.whole_robot) == {"unknown": 10, "ai": 20}
+    assert seconds(timeline.whole_robot.active_ns) == 20
+    assert seconds(timeline.whole_robot.unknown_ns) == 10
 
 
 def test_scope_weights_are_normalised_and_sum_to_observed__defs_6_6() -> None:
@@ -543,13 +597,44 @@ def test_task_end_of_another_task_is_ignored__defs_5() -> None:
 def test_supported_time_is_the_union_of_supports__defs_6_15() -> None:
     log = Log().add(1, "support_start", device_id="hoist").add(2, "support_start", scope="a")
     log.add(3, "support_end").add(4, "support_end", scope="nothing").end(6)
-    assert seconds(log.build().supported_ns) == 5
+    timeline = log.build()
+    assert seconds(timeline.supported_ns) == 5
+    assert [(at(timeline, a), at(timeline, b)) for a, b in timeline.support] == [(1, 6)]
 
 
-def test_distance_is_the_largest_heartbeat_distance__defs_8() -> None:
+def test_support_intervals_stay_apart_when_they_do_not_touch__defs_6_15() -> None:
+    log = Log().add(1, "support_start").add(2, "support_end").add(4, "support_start", scope="a")
+    log.add(5, "support_end", scope="a").add(5, "support_start").end(8)
+    timeline = log.build()
+    assert [(at(timeline, a), at(timeline, b)) for a, b in timeline.support] == [(1, 2), (4, 8)]
+
+
+def test_distance_is_the_largest_distance__defs_8() -> None:
     log = Log().add(1, "heartbeat", distance_m=3.0).add(2, "heartbeat", distance_m=1.0)
     assert log.end(3).build().distance_m == 3.0
     assert Log().end(1).build().distance_m is None
+
+
+def test_distance_samples_come_from_every_event__defs_8() -> None:
+    log = Log(distance_m=0.0).ai(1).add(2, "heartbeat", distance_m=1.5)
+    log.tr(3, "human_local", "human_initiated", "op_a", "joy_local", distance_m=2.0)
+    log.add(4, "session_end", distance_m=4.0)
+    timeline = log.build()
+    assert [(at(timeline, t), m) for t, m in timeline.distance_samples] == [
+        (0, 0.0),
+        (2, 1.5),
+        (3, 2.0),
+        (4, 4.0),
+    ]
+    assert timeline.distance_m == 4.0
+
+
+def test_human_actor_ids_are_kept_sorted__defs_6_5() -> None:
+    log = Log().ai(0).human(1, actor="op_b").ai(2).add(3, "approval", scope="whole_robot")
+    log.events[-1] |= {"actor_id": "op_a", "reason": "planned", "plan_item_id": "reset_scene"}
+    timeline = log.end(4).build()
+    assert timeline.human_actors == ("op_a", "op_b")
+    assert timeline.distinct_human_actors == 2
 
 
 # --- flags ---------------------------------------------------------------------------------------
