@@ -57,6 +57,33 @@ jobs:
       # Standard library only, outside the project (which needs 3.12): what a connector copies in.
       - run: uv run --no-project --python 3.8 python -W error -m unittest discover -s tests/client -v
 
+  ros:
+    name: TurtleBot 4 observer on ROS 2 Jazzy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # ros:jazzy (ros-base, Ubuntu 24.04, Python 3.12), pinned by the digest of its image index.
+    container:
+      image: ros:jazzy@sha256:00b8d47a6e6384a2834e3d01fa87ae767876543baa574f2d64a75c04ea33c698
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the message packages and colcon
+        run: >-
+          apt-get update && apt-get install -y --no-install-recommends
+          python3-venv python3-colcon-common-extensions
+          ros-jazzy-nav2-msgs ros-jazzy-irobot-create-msgs ros-jazzy-turtlebot4-msgs
+      # rclpy comes from ROS; autonometry goes into a venv that also sees the ROS packages.
+      - name: Install autonometry
+        run: python3 -m venv --system-site-packages /opt/venv && /opt/venv/bin/pip install .
+      # Build the package, start the recorder and the observer, play fake TurtleBot 4 nodes
+      # (no Gazebo), then verify the sealed log and check its states, episodes and tasks.
+      - name: End-to-end check
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          export PATH="/opt/venv/bin:$PATH"
+          connectors/ros2/ci/run_e2e.sh
+
   slow:
     name: Slow checks (Python 3.12)
     runs-on: ubuntu-24.04
