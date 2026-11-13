@@ -161,6 +161,15 @@ class TrustRules(_Frozen):
     default_tau_s: float
 
 
+class ReportRules(_Frozen):
+    """Thresholds of the statements a report prints (definitions.md 11.6): a rate from fewer
+    than ``rare_rate_events`` events also shows its one-sided upper bound; an interval from fewer
+    than ``min_clusters`` clusters is not generalisable."""
+
+    rare_rate_events: PositiveInt
+    min_clusters: PositiveInt
+
+
 class SealingRules(_Frozen):
     """Sealing and verification parameters and codes (definitions.md section 10)."""
 
@@ -204,6 +213,7 @@ class Rules(_Frozen):
     errors: ErrorRules
     trust: TrustRules
     sealing: SealingRules
+    report: ReportRules
 
 
 def spec_root() -> Traversable:

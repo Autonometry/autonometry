@@ -355,8 +355,10 @@ A report turns one or more logs into a document a buyer, insurer or auditor can 
 **11.6 Statements.** Printed beside the metrics they concern, for each group:
 1. When unknown time exists, interventions per active hour and human minutes per task have no true worst case, since events can hide in unknown time; `unknown_as_human` assumes one hidden intervention per run of unknown time (Section 7).
 2. For a metric with bounds whose bounds are wider than the confidence interval of its point estimate: data quality, not sample size, limits this number.
-3. An interval from a single cluster is not generalisable.
-4. A rate from fewer than 5 events also shows its one-sided 95 % upper bound (exact Poisson, Garwood).
+3. An interval from fewer than `min_clusters` clusters (default 2, that is a single cluster) is not generalisable.
+4. A rate from fewer than `rare_rate_events` events (default 5) also shows its one-sided 95 % upper bound (exact Poisson, Garwood).
+
+Both thresholds are in `rules.toml` `[report]` and are printed with the parameters of Section 9.
 5. The signal classes sessions declare `unobserved`, with the metrics that depend on them (Section 8).
 
 **11.7 Invariants.** Each with its result, `pass` or `fail`, or `not_checked` when the inputs do not allow the check, with what failed:
@@ -368,4 +370,4 @@ A report turns one or more logs into a document a buyer, insurer or auditor can 
 - bounds: `unknown_as_human` ≤ point estimate ≤ `unknown_as_ai` for the time autonomy share, the task autonomy rate and the autonomous success rate;
 - witnesses: not available until trust level L3 is specified.
 
-A report is `complete` when every group present is complete (Section 7) and `incomplete` otherwise, including when no group is present.
+A report is `complete` when every group present is complete (Section 7) and `incomplete` otherwise, including when no group is present. A report is clean only when it is `verified` at L2, `complete`, has no census gap, leaves no session out and no invariant is `fail`; it then says so at the top, and otherwise lists why not.
