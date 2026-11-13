@@ -24,6 +24,12 @@ RVIZ = tb4.Source(node="/rviz2")
 TB4_NODE = tb4.Source(node="/turtlebot4_node")
 MISSION = tb4.Source(node="/basic_navigator")
 STRANGER = tb4.Source(node="/someone_else")
+BT_NAVIGATOR = tb4.Source(node="/bt_navigator")
+CONTROLLER = tb4.Source(node="/controller_server")
+BEHAVIORS = tb4.Source(node="/behavior_server")
+SMOOTHER = tb4.Source(node="/velocity_smoother")
+WAYPOINTS = tb4.Source(node="/waypoint_follower")
+HIDDEN = tb4.Source(node="/nav_helper")
 BUTTON_2 = tb4.Source(topic="/interface_buttons/button_2")
 POWER = tb4.Source(topic="/interface_buttons/button_power")
 CMD_PUBLISHERS = (NAV2, KBD)
@@ -36,6 +42,7 @@ _TYPES: dict[str, type[Any]] = {
     for cls in (
         tb4.CmdVel,
         tb4.CmdVelSmoothed,
+        tb4.ChainPublishers,
         tb4.ActionStatus,
         tb4.CollisionMonitorState,
         tb4.FunctionCall,
@@ -66,7 +73,7 @@ def observation(record: dict[str, Any]) -> tb4.Observation:
     cls = _TYPES[fields.pop("kind")]
     if fields.get("source") is not None:
         fields["source"] = tb4.Source(**fields["source"])
-    for name in ("candidates", "requesters"):
+    for name in ("candidates", "requesters", "publishers"):
         if name in fields:
             fields[name] = tuple(tb4.Source(**s) for s in fields[name])
     if "goals" in fields:
@@ -122,4 +129,13 @@ def nav2_cmd(t: float, vx: float, relayed: float | None = None) -> list[tb4.Obse
     return [
         tb4.CmdVelSmoothed(t, vx, 0.0, 0.0),
         tb4.CmdVel(t, out_vx, 0.0, 0.0, None, CMD_PUBLISHERS),
+    ]
+
+
+def chain(t: float, *smoothed_extra: tb4.Source) -> list[tb4.Observation]:
+    """Nav2's declared chain in the ROS graph, with ``smoothed_extra`` also publishing on
+    ``cmd_vel_smoothed``."""
+    return [
+        tb4.ChainPublishers(t, "cmd_vel_nav", (CONTROLLER, BEHAVIORS)),
+        tb4.ChainPublishers(t, "cmd_vel_smoothed", (SMOOTHER, *smoothed_extra)),
     ]

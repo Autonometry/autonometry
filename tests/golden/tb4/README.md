@@ -12,6 +12,12 @@ section B.5) rebuilt as what the observer sees on a TurtleBot 4, then run throug
   monitor and the keyboard, so every command is attributed by the topic-level rule (a command that
   relays `/cmd_vel_smoothed` is Nav2's, any other the keyboard's), as on ROS 2 Jazzy, whose
   subscriptions do not see the publisher.
+- The two `ChainPublishers` lines at t = −31 s give the publishers of Nav2's chain topics
+  (`controller_server` and `behavior_server` on `cmd_vel_nav`, `velocity_smoother` on
+  `cmd_vel_smoothed`), all declared AI. They were added after review, when a relayed command
+  became the AI's only on a declared chain: without them every relayed command would count as a
+  person's. Nothing in `expected.json` changed: this session's chain is clean, and nothing in it
+  comes from an undeclared device.
 - `expected.json`: the events the log must hold (heartbeats left out) and the timeline facts,
   worked out by hand under spec v0.3 before the code ran.
 

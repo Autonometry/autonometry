@@ -2,6 +2,8 @@
 {"kind": "WheelStatus", "t": -31.0, "wheels_enabled": true}
 {"kind": "CollisionMonitorState", "t": -31.0, "action_type": 0}
 {"kind": "KidnapStatus", "t": -31.0, "is_kidnapped": false}
+{"kind": "ChainPublishers", "t": -31.0, "topic": "cmd_vel_nav", "publishers": [{"node": "/controller_server"}, {"node": "/behavior_server"}]}
+{"kind": "ChainPublishers", "t": -31.0, "topic": "cmd_vel_smoothed", "publishers": [{"node": "/velocity_smoother"}]}
 {"kind": "Odometry", "t": -31.0, "x": 0.0, "y": 0.0, "linear_speed": 0.0, "angular_speed": 0.0}
 {"kind": "ButtonEdge", "t": 12.3, "source": {"topic": "/interface_buttons/button_2"}, "pressed": true}
 {"kind": "ButtonEdge", "t": 12.38, "source": {"topic": "/interface_buttons/button_2"}, "pressed": false}

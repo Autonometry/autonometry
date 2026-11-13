@@ -11,17 +11,32 @@ from autonometry.connectors import tb4
 from autonometry.reader import check_event
 from autonometry.recorder.engine import PLACEHOLDER_SESSION_ID
 from autonometry.strictjson import MAX_SAFE_INTEGER
-from tb4_helpers import BUTTON_2, JOY, KBD, MISSION, NAV2, POWER, RULES, RVIZ, STRANGER, TB4_NODE
+from tb4_helpers import (
+    BT_NAVIGATOR,
+    BUTTON_2,
+    JOY,
+    KBD,
+    MISSION,
+    NAV2,
+    POWER,
+    RULES,
+    RVIZ,
+    SMOOTHER,
+    STRANGER,
+    TB4_NODE,
+)
 from tb4_helpers import engine as make_engine
 
 STATES = frozenset(RULES.states)
 HUMAN = frozenset({"human_local", "human_remote", "shared"})
-SOURCES = st.sampled_from([NAV2, KBD, JOY, RVIZ, MISSION, STRANGER, TB4_NODE, BUTTON_2, POWER])
+SOURCES = st.sampled_from(
+    [NAV2, KBD, JOY, RVIZ, MISSION, STRANGER, TB4_NODE, BUTTON_2, POWER, SMOOTHER, BT_NAVIGATOR]
+)
 GOALS = st.sampled_from(["a" * 32, "b" * 32, "c" * 32])
 TIMES = st.floats(min_value=-5.0, max_value=200.0, allow_nan=False)
 SPEEDS = st.floats(min_value=-2.0, max_value=2.0, allow_nan=False) | st.just(0.0)
 STATUS = st.integers(min_value=0, max_value=6)
-ACTIONS = st.sampled_from([tb4.NAVIGATE, "dock", "undock", "wall_follow", "spin"])
+ACTIONS = st.sampled_from([*tb4.TASK_ACTIONS, *sorted(tb4.ROUTINES), "compute_path"])
 CALLS = st.sampled_from(["Dock", "Undock", "Wall Follow Left", "EStop", "Power", "Select"])
 COORDS = st.floats(min_value=-1e3, max_value=1e3, allow_nan=False)
 
@@ -36,6 +51,12 @@ OBSERVATIONS = st.one_of(
         st.lists(SOURCES, max_size=3).map(tuple),
     ),
     st.builds(tb4.CmdVelSmoothed, TIMES, SPEEDS, SPEEDS, SPEEDS),
+    st.builds(
+        tb4.ChainPublishers,
+        TIMES,
+        st.sampled_from([*tb4.CHAIN_TOPICS, "cmd_vel_teleop"]),
+        st.lists(SOURCES, max_size=4).map(tuple),
+    ),
     st.builds(
         tb4.ActionStatus,
         TIMES,

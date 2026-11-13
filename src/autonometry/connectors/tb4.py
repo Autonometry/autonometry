@@ -11,13 +11,17 @@ spec v0.3; the state of the one motion scope, ``base``, is decided by the first 
    (notes UC-20; definitions.md 6.15, moving the robot by hand).
 2. EStop from ``/function_calls`` or wheels disabled: ``safety_stop`` triggered by a person, with
    the button's device when one was pressed (6.7, UC-7).
-3. A running dock, undock or wall-follow action: ``shared`` with reason ``human_initiated`` when a
-   button or a person started it, ``ai`` or ``scripted`` when a declared program did (6.13, UC-3).
+3. A running routine (:data:`ROUTINES`: Create 3 dock, undock and wall follow; Nav2 spin,
+   backup, drive on heading and assisted teleop): ``shared`` with reason ``human_initiated`` when
+   a button, a person or an undeclared client started it, ``ai`` or ``scripted`` when a declared
+   program did, such as bt_navigator's recoveries (6.13, UC-3). A person commanding during an
+   AI's routine takes rule 4 instead.
 4. ``/cmd_vel`` from a person: ``human_local`` or ``human_remote`` by the device registry, an
    undeclared publisher ``human_remote`` (6.10); with another source within
    ``contention_window_s``, ``shared`` with reason ``human_initiated`` (6.12, UC-1). A neutral
    command or a joystick dead-man release ends it (6.11, UC-14); otherwise it lasts
-   ``goal_release_s`` after the last command.
+   ``goal_release_s`` after the last command. A publisher whose node name two publishers share
+   counts as undeclared: a name is not an identity.
 5. Motion on ``/odom`` with no command for ``gap_tolerance_s``: ``unknown`` with
    ``x_out_of_band`` (notes B.6 item 5).
 6. An open Nav2 task: ``safety_stop`` while the collision monitor says STOP (automatic, no actor);
@@ -31,7 +35,22 @@ spec v0.3; the state of the one motion scope, ``base``, is decided by the first 
     outside an open task, a scope nobody commands keeps its last controller's state until it is
     idle, and stays idle until something commands it (6.14).
 
-Nav2 goals open and close tasks: a goal ``EXECUTING`` with no task open gives ``task_start``;
+**The relay chain.** Nav2's commands reach ``/cmd_vel`` through a chain: the controller and the
+behaviour server publish ``cmd_vel_nav``, the velocity smoother ``cmd_vel_smoothed``, the
+collision monitor relays it to ``/cmd_vel``. Anything published upstream reaches the base as the
+relay's. So a command the relay passed on is the AI's only when every publisher on
+:data:`CHAIN_TOPICS` is a declared AI (and no name is shared) and a Nav2 task, or a routine an
+AI started, runs or ended less than ``gap_tolerance_s`` ago. Otherwise it is a person's (6.10,
+6.12): ``shared`` with reason ``human_initiated`` while such an AI action runs, else
+``human_remote``; its device is the one possible origin when the chain leaves only one, else
+undeclared and ``x_attribution_inferred``. A chain topic whose publishers were never observed
+leaves the origin open. While a routine a person started runs, the commands it relays are the
+routine's.
+
+Nav2 goals open and close tasks (:data:`TASK_ACTIONS`: navigate to pose, navigate through
+poses, follow waypoints; another task action inside the task, such as the waypoint follower's
+goals, is part of it unless a person sent it): a goal ``EXECUTING`` with no task open gives
+``task_start``;
 ``SUCCEEDED``, ``ABORTED`` and ``CANCELED`` give ``task_end`` with outcome ``success``,
 ``failure`` and ``aborted``. Under ``hint_as_event``, a person's re-goal or cancel is a ``hint``
 event; under ``hint_as_shared`` a ``hint`` event is sent only when a higher rule hides the shared
@@ -50,13 +69,18 @@ __all__ = [
     "ACCEPTED",
     "CANCELED",
     "CANCELING",
+    "CHAIN_TOPICS",
     "COLLISION_STOP",
     "EXECUTING",
+    "NAV2_ROUTINES",
     "NAVIGATE",
+    "ROUTINES",
     "ROUTINE_CALLS",
     "SUCCEEDED",
+    "TASK_ACTIONS",
     "ActionStatus",
     "ButtonEdge",
+    "ChainPublishers",
     "CmdVel",
     "CmdVelSmoothed",
     "CollisionMonitorState",
@@ -96,8 +120,16 @@ _PENDING: Final = frozenset({ACCEPTED, EXECUTING})
 #: ``nav2_msgs/msg/CollisionMonitorState.action_type`` for STOP.
 COLLISION_STOP: Final = 1
 
-#: The Nav2 action whose goals are tasks.
+#: The Nav2 action whose goals are tasks most often.
 NAVIGATE: Final = "navigate_to_pose"
+#: Nav2 actions whose goals are tasks, with their default task definitions.
+TASK_ACTIONS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        NAVIGATE: "nav_to_pose",
+        "navigate_through_poses": "nav_through_poses",
+        "follow_waypoints": "patrol",
+    }
+)
 #: Create 3 actions a button or a program can start, and the ``/function_calls`` names of the
 #: TurtleBot 4 buttons and menu that start them.
 ROUTINE_CALLS: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
@@ -107,6 +139,12 @@ ROUTINE_CALLS: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
         "wall_follow": frozenset({"Wall Follow Left", "Wall Follow Right"}),
     }
 )
+#: Nav2 behaviours that move the base: routines like the Create 3's (behavior_server).
+NAV2_ROUTINES: Final = frozenset({"spin", "backup", "drive_on_heading", "assisted_teleop"})
+ROUTINES: Final = frozenset(ROUTINE_CALLS) | NAV2_ROUTINES
+#: Topics of Nav2's command chain upstream of the relay to ``/cmd_vel``: the controller and
+#: behaviour server publish ``cmd_vel_nav``, the velocity smoother ``cmd_vel_smoothed``.
+CHAIN_TOPICS: Final = ("cmd_vel_nav", "cmd_vel_smoothed")
 _ESTOP: Final = "EStop"
 _NEUTRAL: Final = 1e-6
 #: Rounding allowed on the collision monitor's scale factor, which lies in [0, 1].
@@ -186,7 +224,8 @@ class Settings:
     simultaneity_window_s: float
     hint_policy: str = "hint_as_shared"
     scope: str = "base"
-    nav_task_definition_id: str = "nav_to_pose"
+    #: (action, task_definition_id) for each Nav2 action whose goals are tasks.
+    task_definitions: tuple[tuple[str, str], ...] = tuple(TASK_ACTIONS.items())
     initial_pose_plan_item_id: str = "initial_pose"
     nav2_actor_id: str = "ai:nav2"
     #: The node that relays Nav2's commands to ``/cmd_vel`` (the topic-level rule's Nav2).
@@ -254,7 +293,8 @@ class Settings:
 class CmdVel:
     """A velocity command on ``/cmd_vel`` (metres per second, radians per second). ``source`` is
     its publisher when known from the message or because it is the topic's only publisher;
-    otherwise ``candidates`` lists the topic's publishers in the ROS graph."""
+    ``candidates`` lists the topic's publishers in the ROS graph, one entry per publisher. A
+    node name that two publishers share is no identity: such a source counts as undeclared."""
 
     t: float
     linear_x: float
@@ -291,6 +331,17 @@ class ActionStatus:
     action: str
     goals: tuple[GoalStatus, ...]
     requesters: tuple[Source, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ChainPublishers:
+    """The publishers of a topic of Nav2's command chain (``topic`` one of
+    :data:`CHAIN_TOPICS`) in the ROS graph, one entry per publisher, so a name that appears
+    twice shows."""
+
+    t: float
+    topic: str
+    publishers: tuple[Source, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -374,6 +425,7 @@ class Odometry:
 Observation = (
     CmdVel
     | CmdVelSmoothed
+    | ChainPublishers
     | ActionStatus
     | CollisionMonitorState
     | FunctionCall
@@ -495,6 +547,8 @@ class _Commander:
     inferred: bool
     last_nonzero: float | None = None
     ended: bool = True
+    #: A person's command that came through Nav2's chain (not the relay's own AI).
+    via_chain: bool = False
 
 
 @dataclass(slots=True)
@@ -507,6 +561,7 @@ class _Hint:
 
 @dataclass(slots=True)
 class _Nav:
+    action: str
     task_id: str
     goal_id: str
     executing_since: float | None
@@ -515,6 +570,7 @@ class _Nav:
 
 @dataclass(slots=True)
 class _Routine:
+    action: str
     goal_id: str
     value: StateAssertion
 
@@ -524,6 +580,15 @@ class _Buttons:
     """The latest edge of each button: (pressed, time)."""
 
     edges: dict[Source, tuple[bool, float]] = field(default_factory=dict)
+
+
+def _duplicated(sources: Iterable[Source]) -> frozenset[Source]:
+    """Sources that more than one publisher claims: a name, not an identity."""
+    seen: set[Source] = set()
+    twice: set[Source] = set()
+    for source in sources:
+        (twice if source in seen else seen).add(source)
+    return frozenset(twice)
 
 
 def _neutral(*values: float) -> bool:
@@ -560,6 +625,9 @@ class Tb4Engine:
         self._commanders: dict[str, _Commander] = {}
         self._smoothed: tuple[float, tuple[float, float, float]] | None = None
         self._pending: list[CmdVel] = []
+        self._chain: dict[str, tuple[Source, ...]] = {}
+        self._ai_action_ended: float | None = None
+        self._person_routine_ended: float | None = None
         self._goals: dict[str, dict[str, int]] = {}
         self._nav: _Nav | None = None
         self._routine: _Routine | None = None
@@ -624,12 +692,15 @@ class Tb4Engine:
             self._sent = value
             out.append(value)
 
-    def _dispatch(self, observation: Observation, out: list[Message]) -> None:
+    def _dispatch(self, observation: Observation, out: list[Message]) -> None:  # noqa: PLR0912 -- one branch per topic
         match observation:
             case CmdVel():
                 self._on_cmd_vel(observation)
             case CmdVelSmoothed():
                 self._on_smoothed(observation)
+            case ChainPublishers():
+                if observation.topic in CHAIN_TOPICS:
+                    self._chain[observation.topic] = observation.publishers[:_MAX_PENDING]
             case ActionStatus():
                 self._on_action(observation, out)
             case CollisionMonitorState():
@@ -698,13 +769,16 @@ class Tb4Engine:
     def _human_value(
         self, person: _Person, shared: bool, reason: str, extra: Fields = ()
     ) -> StateAssertion:
-        """A person's state: ``shared`` or by the device's location; ``human_remote`` for an
-        undeclared or support device (definitions.md 6.10)."""
+        """A person's state: ``shared``, else by the device's location; ``human_remote`` for an
+        undeclared device, and always for a support device (definitions.md 6.10). The timeline
+        counts an undeclared ``shared`` as ``human_remote`` too."""
         device = person.device
-        if device is None or device.kind != "human":
+        if device is not None and device.kind == "support":
             state = "human_remote"
         elif shared:
             state = "shared"
+        elif device is None:
+            state = "human_remote"
         else:
             state = "human_local" if device.location == "local" else "human_remote"
         fields = extra + ((("x_attribution_inferred", True),) if person.inferred else ())
@@ -738,17 +812,24 @@ class Tb4Engine:
 
     def _other(self, observation: CmdVel) -> Source | None:
         """The publisher of a command that relays nothing: the one candidate besides Nav2's
-        relay, or undeclared when there are several."""
+        relay, or undeclared when there are several or its name is shared."""
         nav2 = self._s.nav2_source
-        others = {c for c in observation.candidates if c != nav2}
-        return others.pop() if len(others) == 1 else None
+        others = [c for c in observation.candidates if c != nav2]
+        if len(others) == 1 and others[0] not in _duplicated(observation.candidates):
+            return others[0]
+        return None
 
     def _on_cmd_vel(self, observation: CmdVel) -> None:
         """A command with a known publisher counts at once. Otherwise the topic-level rule
         decides; since the relay and its ``/cmd_vel_smoothed`` may arrive in either order, a
         command that relays nothing yet waits up to ``smoothed_match_s`` for one (inferred)."""
-        if observation.source is not None:
+        duplicated = _duplicated(observation.candidates)
+        if observation.source is not None and observation.source in duplicated:
+            self._command(observation, None, inferred=True)
+        elif observation.source is not None:
             self._command(observation, observation.source, inferred=False)
+        elif self._s.nav2_source in duplicated:
+            self._command(observation, None, inferred=True)
         elif self._relayed(observation):
             self._command(observation, self._s.nav2_source, inferred=True)
         else:
@@ -778,12 +859,26 @@ class Tb4Engine:
             self._command(command, self._other(command), inferred=True)
 
     def _command(self, observation: CmdVel, source: Source | None, inferred: bool) -> None:
+        via_chain = False
+        if source is not None and source == self._s.nav2_source:
+            if self._person_routine(observation.t):
+                # A behaviour a person started drives through the chain: its commands are the
+                # routine's, already counted as the person's (6.13).
+                if not _neutral(observation.linear_x, observation.linear_y, observation.angular_z):
+                    self._touch(observation.t)
+                    self._moved(observation.t)
+                return
+            source, inferred, via_chain = self._relay_origin(observation.t, inferred)
         device = self._device(source)
-        key = device.device_id if device is not None else f"undeclared:{source!r}"
+        if via_chain and self._role(device) != "human":
+            device = None
+        prefix = "relay:" if via_chain else ""
+        key = prefix + (device.device_id if device is not None else f"undeclared:{source!r}")
         commander = self._commanders.get(key)
         if commander is None:
             commander = self._commanders[key] = _Commander(device, source, inferred)
         commander.device, commander.source, commander.inferred = device, source, inferred
+        commander.via_chain = via_chain
         if _neutral(observation.linear_x, observation.linear_y, observation.angular_z):
             commander.ended = True
             return
@@ -791,6 +886,53 @@ class Tb4Engine:
         commander.last_nonzero = observation.t
         self._touch(observation.t)
         self._moved(observation.t)
+
+    def _person_routine(self, t: float) -> bool:
+        """A routine a person started runs or ended less than ``gap_tolerance_s`` before ``t``."""
+        if self._routine is not None and self._routine.value.state != "ai":
+            return True
+        ended = self._person_routine_ended
+        return ended is not None and 0 <= t - ended < self._s.gap_tolerance_s
+
+    def _ai_action(self, t: float) -> bool:
+        """A Nav2 task, or a routine a declared AI started, runs or ended less than
+        ``gap_tolerance_s`` before ``t``."""
+        if self._nav is not None:
+            return True
+        if self._routine is not None and self._routine.value.state == "ai":
+            return True
+        ended = self._ai_action_ended
+        return ended is not None and 0 <= t - ended < self._s.gap_tolerance_s
+
+    def _relay_origin(self, t: float, inferred: bool) -> tuple[Source | None, bool, bool]:
+        """Who a command the relay passed on came from: ``(source, inferred, via_chain)``.
+
+        It is Nav2's (the relay itself, not via a person) only when every publisher on the
+        chain topics is a declared AI and a Nav2 action that an AI executes runs or just ended.
+        Otherwise it is a person's (definitions.md 6.10, 6.12): the one possible origin when the
+        chain leaves only one (not inferred beyond the relay's own attribution), else an
+        undeclared person, inferred. A chain topic never observed leaves the origin open."""
+        machines: set[Source] = set()
+        others: set[Source] = set()
+        twice: set[Source] = set()
+        known = all(topic in self._chain for topic in CHAIN_TOPICS)
+        for topic in CHAIN_TOPICS:
+            publishers = self._chain.get(topic, ())
+            twice |= _duplicated(publishers)
+            for source in publishers:
+                if source in twice or self._role(self._device(source)) != "ai":
+                    others.add(source)
+                else:
+                    machines.add(source)
+        machines -= twice
+        others |= twice
+        running = self._ai_action(t)
+        if known and not others and running:
+            return self._s.nav2_source, inferred, False
+        if known and len(others) == 1 and not (running and machines):
+            (origin,) = others
+            return (None if origin in twice else origin), inferred, True
+        return None, True, True
 
     def _on_joy(self, observation: Joy) -> None:
         buttons = observation.buttons
@@ -930,17 +1072,26 @@ class Tb4Engine:
         # Execution first: Nav2 aborts a preempted goal before its successor runs.
         changes.sort(key=lambda change: change[0].status != EXECUTING)
         self._goals[observation.action] = {g.goal_id: g.status for g in observation.goals}
+        tasks = dict(self._s.task_definitions)
         for goal, _ in changes:
-            if observation.action == NAVIGATE:
+            if observation.action in tasks:
                 self._nav_change(goal, observation, out)
-            elif observation.action in ROUTINE_CALLS:
+            elif observation.action in ROUTINES:
                 self._routine_change(goal, observation)
 
     def _nav_change(self, goal: GoalStatus, observation: ActionStatus, out: list[Message]) -> None:
         nav, t = self._nav, observation.t
+        if nav is not None and observation.action != nav.action:
+            # Another task action inside the task (a waypoint follower's navigate_to_pose
+            # goals): part of the task when an AI sent it, a person's re-goal otherwise.
+            if goal.status == EXECUTING:
+                person = self._requester(observation.requesters)
+                if person is not None:
+                    self._hint("regoal", person, t, out, until_task_end=False)
+            return
         if goal.status == EXECUTING:
             if nav is None:
-                self._start_task(goal.goal_id, t, out)
+                self._start_task(observation.action, goal.goal_id, t, out)
             elif goal.goal_id != nav.goal_id:
                 self._regoal(goal.goal_id, observation, out)
                 nav.executing_since = t
@@ -968,28 +1119,26 @@ class Tb4Engine:
                 self._cancel(observation, out)
             self._end_task(_OUTCOMES[goal.status], goal.status, t, out)
 
-    def _start_task(self, goal_id: str, t: float, out: list[Message]) -> None:
+    def _start_task(self, action: str, goal_id: str, t: float, out: list[Message]) -> None:
         task_id = f"nav-{goal_id}"[:128]
         out.append(
             TaskStart(
                 task_id,
-                self._s.nav_task_definition_id,
-                (("x_trigger", f"/{NAVIGATE}/_action/status:EXECUTING"),),
+                dict(self._s.task_definitions)[action],
+                (("x_trigger", f"/{action}/_action/status:EXECUTING"),),
             )
         )
-        self._nav = _Nav(task_id, goal_id, t)
+        self._nav = _Nav(action, task_id, goal_id, t)
         self._touch(t)
         self._flush(out)
 
     def _end_task(self, outcome: str, status: int, t: float, out: list[Message]) -> None:
         assert self._nav is not None  # noqa: S101 -- only called with a task open
         name = {SUCCEEDED: "SUCCEEDED", ABORTED: "ABORTED", CANCELED: "CANCELED"}[status]
-        out.append(
-            TaskEnd(
-                self._nav.task_id, outcome, (("x_trigger", f"/{NAVIGATE}/_action/status:{name}"),)
-            )
-        )
+        trigger = f"/{self._nav.action}/_action/status:{name}"
+        out.append(TaskEnd(self._nav.task_id, outcome, (("x_trigger", trigger),)))
         self._nav = None
+        self._ai_action_ended = t
         self._touch(t)
 
     def _regoal(self, goal_id: str, observation: ActionStatus, out: list[Message]) -> None:
@@ -1031,23 +1180,34 @@ class Tb4Engine:
         routine, t = self._routine, observation.t
         if goal.status == EXECUTING and (routine is None or routine.goal_id != goal.goal_id):
             value = self._routine_value(observation)
-            self._routine = _Routine(goal.goal_id, value)
+            self._routine = _Routine(observation.action, goal.goal_id, value)
             self._touch(t)
             self._moved(t)
-        elif goal.status in _OUTCOMES and routine is not None and routine.goal_id == goal.goal_id:
+        elif (
+            goal.status in _OUTCOMES
+            and routine is not None
+            and (routine.action, routine.goal_id) == (observation.action, goal.goal_id)
+        ):
             self._last_control = routine.value
+            if routine.value.state == "ai":
+                self._ai_action_ended = t
+            else:
+                self._person_routine_ended = t
             self._routine = None
             self._touch(t)
             self._moved(t)
 
     def _routine_value(self, observation: ActionStatus) -> StateAssertion:
-        """Who started a dock, undock or wall-follow (definitions.md 6.13, notes UC-3)."""
+        """Who started a Create 3 dock, undock or wall-follow, or a Nav2 spin, backup, drive on
+        heading or assisted teleop (definitions.md 6.13, notes UC-3): a person or an undeclared
+        client gives ``shared`` with reason ``human_initiated``; Nav2's own recoveries, started
+        by bt_navigator, ``ai``."""
         action = observation.action
         extra: Fields = (
             ("x_trigger", f"/{action}/_action/status:EXECUTING"),
             ("x_routine", action),
         )
-        person = self._recent_call(ROUTINE_CALLS[action], observation.t)
+        person = self._recent_call(ROUTINE_CALLS.get(action, frozenset()), observation.t)
         if person is not None:
             return self._human_value(person, True, "human_initiated", extra)
         sources = [r for r in observation.requesters if r != self._s.function_caller]
@@ -1075,9 +1235,9 @@ class Tb4Engine:
             return self._control(self._kidnap_value())
         if self._estop is not None:
             return self._stop_value()
-        if self._routine is not None:
-            return self._control(self._routine.value)
         commanded = self._commanded(now)
+        if self._routine is not None and (commanded is None or self._routine.value.state != "ai"):
+            return self._control(self._routine.value)
         if commanded is not None:
             return self._control(commanded)
         if self._out_of_band(now):
@@ -1122,7 +1282,7 @@ class Tb4Engine:
             if c is not lead and (self._role(c.device) != "human" or c in humans)
         ]
         person = self._person(lead.device, lead.inferred)
-        if rivals:
+        if rivals or (lead.via_chain and self._ai_action(now)):
             extra: Fields = (("x_contention", True), ("x_trigger", "/cmd_vel"))
             if any(c.inferred for c in rivals):
                 person = _Person(person.device, person.actor_id, True)
@@ -1163,7 +1323,7 @@ class Tb4Engine:
             )
         hint = self._live_hint(now)
         if hint is not None:
-            extra: Fields = (("x_hint", hint.kind), ("x_trigger", f"/{NAVIGATE}"))
+            extra: Fields = (("x_hint", hint.kind), ("x_trigger", f"/{nav.action}"))
             return self._control(self._human_value(hint.person, True, "human_initiated", extra))
         nav2 = self._device(s.nav2_source)
         return self._control(
@@ -1173,7 +1333,7 @@ class Tb4Engine:
                 None,
                 s.nav2_actor_id,
                 None if nav2 is None else nav2.device_id,
-                (("x_trigger", f"/{NAVIGATE}/_action/status:EXECUTING"),),
+                (("x_trigger", f"/{nav.action}/_action/status:EXECUTING"),),
             )
         )
 

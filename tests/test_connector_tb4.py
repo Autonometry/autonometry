@@ -7,10 +7,14 @@ import pytest
 
 from autonometry.connectors import tb4
 from tb4_helpers import (
+    BEHAVIORS,
+    BT_NAVIGATOR,
     BUTTON_2,
+    CONTROLLER,
     DEVICES,
     GOAL,
     GOAL_2,
+    HIDDEN,
     JOY,
     KBD,
     MISSION,
@@ -19,8 +23,11 @@ from tb4_helpers import (
     ROOT,
     ROUTINE_GOAL,
     RVIZ,
+    SMOOTHER,
     STRANGER,
     TB4_NODE,
+    WAYPOINTS,
+    chain,
     cmd,
     engine,
     last_state,
@@ -35,6 +42,8 @@ def started(**options: object) -> tb4.Tb4Engine:
     e = engine(**options)
     e.observe(tb4.DockStatus(0.0, True))
     e.observe(tb4.WheelStatus(0.0, True))
+    for o in chain(0.0):
+        e.observe(o)
     return e
 
 
@@ -133,7 +142,7 @@ def test_regoal_with_several_clients_counts_as_an_undeclared_person__defs_6_10()
     out = e.observe(nav(5.0, tb4.EXECUTING, GOAL_2, requesters=(RVIZ, MISSION)))
     value = last_state(out)
     assert (value.state, value.device_id, value.actor_id) == (
-        "human_remote",
+        "shared",
         None,
         "person:unidentified",
     )
@@ -210,10 +219,112 @@ def test_without_a_registry_nav2_counts_as_a_remote_person__defs_6_10() -> None:
     assert last_state(e.observe(cmd(1.0, 0.2, NAV2))).state == "human_remote"
 
 
-def test_collision_monitor_commands_outside_a_task_are_ai__defs_6_10_notes_b2() -> None:
+def test_relayed_commands_with_no_ai_action_running_are_a_persons__defs_6_10_6_12() -> None:
     e = started()
     value = last_state(e.observe(cmd(1.0, 0.2, NAV2)))
+    assert (value.state, value.reason, value.actor_id, value.device_id) == (
+        "human_remote",
+        "human_initiated",
+        "person:unidentified",
+        None,
+    )
+    assert fields(value)["x_attribution_inferred"] is True
+
+
+def test_relayed_commands_during_a_task_on_a_declared_chain_are_ai__defs_6_10_notes_b2() -> None:
+    e = started()
+    on_task(e)
+    assert not [m for m in e.observe(cmd(2.0, 0.2, NAV2)) if isinstance(m, tb4.StateAssertion)]
+    value = state(e, 2.1)
     assert (value.state, value.actor_id, value.device_id) == ("ai", "ai:nav2", "nav2")
+
+
+def test_relayed_commands_just_after_an_ai_action_are_still_ai__defs_6_14() -> None:
+    e = started()
+    on_task(e)
+    e.observe(nav(5.0, tb4.SUCCEEDED))
+    e.observe(cmd(6.0, 0.2, NAV2))  # within gap_tolerance_s of the task's end
+    assert state(e, 6.1).state == "ai"
+    e.observe(cmd(8.0, 0.2, NAV2))  # 3 s later
+    assert state(e, 8.1).state == "human_remote"
+
+
+def test_a_hidden_publisher_upstream_of_the_relay_is_a_person__defs_6_10_6_12() -> None:
+    """Probe 1: no goal; an undeclared node publishes 0.3 m/s on /cmd_vel_smoothed for 4 s and
+    the collision monitor, the only /cmd_vel publisher, relays it."""
+    e = started()
+    for o in chain(1.0, HIDDEN):
+        e.observe(o)
+    for k in range(40):
+        t = 1.0 + 0.1 * k
+        e.observe(tb4.CmdVelSmoothed(t, 0.3, 0.0, 0.0))
+        e.observe(tb4.CmdVel(t, 0.3, 0.0, 0.0, NAV2, (NAV2,)))
+    value = state(e, 5.0)
+    assert (value.state, value.reason, value.device_id) == ("human_remote", "human_initiated", None)
+    assert "x_attribution_inferred" not in fields(value)  # the chain leaves one origin
+
+
+def test_a_hidden_publisher_upstream_of_the_relay_during_a_goal_is_shared__defs_6_12() -> None:
+    """Probe 1 during a goal: the relayed commands may be Nav2's or the hidden node's."""
+    e = started()
+    on_task(e)
+    for o in chain(1.5, HIDDEN):
+        e.observe(o)
+    for k in range(20):
+        t = 2.0 + 0.1 * k
+        e.observe(tb4.CmdVelSmoothed(t, 0.3, 0.0, 0.0))
+        e.observe(tb4.CmdVel(t, 0.3, 0.0, 0.0, NAV2, (NAV2,)))
+    value = state(e, 4.0)
+    assert (value.state, value.reason, value.device_id) == ("shared", "human_initiated", None)
+    assert fields(value)["x_attribution_inferred"] is True
+
+
+def test_an_undeclared_chain_publisher_never_counts_as_ai__defs_6_10() -> None:
+    e = started()
+    e.observe(tb4.ChainPublishers(0.5, "cmd_vel_nav", (CONTROLLER, BEHAVIORS, STRANGER)))
+    on_task(e)
+    e.observe(cmd(2.0, 0.2, NAV2))
+    assert state(e, 2.1).state == "shared"
+
+
+def test_a_chain_never_observed_leaves_the_relay_a_persons__defs_6_10() -> None:
+    e = engine()
+    e.observe(tb4.DockStatus(0.0, True))
+    on_task(e)
+    e.observe(cmd(2.0, 0.2, NAV2))
+    value = state(e, 2.1)
+    assert (value.state, value.device_id) == ("shared", None)
+    assert fields(value)["x_attribution_inferred"] is True
+
+
+def test_a_teleop_named_like_the_collision_monitor_is_undeclared__defs_6_10() -> None:
+    """Names are not identities: two /cmd_vel publishers both called collision_monitor."""
+    e = started()
+    on_task(e)
+    for o in nav2_cmd(1.5, 0.25):
+        e.observe(o)
+    twins = (NAV2, NAV2)
+    e.observe(tb4.CmdVelSmoothed(2.0, 0.25, 0.0, 0.0))
+    e.observe(tb4.CmdVel(2.0, 0.25, 0.0, 0.0, None, twins))
+    e.observe(tb4.CmdVel(2.05, -0.2, 0.0, 0.0, None, twins))
+    value = state(e, 2.4)
+    assert (value.state, value.device_id) == ("shared", None)
+    assert fields(value)["x_attribution_inferred"] is True
+
+
+def test_a_sole_publisher_whose_name_is_shared_is_undeclared__defs_6_10() -> None:
+    e = started()
+    value = last_state(e.observe(tb4.CmdVel(1.0, 0.2, 0.0, 0.0, KBD, (KBD, KBD))))
+    assert (value.state, value.device_id) == ("human_remote", None)
+    assert fields(value)["x_attribution_inferred"] is True
+
+
+def test_a_chain_publisher_whose_name_is_shared_is_undeclared__defs_6_10() -> None:
+    e = started()
+    e.observe(tb4.ChainPublishers(0.5, "cmd_vel_smoothed", (SMOOTHER, SMOOTHER)))
+    on_task(e)
+    e.observe(cmd(2.0, 0.2, NAV2))
+    assert state(e, 2.1).state == "shared"
 
 
 def test_a_script_device_commanding_is_scripted__defs_6_9_6_10() -> None:
@@ -247,18 +358,26 @@ def test_two_people_at_once_are_shared__defs_6_12() -> None:
 
 def test_commands_that_relay_cmd_vel_smoothed_are_nav2s__defs_6_12_notes_a() -> None:
     e = started()
+    on_task(e, 0.5)
     for o in nav2_cmd(1.0, 0.25):
-        out = e.observe(o)
-    value = last_state(out)
+        e.observe(o)
+    value = state(e, 1.1)
     assert (value.state, value.device_id) == ("ai", "nav2")
-    assert fields(value)["x_attribution_inferred"] is True
+    (commander,) = e._commanders.values()
+    assert (commander.device, commander.inferred, commander.via_chain) == (
+        DEVICES[0],
+        True,
+        False,
+    )
 
 
 def test_a_scaled_relay_is_still_nav2s__defs_6_12_notes_uc5() -> None:
     e = started()
+    on_task(e, 0.5)
     for o in nav2_cmd(1.0, 0.3, relayed=0.15):
-        out = e.observe(o)
-    assert last_state(out).state == "ai"
+        e.observe(o)
+    assert state(e, 1.1).state == "ai"
+    assert not [c for c in e._commanders.values() if c.via_chain]
 
 
 def test_a_stale_smoothed_command_does_not_match__defs_6_12() -> None:
@@ -428,7 +547,7 @@ def test_routine_started_by_a_script_is_scripted__defs_6_13() -> None:
 def test_routine_via_turtlebot4_node_without_a_seen_call_is_undeclared__defs_6_10() -> None:
     e = started()
     value = last_state(e.observe(routine(1.0, tb4.EXECUTING)))
-    assert (value.state, value.reason, value.device_id) == ("human_remote", "human_initiated", None)
+    assert (value.state, value.reason, value.device_id) == ("shared", "human_initiated", None)
 
 
 def test_routine_by_a_person_holds_until_idle_after_it_ends__defs_6_14() -> None:
@@ -436,7 +555,7 @@ def test_routine_by_a_person_holds_until_idle_after_it_ends__defs_6_14() -> None
     e.observe(tb4.FunctionCall(1.0, "Wall Follow Left"))
     e.observe(routine(1.1, tb4.EXECUTING, "wall_follow"))
     e.observe(routine(11.0, tb4.SUCCEEDED, "wall_follow"))
-    assert state(e, 40.9).state == "human_remote"  # no button seen: an undeclared person
+    assert state(e, 40.9).state == "shared"  # no button seen: an undeclared person
     assert state(e, 41.0).state == "idle"
 
 
@@ -637,3 +756,87 @@ def test_silent_publishers_are_forgotten__readme_limits() -> None:
         e.observe(cmd(1.0 + i * 0.01, 0.0, tb4.Source(node=f"/_ros2cli_{i}")))
     e.tick(40.0)
     assert not e._commanders  # the bound is internal
+
+
+# -- Nav2's other actions -----------------------------------------------------------------------
+
+
+def test_drive_on_heading_from_an_undeclared_client_is_shared__defs_6_13() -> None:
+    """Probe: `ros2 action send_goal /drive_on_heading ...` from a laptop."""
+    e = started()
+    laptop = tb4.Source(node="/_ros2cli_4242")
+    out = e.observe(routine(1.0, tb4.EXECUTING, "drive_on_heading", laptop))
+    value = last_state(out)
+    assert (value.state, value.reason, value.device_id) == ("shared", "human_initiated", None)
+    for k in range(10):  # the behaviour server drives the base through the chain
+        t = 1.1 + 0.1 * k
+        e.observe(tb4.CmdVelSmoothed(t, 0.2, 0.0, 0.0))
+        e.observe(tb4.CmdVel(t, 0.2, 0.0, 0.0, NAV2, (NAV2,)))
+    assert state(e, 2.1).state == "shared"
+    e.observe(routine(3.0, tb4.SUCCEEDED, "drive_on_heading", laptop))
+    assert state(e, 3.1).state == "shared"  # the person stays the last controller (6.14)
+
+
+@pytest.mark.parametrize("action", ["spin", "backup", "drive_on_heading", "assisted_teleop"])
+def test_a_nav2_behaviour_a_person_starts_is_shared__defs_6_13(action: str) -> None:
+    e = started()
+    value = last_state(e.observe(routine(1.0, tb4.EXECUTING, action, RVIZ)))
+    assert (value.state, value.reason, value.device_id) == (
+        "shared",
+        "human_initiated",
+        "rviz_pc_1",
+    )
+
+
+def test_a_recovery_bt_navigator_starts_is_ai_and_its_commands_too__defs_6_13() -> None:
+    e = started()
+    on_task(e)
+    value = last_state(e.observe(routine(2.0, tb4.EXECUTING, "spin", BT_NAVIGATOR)))
+    assert (value.state, value.actor_id) == ("ai", "ai:nav2_bt_navigator")
+    e.observe(cmd(2.5, 0.0, NAV2, wz=0.5))
+    assert state(e, 2.6).state == "ai"
+
+
+@pytest.mark.parametrize(
+    ("action", "definition"),
+    [("navigate_through_poses", "nav_through_poses"), ("follow_waypoints", "patrol")],
+)
+def test_other_nav2_task_actions_open_tasks__defs_5(action: str, definition: str) -> None:
+    e = started()
+    out = e.observe(tb4.ActionStatus(1.0, action, (tb4.GoalStatus(GOAL, tb4.EXECUTING),), (RVIZ,)))
+    assert [(m.task_definition_id) for m in out if isinstance(m, tb4.TaskStart)] == [definition]
+    out = e.observe(tb4.ActionStatus(9.0, action, (tb4.GoalStatus(GOAL, tb4.SUCCEEDED),), (RVIZ,)))
+    assert [m.outcome for m in out if isinstance(m, tb4.TaskEnd)] == ["success"]
+
+
+def test_waypoint_goals_inside_a_follow_waypoints_task_are_part_of_it__defs_5() -> None:
+    e = started()
+    e.observe(tb4.ActionStatus(1.0, "follow_waypoints", (tb4.GoalStatus(GOAL, tb4.EXECUTING),)))
+    out = e.observe(nav(2.0, tb4.EXECUTING, GOAL_2, requesters=(WAYPOINTS,)))
+    out += e.observe(nav(5.0, tb4.SUCCEEDED, GOAL_2, requesters=(WAYPOINTS,)))
+    assert not [m for m in out if isinstance(m, (tb4.TaskStart, tb4.TaskEnd, tb4.Hint))]
+    assert state(e, 5.1).state == "ai"
+    value = last_state(e.observe(nav(6.0, tb4.EXECUTING, "c" * 32)))  # RViz, inside the task
+    assert (value.state, dict(value.fields)["x_hint"]) == ("shared", "regoal")
+
+
+def test_a_hidden_publisher_during_an_ai_recovery_is_shared__defs_6_12_6_13() -> None:
+    e = started()
+    on_task(e)
+    e.observe(routine(2.0, tb4.EXECUTING, "backup", BT_NAVIGATOR))
+    for o in chain(2.1, HIDDEN):
+        e.observe(o)
+    e.observe(tb4.CmdVelSmoothed(2.5, 0.3, 0.0, 0.0))
+    e.observe(tb4.CmdVel(2.5, 0.3, 0.0, 0.0, NAV2, (NAV2,)))
+    value = state(e, 2.6)
+    assert (value.state, value.reason, value.device_id) == ("shared", "human_initiated", None)
+
+
+def test_relays_just_after_a_persons_routine_stay_the_routines__defs_6_13_6_14() -> None:
+    e = started()
+    laptop = tb4.Source(node="/_ros2cli_4242")
+    e.observe(routine(1.0, tb4.EXECUTING, "spin", laptop))
+    e.observe(routine(3.0, tb4.SUCCEEDED, "spin", laptop))
+    e.observe(cmd(3.5, 0.0, NAV2, wz=0.3))  # the behaviour's last command, relayed late
+    assert state(e, 4.0).state == "shared"
+    assert not e._commanders
