@@ -75,8 +75,8 @@ run, and then:
 
 The registries are in `config/`: `devices.json` (the TurtleBot 4 template of notes B.1: the Create
 3 and HMI buttons, the Bluetooth controller and manual handling are local; the keyboard, RViz and
-the Gazebo GUI teleop are remote; Nav2 and a mission script are AI), `tasks.json` (`nav_to_pose`,
-`patrol`) and `plan.json` (`initial_pose`, `place_on_dock`).
+the Gazebo GUI teleop are remote; Nav2's whole command chain and a mission script are AI),
+`tasks.json` (`nav_to_pose`, `nav_through_poses`, `patrol`) and `plan.json` (`initial_pose`, `place_on_dock`).
 
 ## What to expect
 
