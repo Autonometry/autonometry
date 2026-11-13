@@ -326,7 +326,12 @@ class DwellShift:
 
 @dataclass(frozen=True, slots=True)
 class Timeline:
-    """Everything one session says, exactly (definitions.md 1 to 8). Times in nanoseconds."""
+    """Everything one session says, exactly (definitions.md 1 to 8). Times in nanoseconds.
+
+    ``human_actors`` are the sorted pseudonymous ids of 6.5; ``support`` the sorted, disjoint
+    union of support intervals (6.15); ``distance_samples`` every ``(time, distance_m)`` the
+    session's events carry, in ``seq`` order (8), and ``distance_m`` the largest of them.
+    """
 
     robot_id: str
     session_id: str
@@ -358,14 +363,25 @@ class Timeline:
     reset_unplanned_ns: int
     supervision: Supervision
     human_actor_ns: int
-    distinct_human_actors: int
-    supported_ns: int
+    human_actors: tuple[str, ...]
+    support: tuple[tuple[int, int], ...]
     distance_m: float | None
+    distance_samples: tuple[tuple[int, float], ...]
     flags: tuple[Flag, ...]
 
     @property
     def observed_ns(self) -> int:
         return self.whole_robot.observed_ns
+
+    @property
+    def distinct_human_actors(self) -> int:
+        """Distinct actors in a human state, approving, hinting or triggering a stop (6.5)."""
+        return len(self.human_actors)
+
+    @property
+    def supported_ns(self) -> int:
+        """Time under physical support, the union over every scope (definitions.md 6.15)."""
+        return sum(end - start for start, end in self.support)
 
     @property
     def counted_discrete(self) -> tuple[DiscreteIntervention, ...]:
@@ -552,7 +568,7 @@ class _Builder:
         self.supervision: list[tuple[int, str, int]] = [(self.start_ns, "none", 0)]
         self.support_open: dict[str, int] = {}
         self.support: list[tuple[int, int]] = []
-        self.distance_m: float | None = None
+        self.distance: list[tuple[int, float]] = []
         self.help: dict[str, int] = {}
         self.quiet_since_help: dict[str, bool] = {}
         self.repairs: list[_Repair] = []
@@ -998,8 +1014,11 @@ class _Builder:
             self.supervision.append((now_ns, event["level"], event["n_supervisors"]))
         elif kind in ("support_start", "support_end"):
             self.support_event(event, now_ns)
-        elif kind == "heartbeat" and "distance_m" in event:
-            self.distance_m = max(self.distance_m or 0.0, event["distance_m"])
+
+    def odometry(self, event: Event, now_ns: int) -> None:
+        """Keep the cumulative ``distance_m`` any event carries (8, common fields)."""
+        if "distance_m" in event:
+            self.distance.append((now_ns, float(event["distance_m"])))
 
     def finish(self, end_ns: int, end_seq: int | None) -> None:
         self.end_task(end_ns, end_seq, "unknown", False)
@@ -1047,6 +1066,7 @@ def build_timeline(
     builder = _Builder(start, registries, rules)
     names = _scope_names(start, body)
     builder.open_scopes(start, names)
+    builder.odometry(start, builder.start_ns)
     last_ns, last_seq = builder.start_ns, start["seq"]
     for event in [*body, *([] if end is None else [end])]:
         now_ns = max(ts_to_ns(event["ts"]), last_ns)
@@ -1055,6 +1075,7 @@ def build_timeline(
             builder.gap(last_ns, now_ns, event["seq"], lost)
         if event is not end:
             builder.handle(event, now_ns)
+        builder.odometry(event, now_ns)
         last_ns, last_seq = now_ns, event["seq"]
     builder.finish(last_ns, None if end is None else end["seq"])
     return _assemble(session, start, end, builder, registries, rules, log_flags)
@@ -1099,9 +1120,10 @@ def _empty(
         0,
         Supervision(MappingProxyType({}), 0, 0),
         0,
-        0,
-        0,
+        (),
+        (),
         None,
+        (),
         _sorted_flags(session, [], log_flags),
     )
 
@@ -1213,17 +1235,21 @@ def _intervals_by_scope(
     return out
 
 
-def _union_ns(intervals: Iterable[tuple[int, int]]) -> int:
-    total = 0
-    reach: int | None = None
+def _union(intervals: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
+    """The sorted, disjoint union of ``[start, end)`` intervals; empty ones are dropped."""
+    out: list[tuple[int, int]] = []
     for start, end in sorted(intervals):
-        if reach is None or start >= reach:
-            total += end - start
-            reach = end
-        elif end > reach:
-            total += end - reach
-            reach = end
-    return total
+        if end <= start:
+            continue
+        if out and start <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], end))
+        else:
+            out.append((start, end))
+    return out
+
+
+def _union_ns(intervals: Iterable[tuple[int, int]]) -> int:
+    return sum(end - start for start, end in _union(intervals))
 
 
 def _group(items: Sequence[tuple[int, str, str | None]], window_ns: int) -> tuple[list[int], int]:
@@ -1344,9 +1370,10 @@ def _assemble(  # noqa: PLR0913, PLR0917 -- one place that puts the timeline tog
         unplanned,
         _supervision(b.supervision, whole, rules),
         _human_actor_ns(all_spans, discrete, human),
-        _distinct_humans(all_spans, discrete, stops, human),
-        _union_ns(b.support),
-        b.distance_m,
+        _human_actors(all_spans, discrete, stops, human),
+        tuple(_union(b.support)),
+        max((metres for _, metres in b.distance), default=None),
+        tuple(b.distance),
         _sorted_flags(session, b.flags, log_flags),
     )
 
@@ -1568,18 +1595,17 @@ def _human_actor_ns(
     return sum(_union_ns(intervals) for intervals in by_actor.values())
 
 
-def _distinct_humans(
+def _human_actors(
     spans: Sequence[Span],
     discrete: Sequence[DiscreteIntervention],
     stops: Sequence[SafetyStop],
     human: frozenset[str],
-) -> int:
-    """Distinct actors in a human state, approving, hinting or triggering a stop (6.5)."""
+) -> tuple[str, ...]:
+    """Actors in a human state, approving, hinting or triggering a stop, sorted (6.5)."""
     actors = {s.actor_id for s in spans if s.state in human and s.duration_ns}
     actors |= {d.actor_id for d in discrete}
     actors |= {s.actor_id for s in stops}
-    actors.discard(None)
-    return len(actors)
+    return tuple(sorted(actor for actor in actors if actor is not None))
 
 
 # -- JSON ---------------------------------------------------------------------------------------
