@@ -1,6 +1,7 @@
 {
-  "devices": 0,
+  "entries": 0,
   "file": "no_devices.json",
+  "kind": "devices",
   "problems": [
     "schema_violation: /devices: must be a list of length >= 1"
   ],

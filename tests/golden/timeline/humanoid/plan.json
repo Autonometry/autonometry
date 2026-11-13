@@ -1,0 +1,12 @@
+{
+  "items": [
+    {
+      "plan_item_id": "reset_scene",
+      "kind": "reset"
+    },
+    {
+      "plan_item_id": "demo_block",
+      "kind": "demonstration"
+    }
+  ]
+}

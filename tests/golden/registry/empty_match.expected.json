@@ -1,6 +1,7 @@
 {
-  "devices": 0,
+  "entries": 0,
   "file": "empty_match.json",
+  "kind": "devices",
   "problems": [
     "schema_violation: /devices/0/match: must be an object with a number of fields >= 1"
   ],

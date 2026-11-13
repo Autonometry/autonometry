@@ -1,0 +1,198 @@
+{
+  "counts": {
+    "events": 10,
+    "files": 1,
+    "registry_errors": 0,
+    "rejected_lines": 0,
+    "sessions": 1
+  },
+  "registry_errors": [],
+  "rejected_lines": [],
+  "sessions": [
+    {
+      "distance_m": null,
+      "dwell": {
+        "approval_min_dwell_s": 0.0,
+        "hint_min_dwell_s": 0.0,
+        "human_s": 0.0,
+        "moved_from_ai_s": {
+          "per_scope": {
+            "whole_robot": 0.0
+          },
+          "scope_weighted": 0.0,
+          "whole_robot": 0.0
+        }
+      },
+      "end": "2026-11-12T08:00:50.000000000Z",
+      "flags": [
+        {
+          "code": "undeclared_device",
+          "detail": "scope 'whole_robot': ai from device 'rogue_planner', which is not in the device registry; counted as human_remote",
+          "seq": 4
+        },
+        {
+          "code": "undeclared_device",
+          "detail": "scope 'whole_robot': ai names no device; counted as human_remote",
+          "seq": 5
+        }
+      ],
+      "hint_policy": "hint_as_shared",
+      "humans": {
+        "distinct_human_actors": 2,
+        "human_actor_s": 20.0
+      },
+      "interventions": {
+        "approvals": [],
+        "by_kind": {
+          "takeover": 1
+        },
+        "by_reason": {
+          "human_initiated": 1
+        },
+        "episodes": [
+          {
+            "actor_id": "ai:planner",
+            "end": "2026-11-12T08:00:30.000000000Z",
+            "end_seq": 6,
+            "human_s": 20.0,
+            "intervention": 0,
+            "kind": "takeover",
+            "reason": "human_initiated",
+            "scope": "whole_robot",
+            "seq": 4,
+            "start": "2026-11-12T08:00:10.000000000Z",
+            "takeover_seq": null,
+            "task_id": "t1"
+          }
+        ],
+        "hints": [],
+        "list": [
+          {
+            "actor_id": "ai:planner",
+            "kind": "takeover",
+            "reason": "human_initiated",
+            "scopes": [
+              "whole_robot"
+            ],
+            "seq": 4,
+            "start": "2026-11-12T08:00:10.000000000Z",
+            "task_id": "t1"
+          }
+        ],
+        "per_scope": 1,
+        "whole_robot": 1
+      },
+      "registries": {
+        "devices": "matched",
+        "plan": "matched",
+        "tasks": "matched"
+      },
+      "resets": {
+        "planned_s": 0.0,
+        "unplanned_s": 0.0
+      },
+      "robot_id": "r01",
+      "safety_stops": {
+        "automatic": 0,
+        "human_triggered": 0,
+        "joined_by_takeover": 0,
+        "list": [],
+        "per_scope": 0,
+        "whole_robot": 0
+      },
+      "scope_weights": {
+        "whole_robot": 1.0
+      },
+      "scopes": [
+        "whole_robot"
+      ],
+      "session_end_seq": 9,
+      "session_id": "undeclared_device",
+      "session_start_seq": 0,
+      "simulated": false,
+      "start": "2026-11-12T08:00:00.000000000Z",
+      "supervision": {
+        "active_s_by_level": {
+          "none": 38.0
+        },
+        "ratio": 0.0,
+        "supervisor_hours_per_robot_hour": 0.0
+      },
+      "supported_s": 0.0,
+      "tasks": [
+        {
+          "autonomous": false,
+          "closed": true,
+          "contains_unknown": false,
+          "definition_known": true,
+          "dwell_moved_from_ai_s": 0.0,
+          "end": "2026-11-12T08:00:40.000000000Z",
+          "end_seq": 7,
+          "human_s": 20.0,
+          "interventions": 1,
+          "interventions_whole_robot": 1,
+          "outcome": "success",
+          "start": "2026-11-12T08:00:02.000000000Z",
+          "start_seq": 2,
+          "task_definition_id": "pick_v1",
+          "task_id": "t1",
+          "unplanned_reset_s": 0.0
+        }
+      ],
+      "time": {
+        "per_scope": {
+          "whole_robot": {
+            "active_s": 38.0,
+            "idle_s": 12.0,
+            "observed_s": 50.0,
+            "states": {
+              "ai": 18.0,
+              "human_local": 0.0,
+              "human_remote": 20.0,
+              "idle": 12.0,
+              "safety_stop": 0.0,
+              "scripted": 0.0,
+              "shared": 0.0,
+              "unknown": 0.0
+            },
+            "unknown_s": 0.0
+          }
+        },
+        "scope_weighted": {
+          "active_s": 38.0,
+          "idle_s": 12.0,
+          "observed_s": 50.0,
+          "states": {
+            "ai": 18.0,
+            "human_local": 0.0,
+            "human_remote": 20.0,
+            "idle": 12.0,
+            "safety_stop": 0.0,
+            "scripted": 0.0,
+            "shared": 0.0,
+            "unknown": 0.0
+          },
+          "unknown_s": 0.0
+        },
+        "whole_robot": {
+          "active_s": 38.0,
+          "idle_s": 12.0,
+          "observed_s": 50.0,
+          "states": {
+            "ai": 18.0,
+            "human_local": 0.0,
+            "human_remote": 20.0,
+            "idle": 12.0,
+            "safety_stop": 0.0,
+            "scripted": 0.0,
+            "shared": 0.0,
+            "unknown": 0.0
+          },
+          "unknown_s": 0.0
+        }
+      },
+      "unobserved": []
+    }
+  ],
+  "spec_version": "0.3"
+}

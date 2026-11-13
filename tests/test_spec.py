@@ -189,7 +189,9 @@ def test_file_hashes_are_sha256_of_the_files() -> None:
         "definitions.md",
         "device_registry.schema.json",
         "event.schema.json",
+        "plan.schema.json",
         "rules.toml",
+        "task_registry.schema.json",
     ]
     expected = hashlib.sha256((REPO_SPEC / "v0.3" / "rules.toml").read_bytes()).hexdigest()
     assert hashes["rules.toml"] == expected

@@ -1,6 +1,7 @@
 {
-  "devices": 4,
+  "entries": 4,
   "file": "duplicate_device_id.json",
+  "kind": "devices",
   "problems": [
     "duplicate_device_id: /devices/2 repeats the device_id of /devices/0",
     "duplicate_device_id: /devices/3 repeats the device_id of /devices/1"

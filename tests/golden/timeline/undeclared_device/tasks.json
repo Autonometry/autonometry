@@ -1,0 +1,10 @@
+{
+  "tasks": [
+    {
+      "task_definition_id": "pick_v1"
+    },
+    {
+      "task_definition_id": "walk_v1"
+    }
+  ]
+}

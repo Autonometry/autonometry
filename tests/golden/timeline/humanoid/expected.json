@@ -1,0 +1,347 @@
+{
+  "counts": {
+    "events": 20,
+    "files": 1,
+    "registry_errors": 0,
+    "rejected_lines": 0,
+    "sessions": 1
+  },
+  "registry_errors": [],
+  "rejected_lines": [],
+  "sessions": [
+    {
+      "distance_m": null,
+      "dwell": {
+        "approval_min_dwell_s": 0.0,
+        "hint_min_dwell_s": 0.0,
+        "human_s": 0.0,
+        "moved_from_ai_s": {
+          "per_scope": {
+            "head": 0.0,
+            "left_arm": 0.0,
+            "left_leg": 0.0,
+            "right_arm": 0.0,
+            "right_leg": 0.0,
+            "torso": 0.0
+          },
+          "scope_weighted": 0.0,
+          "whole_robot": 0.0
+        }
+      },
+      "end": "2026-11-12T08:01:00.000000000Z",
+      "flags": [],
+      "hint_policy": "hint_as_shared",
+      "humans": {
+        "distinct_human_actors": 2,
+        "human_actor_s": 19.6
+      },
+      "interventions": {
+        "approvals": [],
+        "by_kind": {
+          "takeover": 3
+        },
+        "by_reason": {
+          "human_initiated": 3
+        },
+        "episodes": [
+          {
+            "actor_id": "op_a",
+            "end": "2026-11-12T08:00:30.000000000Z",
+            "end_seq": 13,
+            "human_s": 10.0,
+            "intervention": 0,
+            "kind": "takeover",
+            "reason": "human_initiated",
+            "scope": "left_arm",
+            "seq": 9,
+            "start": "2026-11-12T08:00:20.000000000Z",
+            "takeover_seq": null,
+            "task_id": "w1"
+          },
+          {
+            "actor_id": "op_a",
+            "end": "2026-11-12T08:00:30.000000000Z",
+            "end_seq": 14,
+            "human_s": 9.8,
+            "intervention": 0,
+            "kind": "takeover",
+            "reason": "human_initiated",
+            "scope": "right_arm",
+            "seq": 10,
+            "start": "2026-11-12T08:00:20.200000000Z",
+            "takeover_seq": null,
+            "task_id": "w1"
+          },
+          {
+            "actor_id": "op_b",
+            "end": "2026-11-12T08:00:30.000000000Z",
+            "end_seq": 15,
+            "human_s": 9.6,
+            "intervention": 1,
+            "kind": "takeover",
+            "reason": "human_initiated",
+            "scope": "head",
+            "seq": 11,
+            "start": "2026-11-12T08:00:20.400000000Z",
+            "takeover_seq": null,
+            "task_id": "w1"
+          },
+          {
+            "actor_id": "op_a",
+            "end": "2026-11-12T08:00:30.000000000Z",
+            "end_seq": 16,
+            "human_s": 9.0,
+            "intervention": 2,
+            "kind": "takeover",
+            "reason": "human_initiated",
+            "scope": "torso",
+            "seq": 12,
+            "start": "2026-11-12T08:00:21.000000000Z",
+            "takeover_seq": null,
+            "task_id": "w1"
+          }
+        ],
+        "hints": [],
+        "list": [
+          {
+            "actor_id": "op_a",
+            "kind": "takeover",
+            "reason": "human_initiated",
+            "scopes": [
+              "left_arm",
+              "right_arm"
+            ],
+            "seq": 9,
+            "start": "2026-11-12T08:00:20.000000000Z",
+            "task_id": "w1"
+          },
+          {
+            "actor_id": "op_b",
+            "kind": "takeover",
+            "reason": "human_initiated",
+            "scopes": [
+              "head"
+            ],
+            "seq": 11,
+            "start": "2026-11-12T08:00:20.400000000Z",
+            "task_id": "w1"
+          },
+          {
+            "actor_id": "op_a",
+            "kind": "takeover",
+            "reason": "human_initiated",
+            "scopes": [
+              "torso"
+            ],
+            "seq": 12,
+            "start": "2026-11-12T08:00:21.000000000Z",
+            "task_id": "w1"
+          }
+        ],
+        "per_scope": 4,
+        "whole_robot": 3
+      },
+      "registries": {
+        "devices": "matched",
+        "plan": "matched",
+        "tasks": "matched"
+      },
+      "resets": {
+        "planned_s": 0.0,
+        "unplanned_s": 0.0
+      },
+      "robot_id": "r01",
+      "safety_stops": {
+        "automatic": 0,
+        "human_triggered": 0,
+        "joined_by_takeover": 0,
+        "list": [],
+        "per_scope": 0,
+        "whole_robot": 0
+      },
+      "scope_weights": {
+        "head": 0.0625,
+        "left_arm": 0.25,
+        "left_leg": 0.1875,
+        "right_arm": 0.25,
+        "right_leg": 0.1875,
+        "torso": 0.0625
+      },
+      "scopes": [
+        "left_arm",
+        "right_arm",
+        "left_leg",
+        "right_leg",
+        "torso",
+        "head"
+      ],
+      "session_end_seq": 19,
+      "session_id": "humanoid",
+      "session_start_seq": 0,
+      "simulated": false,
+      "start": "2026-11-12T08:00:00.000000000Z",
+      "supervision": {
+        "active_s_by_level": {
+          "none": 58.0
+        },
+        "ratio": 0.0,
+        "supervisor_hours_per_robot_hour": 0.0
+      },
+      "supported_s": 0.0,
+      "tasks": [
+        {
+          "autonomous": false,
+          "closed": true,
+          "contains_unknown": false,
+          "definition_known": true,
+          "dwell_moved_from_ai_s": 0.0,
+          "end": "2026-11-12T08:00:50.000000000Z",
+          "end_seq": 18,
+          "human_s": 10.0,
+          "interventions": 4,
+          "interventions_whole_robot": 3,
+          "outcome": "success",
+          "start": "2026-11-12T08:00:02.000000000Z",
+          "start_seq": 2,
+          "task_definition_id": "walk_v1",
+          "task_id": "w1",
+          "unplanned_reset_s": 0.0
+        }
+      ],
+      "time": {
+        "per_scope": {
+          "head": {
+            "active_s": 58.0,
+            "idle_s": 2.0,
+            "observed_s": 60.0,
+            "states": {
+              "ai": 48.4,
+              "human_local": 0.0,
+              "human_remote": 9.6,
+              "idle": 2.0,
+              "safety_stop": 0.0,
+              "scripted": 0.0,
+              "shared": 0.0,
+              "unknown": 0.0
+            },
+            "unknown_s": 0.0
+          },
+          "left_arm": {
+            "active_s": 58.0,
+            "idle_s": 2.0,
+            "observed_s": 60.0,
+            "states": {
+              "ai": 48.0,
+              "human_local": 0.0,
+              "human_remote": 10.0,
+              "idle": 2.0,
+              "safety_stop": 0.0,
+              "scripted": 0.0,
+              "shared": 0.0,
+              "unknown": 0.0
+            },
+            "unknown_s": 0.0
+          },
+          "left_leg": {
+            "active_s": 58.0,
+            "idle_s": 2.0,
+            "observed_s": 60.0,
+            "states": {
+              "ai": 58.0,
+              "human_local": 0.0,
+              "human_remote": 0.0,
+              "idle": 2.0,
+              "safety_stop": 0.0,
+              "scripted": 0.0,
+              "shared": 0.0,
+              "unknown": 0.0
+            },
+            "unknown_s": 0.0
+          },
+          "right_arm": {
+            "active_s": 58.0,
+            "idle_s": 2.0,
+            "observed_s": 60.0,
+            "states": {
+              "ai": 48.2,
+              "human_local": 0.0,
+              "human_remote": 9.8,
+              "idle": 2.0,
+              "safety_stop": 0.0,
+              "scripted": 0.0,
+              "shared": 0.0,
+              "unknown": 0.0
+            },
+            "unknown_s": 0.0
+          },
+          "right_leg": {
+            "active_s": 58.0,
+            "idle_s": 2.0,
+            "observed_s": 60.0,
+            "states": {
+              "ai": 58.0,
+              "human_local": 0.0,
+              "human_remote": 0.0,
+              "idle": 2.0,
+              "safety_stop": 0.0,
+              "scripted": 0.0,
+              "shared": 0.0,
+              "unknown": 0.0
+            },
+            "unknown_s": 0.0
+          },
+          "torso": {
+            "active_s": 58.0,
+            "idle_s": 2.0,
+            "observed_s": 60.0,
+            "states": {
+              "ai": 49.0,
+              "human_local": 0.0,
+              "human_remote": 9.0,
+              "idle": 2.0,
+              "safety_stop": 0.0,
+              "scripted": 0.0,
+              "shared": 0.0,
+              "unknown": 0.0
+            },
+            "unknown_s": 0.0
+          }
+        },
+        "scope_weighted": {
+          "active_s": 58.0,
+          "idle_s": 2.0,
+          "observed_s": 60.0,
+          "states": {
+            "ai": 51.8875,
+            "human_local": 0.0,
+            "human_remote": 6.1125,
+            "idle": 2.0,
+            "safety_stop": 0.0,
+            "scripted": 0.0,
+            "shared": 0.0,
+            "unknown": 0.0
+          },
+          "unknown_s": 0.0
+        },
+        "whole_robot": {
+          "active_s": 58.0,
+          "idle_s": 2.0,
+          "observed_s": 60.0,
+          "states": {
+            "ai": 48.0,
+            "human_local": 0.0,
+            "human_remote": 10.0,
+            "idle": 2.0,
+            "safety_stop": 0.0,
+            "scripted": 0.0,
+            "shared": 0.0,
+            "unknown": 0.0
+          },
+          "unknown_s": 0.0
+        }
+      },
+      "unobserved": []
+    }
+  ],
+  "spec_version": "0.3"
+}

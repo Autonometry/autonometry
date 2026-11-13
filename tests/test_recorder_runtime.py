@@ -22,7 +22,7 @@ from hypothesis import strategies as st
 from autonometry import sealfile, signednote
 from autonometry.reader import read_logs
 from autonometry.recorder.anchor import Anchorer
-from autonometry.recorder.config import Prepared, json_hash
+from autonometry.recorder.config import Prepared
 from autonometry.recorder.engine import PLACEHOLDER_SESSION_ID
 from autonometry.recorder.runtime import Recorder, tsa_anchorer
 from autonometry.recorder.store import CHECKPOINTS_FILE, EVENTS_FILE
@@ -725,8 +725,10 @@ def test_every_session_folder_holds_its_registries_and_plan__defs_6_10(
             assert stat.S_IMODE((folder / name).stat().st_mode) == 0o600
     start = events_of(folder)[0]
     assert start["device_registry_hash"] == check_registry(folder / "devices.json", SPEC).sha256
-    assert start["task_registry_hash"] == json_hash((folder / "tasks.json").read_bytes(), folder)
-    assert start["plan_hash"] == json_hash((folder / "plan.json").read_bytes(), folder)
+    assert (
+        start["task_registry_hash"] == check_registry(folder / "tasks.json", SPEC, "tasks").sha256
+    )
+    assert start["plan_hash"] == check_registry(folder / "plan.json", SPEC, "plan").sha256
 
 
 def test_the_newest_session_is_the_largest_counter_whatever_the_clock(

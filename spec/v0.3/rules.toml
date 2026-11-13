@@ -92,14 +92,15 @@ goal_release_s = 1.0
 contention_window_s = 1.0
 unknown_share_max = 0.05
 
-# Loader flag codes (definitions.md 6.8, 6.10, 6.12, 8).
+# Loader flag codes (definitions.md 3, 5, 6.1, 6.8, 6.10, 6.12, 8).
 [flags]
 codes = [
   "time_gap", "seq_gap", "ts_regression", "missing_initial_state", "help_reason_recoded",
   "undeclared_scope", "nested_task", "task_end_without_start", "task_not_closed",
   "distance_regression", "no_session_start", "no_session_end", "idle_in_task",
   "ts_reconstructed", "undeclared_device", "repeated_session_marker",
-  "event_outside_session", "clock_unsynced", "attribution_inferred",
+  "event_outside_session", "clock_unsynced", "attribution_inferred", "registry_mismatch",
+  "registry_missing", "unknown_task_definition", "unplanned", "approval_wait_recoded",
 ]
 
 [errors]

@@ -1,6 +1,7 @@
 {
-  "devices": 0,
+  "entries": 0,
   "file": "human_without_location.json",
+  "kind": "devices",
   "problems": [
     "schema_violation: /devices/0: missing field location"
   ],
