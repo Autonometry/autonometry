@@ -1,0 +1,2283 @@
+{
+  "about": null,
+  "census": {
+    "robots": [
+      {
+        "highest": null,
+        "lowest": null,
+        "missing_count": 0,
+        "missing_ranges": [],
+        "robot_id": "r01",
+        "sessions_checked": 0,
+        "sessions_not_checked": [
+          "s1",
+          "s2",
+          "s4"
+        ]
+      },
+      {
+        "highest": null,
+        "lowest": null,
+        "missing_count": 0,
+        "missing_ranges": [],
+        "robot_id": "r02",
+        "sessions_checked": 0,
+        "sessions_not_checked": [
+          "s3"
+        ]
+      }
+    ],
+    "status": "not_checked"
+  },
+  "exclusions": [],
+  "figures": {
+    "drift": {
+      "real": [
+        {
+          "bin": "2026-11-10",
+          "ci": [
+            5.813022685055159,
+            173.39250402537505
+          ],
+          "rate": 48.0
+        },
+        {
+          "bin": "2026-11-11",
+          "ci": [
+            0.8361844838848033,
+            184.01757988422048
+          ],
+          "rate": 33.027522935779814
+        },
+        {
+          "bin": "2026-11-12",
+          "ci": [
+            9.688371141758598,
+            288.9875067089584
+          ],
+          "rate": 80.0
+        }
+      ],
+      "simulated": [
+        {
+          "bin": "2026-11-12",
+          "ci": [
+            1.8228821748688713,
+            401.1583241476007
+          ],
+          "rate": 72.0
+        }
+      ]
+    },
+    "gaps_km": {
+      "real": {
+        "lower": [
+          1.0,
+          0.38700001403202516,
+          0.314807113705519,
+          0.22933332242913174,
+          0.015390059783199054,
+          0.0
+        ],
+        "survival": [
+          1.0,
+          0.875,
+          0.7500000000000001,
+          0.625,
+          0.31250000000000006,
+          0.0
+        ],
+        "times": [
+          0.0,
+          0.005555555555555556,
+          0.008333333333333333,
+          0.009722222222222222,
+          0.01666666666666667,
+          0.020555555555555556
+        ],
+        "unit": "active_hours",
+        "upper": [
+          1.0,
+          0.981392965878966,
+          0.9308983170906276,
+          0.8606982769135387,
+          0.7231578986482251,
+          0.0
+        ]
+      },
+      "simulated": {
+        "lower": [
+          1.0,
+          0.005983087639145736
+        ],
+        "survival": [
+          1.0,
+          0.5
+        ],
+        "times": [
+          0.0,
+          0.005555555555555556
+        ],
+        "unit": "active_hours",
+        "upper": [
+          1.0,
+          0.9104100848367374
+        ]
+      }
+    },
+    "state_seconds": {
+      "real": {
+        "observed_s": 370.0,
+        "states_s": {
+          "ai": 321.0,
+          "human_local": 3.0,
+          "human_remote": 20.0,
+          "idle": 0.0,
+          "safety_stop": 5.0,
+          "scripted": 0.0,
+          "shared": 0.0,
+          "unknown": 21.0
+        }
+      },
+      "simulated": {
+        "observed_s": 50.0,
+        "states_s": {
+          "ai": 50.0,
+          "human_local": 0.0,
+          "human_remote": 0.0,
+          "idle": 0.0,
+          "safety_stop": 0.0,
+          "scripted": 0.0,
+          "shared": 0.0,
+          "unknown": 0.0
+        }
+      }
+    }
+  },
+  "invariants": {
+    "bounds": {
+      "detail": "6 metric(s) checked",
+      "failure_count": 0,
+      "failures": [],
+      "status": "pass"
+    },
+    "census": {
+      "detail": "some session ids are not of the recorder's form",
+      "failure_count": 0,
+      "failures": [],
+      "status": "not_checked"
+    },
+    "chain": {
+      "detail": "4 session(s): every hash and link recomputed",
+      "failure_count": 0,
+      "failures": [],
+      "status": "pass"
+    },
+    "partition": {
+      "detail": "4 session(s) with observed time checked per scope and for the whole robot",
+      "failure_count": 0,
+      "failures": [],
+      "status": "pass"
+    },
+    "tasks": {
+      "detail": "7 task(s) in 4 session(s)",
+      "failure_count": 0,
+      "failures": [],
+      "status": "pass"
+    },
+    "time": {
+      "detail": "event times never go backwards and every verified token is inside its window",
+      "failure_count": 0,
+      "failures": [],
+      "status": "pass"
+    },
+    "witnesses": {
+      "detail": "not available (L3)",
+      "failure_count": 0,
+      "failures": [],
+      "status": "not_available"
+    }
+  },
+  "metrics": {
+    "groups": {
+      "real": {
+        "approvals_per_active_hour": {
+          "active_hours": 0.09694444444444444,
+          "ci": [
+            0.26115790470900735,
+            57.47253927616055
+          ],
+          "count": 1,
+          "definition": "whole-robot approval interventions / active hours",
+          "estimate": 10.315186246418339,
+          "interval_method": "poisson_exact_fallback(alpha_at_zero_boundary)",
+          "unobserved": []
+        },
+        "autonomous_success_rate": {
+          "ci": [
+            0.0,
+            0.43448246478317487
+          ],
+          "ci_clopper_pearson": [
+            0.0,
+            0.5218237501049815
+          ],
+          "ci_cluster_robust": [
+            0.0,
+            0.43448246478317487
+          ],
+          "ci_wilson": [
+            0.0,
+            0.43448246478317487
+          ],
+          "cluster": "session",
+          "cluster_robust_method": "wilson_fallback(single_cluster_or_degenerate)",
+          "definition": "closed tasks with no human help and outcome success / closed tasks",
+          "estimate": 0.0,
+          "interval_method": "wilson",
+          "k": 0,
+          "n": 5,
+          "n_clusters": 3,
+          "n_tasks": 6,
+          "n_tasks_closed": 5,
+          "n_tasks_unclosed": 1,
+          "n_tasks_unknown_definition": 0,
+          "n_tasks_with_unknown": 1,
+          "outer_interval": [
+            0.0,
+            0.43448246478317487
+          ],
+          "unknown_as_ai": {
+            "ci": [
+              0.0,
+              0.43448246478317487
+            ],
+            "estimate": 0.0,
+            "interval_method": "wilson",
+            "k": 0,
+            "n": 5
+          },
+          "unknown_as_human": {
+            "ci": [
+              0.0,
+              0.39033428790216546
+            ],
+            "estimate": 0.0,
+            "interval_method": "wilson",
+            "k": 0,
+            "n": 6
+          },
+          "unobserved": []
+        },
+        "breakdowns": {
+          "active_hours": 0.09694444444444444,
+          "by_kind": {
+            "approval": {
+              "ci": [
+                0.26115790470900735,
+                57.47253927616055
+              ],
+              "count": 1,
+              "estimate": 10.315186246418339,
+              "interval_method": "poisson_exact"
+            },
+            "hint": {
+              "ci": [
+                0.26115790470900735,
+                57.47253927616055
+              ],
+              "count": 1,
+              "estimate": 10.315186246418339,
+              "interval_method": "poisson_exact"
+            },
+            "takeover": {
+              "ci": [
+                6.381718173135143,
+                90.4360545875999
+              ],
+              "count": 3,
+              "estimate": 30.945558739255013,
+              "interval_method": "poisson_exact"
+            }
+          },
+          "by_reason": {
+            "ai_requested_help": {
+              "ci": [
+                0.26115790470900735,
+                57.47253927616055
+              ],
+              "count": 1,
+              "estimate": 10.315186246418339,
+              "interval_method": "poisson_exact"
+            },
+            "human_initiated": {
+              "ci": [
+                6.381718173135143,
+                90.4360545875999
+              ],
+              "count": 3,
+              "estimate": 30.945558739255013,
+              "interval_method": "poisson_exact"
+            },
+            "none": {
+              "ci": [
+                0.26115790470900735,
+                57.47253927616055
+              ],
+              "count": 1,
+              "estimate": 10.315186246418339,
+              "interval_method": "poisson_exact"
+            }
+          },
+          "by_task_definition": {
+            "pick_v1": {
+              "autonomous_success_rate": {
+                "ci": [
+                  0.0,
+                  0.43448246478317487
+                ],
+                "estimate": 0.0,
+                "interval_method": "wilson",
+                "k": 0,
+                "n": 5
+              },
+              "human_minutes_per_task": {
+                "ci": [
+                  -0.31219653093347033,
+                  0.10716938160001255
+                ],
+                "estimate": 0.07222222222222222,
+                "interval_method": "cluster_bootstrap_t(session)",
+                "n": 6,
+                "n_clusters": 3
+              },
+              "interventions_per_task": {
+                "ci": [
+                  0.4999999999999999,
+                  0.6666666666666666
+                ],
+                "estimate": 0.6666666666666666,
+                "interval_method": "cluster_bootstrap_t(session)",
+                "n": 6,
+                "n_clusters": 3
+              },
+              "n_tasks": 6,
+              "n_tasks_closed": 5,
+              "success_rate": {
+                "ci": [
+                  0.5655175352168252,
+                  1.0
+                ],
+                "estimate": 1.0,
+                "interval_method": "wilson",
+                "k": 5,
+                "n": 5
+              },
+              "task_autonomy_rate": {
+                "ci": [
+                  0.0,
+                  0.43448246478317487
+                ],
+                "estimate": 0.0,
+                "interval_method": "wilson",
+                "k": 0,
+                "n": 5
+              },
+              "task_minutes": {
+                "ci": [
+                  0.3674851827422501,
+                  0.994863364353742
+                ],
+                "estimate": 0.8138888888888888,
+                "interval_method": "cluster_bootstrap_t(session)",
+                "n": 6,
+                "n_clusters": 3
+              }
+            }
+          },
+          "narrow_human_initiated_or_safety": {
+            "ci": [
+              6.381718173135143,
+              90.4360545875999
+            ],
+            "count": 3,
+            "estimate": 30.945558739255013,
+            "interval_method": "poisson_exact"
+          },
+          "unobserved": []
+        },
+        "drift": {
+          "bin": "day",
+          "bins": [
+            {
+              "active_hours": 0.041666666666666664,
+              "bin": "2026-11-10",
+              "count": 2,
+              "rate": 48.0,
+              "start": "2026-11-10T00:00:00.000000000Z"
+            },
+            {
+              "active_hours": 0.03027777777777778,
+              "bin": "2026-11-11",
+              "count": 1,
+              "rate": 33.027522935779814,
+              "start": "2026-11-11T00:00:00.000000000Z"
+            },
+            {
+              "active_hours": 0.025,
+              "bin": "2026-11-12",
+              "count": 2,
+              "rate": 80.0,
+              "start": "2026-11-12T00:00:00.000000000Z"
+            }
+          ],
+          "cusum": {
+            "first_signal": null,
+            "h": 4.0,
+            "k": 0.5,
+            "lower": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "overdispersion_phi": 1.0,
+            "upper": [
+              0.0,
+              0.0,
+              0.12579589565969063
+            ]
+          },
+          "n_bins": 3,
+          "trend": {
+            "ci_rate_ratio": [
+              0.44621095262964194,
+              3.7351540943684753
+            ],
+            "dispersion_index": 0.3019612640163098,
+            "family": "poisson",
+            "interval_method": "wald",
+            "nb_alpha": null,
+            "p_value": 0.6374923955613461,
+            "rate_ratio_per_bin": 1.290994448735805,
+            "se": 0.5420386655518484,
+            "slope_log_rate_per_bin": 0.2554128118829948
+          },
+          "unobserved": []
+        },
+        "gaps_between_interventions": {
+          "active_hours": {
+            "ci": [
+              0.005555555555555556,
+              0.020555555555555556
+            ],
+            "cluster": "session",
+            "definition": "gap between consecutive whole-robot interventions (active_hours), right-censored at the session end; Kaplan-Meier median",
+            "estimate": 0.01666666666666667,
+            "exponential": {
+              "ci_mean_gap": [
+                0.008070194823835591,
+                0.04658239615670245
+              ],
+              "ci_rate": [
+                21.467337073773873,
+                123.91274582943976
+              ],
+              "interval_method": "wald_log_scale",
+              "mean_gap": 0.01938888888888889,
+              "rate": 51.57593123209169
+            },
+            "interval_method": "km_cloglog",
+            "n_censored": 3,
+            "n_events": 5,
+            "n_gaps": 8,
+            "naive_mean_gap": 0.01938888888888889,
+            "survival_at": {
+              "0.5": {
+                "ci": [
+                  0.0,
+                  0.0
+                ],
+                "estimate": 0.0,
+                "interval_method": "km_cloglog"
+              },
+              "1": {
+                "ci": [
+                  0.0,
+                  0.0
+                ],
+                "estimate": 0.0,
+                "interval_method": "km_cloglog"
+              },
+              "2": {
+                "ci": [
+                  0.0,
+                  0.0
+                ],
+                "estimate": 0.0,
+                "interval_method": "km_cloglog"
+              },
+              "4": {
+                "ci": [
+                  0.0,
+                  0.0
+                ],
+                "estimate": 0.0,
+                "interval_method": "km_cloglog"
+              }
+            },
+            "unit": "active_hours",
+            "weibull": {
+              "ci": [
+                2.334755036825566,
+                4.861273430988127
+              ],
+              "estimate": 2.625515290996654,
+              "failed_replicates": 7,
+              "interval_method": "cluster_bootstrap_percentile(session)",
+              "note": "shape below 1: decreasing hazard (bursty); 1: exponential",
+              "scale": 0.0162533339873869
+            }
+          },
+          "metres": {
+            "ci": [
+              3.0,
+              null
+            ],
+            "cluster": "session",
+            "definition": "gap between consecutive whole-robot interventions (metres), right-censored at the session end; Kaplan-Meier median",
+            "estimate": 3.5,
+            "exponential": {
+              "ci_mean_gap": [
+                1.875732399449298,
+                29.988286184380357
+              ],
+              "ci_rate": [
+                0.03334635376798752,
+                0.5331250877223175
+              ],
+              "interval_method": "wald_log_scale",
+              "mean_gap": 7.5,
+              "rate": 0.13333333333333333
+            },
+            "interval_method": "km_cloglog",
+            "n_censored": 1,
+            "n_events": 2,
+            "n_gaps": 3,
+            "n_sessions_without_distance": 2,
+            "naive_mean_gap": 7.5,
+            "survival_at": {
+              "10": {
+                "ci": [
+                  0.008961628330979066,
+                  0.7741486503608328
+                ],
+                "estimate": 0.33333333333333337,
+                "interval_method": "km_cloglog"
+              },
+              "100": {
+                "ci": [
+                  0.008961628330979066,
+                  0.7741486503608328
+                ],
+                "estimate": 0.33333333333333337,
+                "interval_method": "km_cloglog"
+              },
+              "1000": {
+                "ci": [
+                  0.008961628330979066,
+                  0.7741486503608328
+                ],
+                "estimate": 0.33333333333333337,
+                "interval_method": "km_cloglog"
+              }
+            },
+            "unit": "metres",
+            "weibull": {
+              "ci": null,
+              "estimate": null,
+              "interval_method": null,
+              "note": "fewer than 3 events above zero, or the fit failed"
+            }
+          },
+          "unobserved": []
+        },
+        "hints_per_active_hour": {
+          "active_hours": 0.09694444444444444,
+          "ci": [
+            0.26115790470900735,
+            57.47253927616055
+          ],
+          "count": 1,
+          "definition": "whole-robot hint interventions / active hours",
+          "estimate": 10.315186246418339,
+          "interval_method": "poisson_exact_fallback(alpha_at_zero_boundary)",
+          "unobserved": []
+        },
+        "human_minutes_per_task": {
+          "ci": [
+            -0.31219653093347033,
+            0.10716938160001255
+          ],
+          "ci_bootstrap_percentile": [
+            0.008333333333333333,
+            0.10833333333333334
+          ],
+          "cluster": "session",
+          "definition": "mean over tasks of (human time + unplanned reset + moved dwell) in minutes",
+          "estimate": 0.07222222222222222,
+          "interval_method": "cluster_bootstrap_t(session)",
+          "median": 0.04166666666666667,
+          "n": 6,
+          "n_clusters": 3,
+          "outer_interval": [
+            -0.31219653093347033,
+            0.3955386670602625
+          ],
+          "share_tasks_zero_human": 0.16666666666666666,
+          "unknown_as_ai": {
+            "ci": [
+              -0.31219653093347033,
+              0.10716938160001255
+            ],
+            "estimate": 0.07222222222222222,
+            "interval_method": "cluster_bootstrap_t(session)",
+            "n": 6
+          },
+          "unknown_as_human": {
+            "ci": [
+              0.10111298761058812,
+              0.3955386670602625
+            ],
+            "estimate": 0.13055555555555556,
+            "interval_method": "cluster_bootstrap_t(session)",
+            "n": 6
+          },
+          "unobserved": []
+        },
+        "interventions_per_active_hour": {
+          "active_hours": 0.09694444444444444,
+          "ci": [
+            16.746564482596888,
+            120.3610185832711
+          ],
+          "ci_bootstrap_percentile": [
+            33.027522935779814,
+            79.99999999999999
+          ],
+          "ci_poisson_exact": [
+            16.746564482596888,
+            120.3610185832711
+          ],
+          "cluster": "session",
+          "count": 5,
+          "definition": "whole-robot interventions / active hours",
+          "dispersion_index": 0.3019612640163098,
+          "estimate": 51.57593123209169,
+          "interval_method": "poisson_exact_fallback(alpha_at_zero_boundary)",
+          "n_clusters": 3,
+          "nb_alpha": 0.0,
+          "outer_interval": [
+            15.796083795746796,
+            140.3287332489961
+          ],
+          "per_scope": {
+            "active_hours": 0.09694444444444444,
+            "ci": [
+              22.712949319676397,
+              134.7109068225423
+            ],
+            "count": 6,
+            "estimate": 61.891117478510026,
+            "interval_method": "poisson_exact_fallback(alpha_at_zero_boundary)"
+          },
+          "unknown_as_ai": {
+            "active_hours": 0.10277777777777777,
+            "ci": [
+              15.796083795746796,
+              113.52971752854491
+            ],
+            "count": 5,
+            "estimate": 48.64864864864865,
+            "interval_method": "poisson_exact_fallback(alpha_at_zero_boundary)"
+          },
+          "unknown_as_human": {
+            "active_hours": 0.10277777777777777,
+            "ci": [
+              27.382991852625718,
+              140.3287332489961
+            ],
+            "count": 7,
+            "estimate": 68.10810810810811,
+            "interval_method": "poisson_exact_fallback(alpha_at_zero_boundary)"
+          },
+          "unobserved": []
+        },
+        "n_robots": 2,
+        "n_sessions": 3,
+        "safety_stops_per_active_hour": {
+          "active_hours": 0.09694444444444444,
+          "automatic": {
+            "active_hours": 0.09694444444444444,
+            "ci": [
+              0.26115790470900735,
+              57.47253927616055
+            ],
+            "count": 1,
+            "estimate": 10.315186246418339,
+            "interval_method": "poisson_exact_fallback(alpha_at_zero_boundary)"
+          },
+          "ci": [
+            0.26115790470900735,
+            57.47253927616055
+          ],
+          "ci_poisson_exact": [
+            0.26115790470900735,
+            57.47253927616055
+          ],
+          "cluster": "session",
+          "count": 1,
+          "definition": "whole-robot safety stops / active hours",
+          "dispersion_index": 1.1009174311926604,
+          "estimate": 10.315186246418339,
+          "human_triggered": {
+            "active_hours": 0.09694444444444444,
+            "ci": [
+              0.0,
+              38.05147860977125
+            ],
+            "count": 0,
+            "estimate": 0.0,
+            "interval_method": "poisson_exact_fallback(<2 clusters or zero count)"
+          },
+          "interval_method": "poisson_exact_fallback(alpha_at_zero_boundary)",
+          "n_clusters": 3,
+          "nb_alpha": 0.0,
+          "per_scope": {
+            "active_hours": 0.09694444444444444,
+            "ci": [
+              0.26115790470900735,
+              57.47253927616055
+            ],
+            "count": 1,
+            "estimate": 10.315186246418339,
+            "interval_method": "poisson_exact_fallback(alpha_at_zero_boundary)"
+          },
+          "unobserved": []
+        },
+        "sessions": [
+          {
+            "robot_id": "r01",
+            "session_id": "s1"
+          },
+          {
+            "robot_id": "r01",
+            "session_id": "s2"
+          },
+          {
+            "robot_id": "r02",
+            "session_id": "s3"
+          }
+        ],
+        "takeovers_per_active_hour": {
+          "active_hours": 0.09694444444444444,
+          "ci": [
+            6.381718173135143,
+            90.4360545875999
+          ],
+          "count": 3,
+          "definition": "whole-robot takeover interventions / active hours",
+          "estimate": 30.945558739255013,
+          "interval_method": "poisson_exact_fallback(alpha_at_zero_boundary)",
+          "unobserved": []
+        },
+        "task_autonomy_rate": {
+          "ci": [
+            0.0,
+            0.43448246478317487
+          ],
+          "ci_clopper_pearson": [
+            0.0,
+            0.5218237501049815
+          ],
+          "ci_cluster_robust": [
+            0.0,
+            0.43448246478317487
+          ],
+          "ci_wilson": [
+            0.0,
+            0.43448246478317487
+          ],
+          "cluster": "session",
+          "cluster_robust_method": "wilson_fallback(single_cluster_or_degenerate)",
+          "definition": "closed tasks with no human help / closed tasks",
+          "estimate": 0.0,
+          "interval_method": "wilson",
+          "k": 0,
+          "n": 5,
+          "n_clusters": 3,
+          "n_tasks": 6,
+          "n_tasks_closed": 5,
+          "n_tasks_unclosed": 1,
+          "n_tasks_unknown_definition": 0,
+          "n_tasks_with_unknown": 1,
+          "outer_interval": [
+            0.0,
+            0.43448246478317487
+          ],
+          "unknown_as_ai": {
+            "ci": [
+              0.0,
+              0.43448246478317487
+            ],
+            "estimate": 0.0,
+            "interval_method": "wilson",
+            "k": 0,
+            "n": 5
+          },
+          "unknown_as_human": {
+            "ci": [
+              0.0,
+              0.39033428790216546
+            ],
+            "estimate": 0.0,
+            "interval_method": "wilson",
+            "k": 0,
+            "n": 6
+          },
+          "unobserved": []
+        },
+        "time_autonomy_share": {
+          "active_hours": 0.09694444444444444,
+          "ci": [
+            0.8152420218193689,
+            1.0
+          ],
+          "ci_bootstrap_percentile": [
+            0.8555555555555555,
+            0.944954128440367
+          ],
+          "ci_wilson_effective_n": [
+            0.6522908381521564,
+            0.9824846006282018
+          ],
+          "cluster": "session",
+          "definition": "(ai_s - dwell moved from ai by approvals and hints) / active_s, whole-robot timeline",
+          "estimate": 0.9111747851002865,
+          "human_local_share": {
+            "ci": [
+              0.0,
+              0.04993918345832504
+            ],
+            "estimate": 0.008595988538681949,
+            "interval_method": "ratio_linearised_t(session)",
+            "n_clusters": 3
+          },
+          "human_remote_share": {
+            "ci": [
+              0.0,
+              0.17851344144270115
+            ],
+            "estimate": 0.05730659025787966,
+            "interval_method": "ratio_linearised_t(session)",
+            "n_clusters": 3
+          },
+          "idle_share_of_observed": {
+            "ci": [
+              0.0,
+              0.0
+            ],
+            "estimate": 0.0,
+            "interval_method": "ratio_linearised_t(session)",
+            "n_clusters": 3
+          },
+          "idle_time_s": 0.0,
+          "interval_method": "ratio_linearised_t(session)",
+          "n_clusters": 3,
+          "n_eff_segments": 13,
+          "outer_interval": [
+            0.6799851655362424,
+            1.0
+          ],
+          "reset_human_share_of_active": {
+            "ci": [
+              0.0,
+              0.04993918345832504
+            ],
+            "estimate": 0.008595988538681949,
+            "interval_method": "ratio_linearised_t(session)",
+            "n_clusters": 3
+          },
+          "reset_human_time_s": 3.0,
+          "safety_stop_share": {
+            "ci": [
+              0.0,
+              0.07857106092736135
+            ],
+            "estimate": 0.014326647564469915,
+            "interval_method": "ratio_linearised_t(session)",
+            "n_clusters": 3
+          },
+          "scripted_share": {
+            "ci": [
+              0.0,
+              0.0
+            ],
+            "estimate": 0.0,
+            "interval_method": "ratio_linearised_t(session)",
+            "n_clusters": 3
+          },
+          "shared_share": {
+            "ci": [
+              0.0,
+              0.0
+            ],
+            "estimate": 0.0,
+            "interval_method": "ratio_linearised_t(session)",
+            "n_clusters": 3
+          },
+          "supported_active_time_s": 20.0,
+          "supported_share_of_active": {
+            "ci": [
+              0.0,
+              0.2685185981096446
+            ],
+            "estimate": 0.05730659025787966,
+            "interval_method": "ratio_linearised_t(session)",
+            "n_clusters": 3
+          },
+          "supported_time_s": 20.0,
+          "unknown_as_ai": {
+            "ci": [
+              0.8115004819483876,
+              1.0
+            ],
+            "estimate": 0.9162162162162162,
+            "interval_method": "ratio_linearised_t(session)",
+            "n_clusters": 3
+          },
+          "unknown_as_human": {
+            "ci": [
+              0.6799851655362424,
+              1.0
+            ],
+            "estimate": 0.8594594594594595,
+            "interval_method": "ratio_linearised_t(session)",
+            "n_clusters": 3
+          },
+          "unobserved": [],
+          "variants": {
+            "scope_weighted": {
+              "ci": [
+                0.8408560123899352,
+                0.9909491452031879
+              ],
+              "estimate": 0.9159025787965616,
+              "interval_method": "ratio_linearised_t(session)",
+              "n_clusters": 3
+            },
+            "shared_as_ai": {
+              "ci": [
+                0.8152420218193689,
+                1.0
+              ],
+              "estimate": 0.9111747851002865,
+              "interval_method": "ratio_linearised_t(session)",
+              "n_clusters": 3
+            },
+            "unsupported": {
+              "ci": [
+                0.8060977180001931,
+                1.0
+              ],
+              "estimate": 0.9057750759878419,
+              "interval_method": "ratio_linearised_t(session)",
+              "n_clusters": 3
+            },
+            "with_approvals": {
+              "approval_min_dwell_s": 2.0,
+              "ci": [
+                0.8152420218193689,
+                1.0
+              ],
+              "estimate": 0.9111747851002865,
+              "hint_min_dwell_s": 1.0,
+              "interval_method": "ratio_linearised_t(session)",
+              "n_clusters": 3
+            }
+          }
+        },
+        "unmeasured": {
+          "active_time_s": 349.0,
+          "conformance": "incomplete",
+          "distinct_human_actors": 3,
+          "flag_counts": {
+            "clock_unsynced": 3,
+            "task_not_closed": 1,
+            "time_gap": 2
+          },
+          "human_actor_hours": 0.007222222222222222,
+          "human_actor_seconds": 26.0,
+          "idle_time_s": 0.0,
+          "n_flags": 6,
+          "observed_time_s": 370.0,
+          "parameters": {
+            "approval_dwell_sensitivity_s": 5.0,
+            "approval_min_dwell_s": 0.0,
+            "approval_wait_max_s": 10.0,
+            "checkpoint_every_events": 1000,
+            "checkpoint_every_s": 600.0,
+            "clock_tolerance_s": 1.0,
+            "contention_window_s": 1.0,
+            "gap_tolerance_s": 2.0,
+            "goal_release_s": 1.0,
+            "heartbeat_interval_s": 1.0,
+            "help_latency_max_s": 120.0,
+            "hint_min_dwell_s": 0.0,
+            "hint_ttl_s": 60.0,
+            "idle_threshold_s": 30.0,
+            "max_commit_delay_s": 3600.0,
+            "simultaneity_window_s": 0.5,
+            "takeover_window_s": 60.0,
+            "unknown_share_max": 0.05
+          },
+          "supervision_ratio": 0.0,
+          "supervisor_hours_per_robot_hour": 0.0,
+          "unknown_share": 0.05675675675675676,
+          "unknown_share_max": 0.05,
+          "unknown_time_s": 21.0,
+          "unobserved_sessions": {}
+        }
+      },
+      "simulated": {
+        "approvals_per_active_hour": {
+          "active_hours": 0.013888888888888888,
+          "ci": [
+            1.8228821748688713,
+            401.1583241476007
+          ],
+          "count": 1,
+          "definition": "whole-robot approval interventions / active hours",
+          "estimate": 72.0,
+          "interval_method": "poisson_exact_fallback(<2 clusters or zero count)",
+          "unobserved": []
+        },
+        "autonomous_success_rate": {
+          "ci": [
+            0.0,
+            0.7934506856227627
+          ],
+          "ci_clopper_pearson": [
+            0.0,
+            0.975
+          ],
+          "ci_cluster_robust": [
+            0.0,
+            0.7934506856227627
+          ],
+          "ci_wilson": [
+            0.0,
+            0.7934506856227627
+          ],
+          "cluster": "session",
+          "cluster_robust_method": "wilson_fallback(single_cluster_or_degenerate)",
+          "definition": "closed tasks with no human help and outcome success / closed tasks",
+          "estimate": 0.0,
+          "interval_method": "wilson",
+          "k": 0,
+          "n": 1,
+          "n_clusters": 1,
+          "n_tasks": 1,
+          "n_tasks_closed": 1,
+          "n_tasks_unclosed": 0,
+          "n_tasks_unknown_definition": 0,
+          "n_tasks_with_unknown": 0,
+          "outer_interval": [
+            0.0,
+            0.7934506856227627
+          ],
+          "unknown_as_ai": {
+            "ci": [
+              0.0,
+              0.7934506856227627
+            ],
+            "estimate": 0.0,
+            "interval_method": "wilson",
+            "k": 0,
+            "n": 1
+          },
+          "unknown_as_human": {
+            "ci": [
+              0.0,
+              0.7934506856227627
+            ],
+            "estimate": 0.0,
+            "interval_method": "wilson",
+            "k": 0,
+            "n": 1
+          },
+          "unobserved": []
+        },
+        "breakdowns": {
+          "active_hours": 0.013888888888888888,
+          "by_kind": {
+            "approval": {
+              "ci": [
+                1.8228821748688713,
+                401.1583241476007
+              ],
+              "count": 1,
+              "estimate": 72.0,
+              "interval_method": "poisson_exact"
+            }
+          },
+          "by_reason": {
+            "planned": {
+              "ci": [
+                1.8228821748688713,
+                401.1583241476007
+              ],
+              "count": 1,
+              "estimate": 72.0,
+              "interval_method": "poisson_exact"
+            }
+          },
+          "by_task_definition": {
+            "pick_v1": {
+              "autonomous_success_rate": {
+                "ci": [
+                  0.0,
+                  0.7934506856227627
+                ],
+                "estimate": 0.0,
+                "interval_method": "wilson",
+                "k": 0,
+                "n": 1
+              },
+              "human_minutes_per_task": {
+                "ci": null,
+                "estimate": 0.05,
+                "interval_method": "undefined(fewer_than_two_values)",
+                "n": 1,
+                "n_clusters": 1
+              },
+              "interventions_per_task": {
+                "ci": null,
+                "estimate": 1.0,
+                "interval_method": "undefined(fewer_than_two_values)",
+                "n": 1,
+                "n_clusters": 1
+              },
+              "n_tasks": 1,
+              "n_tasks_closed": 1,
+              "success_rate": {
+                "ci": [
+                  0.2065493143772374,
+                  1.0
+                ],
+                "estimate": 1.0,
+                "interval_method": "wilson",
+                "k": 1,
+                "n": 1
+              },
+              "task_autonomy_rate": {
+                "ci": [
+                  0.0,
+                  0.7934506856227627
+                ],
+                "estimate": 0.0,
+                "interval_method": "wilson",
+                "k": 0,
+                "n": 1
+              },
+              "task_minutes": {
+                "ci": null,
+                "estimate": 0.65,
+                "interval_method": "undefined(fewer_than_two_values)",
+                "n": 1,
+                "n_clusters": 1
+              }
+            }
+          },
+          "narrow_human_initiated_or_safety": {
+            "ci": [
+              0.0,
+              265.59932069620334
+            ],
+            "count": 0,
+            "estimate": 0.0,
+            "interval_method": "poisson_exact"
+          },
+          "unobserved": []
+        },
+        "drift": {
+          "bin": "day",
+          "bins": [
+            {
+              "active_hours": 0.013888888888888888,
+              "bin": "2026-11-12",
+              "count": 1,
+              "rate": 72.0,
+              "start": "2026-11-12T00:00:00.000000000Z"
+            }
+          ],
+          "cusum": null,
+          "n_bins": 1,
+          "trend": {
+            "note": "fewer than 3 bins with active time"
+          },
+          "unobserved": []
+        },
+        "gaps_between_interventions": {
+          "active_hours": {
+            "ci": [
+              0.005555555555555556,
+              null
+            ],
+            "cluster": "session",
+            "definition": "gap between consecutive whole-robot interventions (active_hours), right-censored at the session end; Kaplan-Meier median",
+            "estimate": 0.005555555555555556,
+            "exponential": {
+              "ci_mean_gap": [
+                0.001956437417961354,
+                0.09859821366987964
+              ],
+              "ci_rate": [
+                10.14217157471166,
+                511.13313966465614
+              ],
+              "interval_method": "wald_log_scale",
+              "mean_gap": 0.013888888888888888,
+              "rate": 72.0
+            },
+            "interval_method": "km_cloglog",
+            "n_censored": 1,
+            "n_events": 1,
+            "n_gaps": 2,
+            "naive_mean_gap": 0.013888888888888888,
+            "survival_at": {
+              "0.5": {
+                "ci": [
+                  0.005983087639145736,
+                  0.9104100848367374
+                ],
+                "estimate": 0.5,
+                "interval_method": "km_cloglog"
+              },
+              "1": {
+                "ci": [
+                  0.005983087639145736,
+                  0.9104100848367374
+                ],
+                "estimate": 0.5,
+                "interval_method": "km_cloglog"
+              },
+              "2": {
+                "ci": [
+                  0.005983087639145736,
+                  0.9104100848367374
+                ],
+                "estimate": 0.5,
+                "interval_method": "km_cloglog"
+              },
+              "4": {
+                "ci": [
+                  0.005983087639145736,
+                  0.9104100848367374
+                ],
+                "estimate": 0.5,
+                "interval_method": "km_cloglog"
+              }
+            },
+            "unit": "active_hours",
+            "weibull": {
+              "ci": null,
+              "estimate": null,
+              "interval_method": null,
+              "note": "fewer than 3 events above zero, or the fit failed"
+            }
+          },
+          "metres": {
+            "ci": null,
+            "cluster": "session",
+            "estimate": null,
+            "interval_method": null,
+            "n_sessions_without_distance": 1,
+            "note": "no distance samples",
+            "unit": "metres"
+          },
+          "unobserved": []
+        },
+        "hints_per_active_hour": {
+          "active_hours": 0.013888888888888888,
+          "ci": [
+            0.0,
+            265.59932069620334
+          ],
+          "count": 0,
+          "definition": "whole-robot hint interventions / active hours",
+          "estimate": 0.0,
+          "interval_method": "poisson_exact_fallback(<2 clusters or zero count)",
+          "unobserved": []
+        },
+        "human_minutes_per_task": {
+          "ci": null,
+          "ci_bootstrap_percentile": null,
+          "cluster": "session",
+          "definition": "mean over tasks of (human time + unplanned reset + moved dwell) in minutes",
+          "estimate": 0.05,
+          "interval_method": "undefined(fewer_than_two_values)",
+          "median": 0.05,
+          "n": 1,
+          "n_clusters": 1,
+          "outer_interval": null,
+          "share_tasks_zero_human": 0.0,
+          "unknown_as_ai": {
+            "ci": null,
+            "estimate": 0.05,
+            "interval_method": "undefined(fewer_than_two_values)",
+            "n": 1
+          },
+          "unknown_as_human": {
+            "ci": null,
+            "estimate": 0.05,
+            "interval_method": "undefined(fewer_than_two_values)",
+            "n": 1
+          },
+          "unobserved": []
+        },
+        "interventions_per_active_hour": {
+          "active_hours": 0.013888888888888888,
+          "ci": [
+            1.8228821748688713,
+            401.1583241476007
+          ],
+          "ci_bootstrap_percentile": null,
+          "ci_poisson_exact": [
+            1.8228821748688713,
+            401.1583241476007
+          ],
+          "cluster": "session",
+          "count": 1,
+          "definition": "whole-robot interventions / active hours",
+          "dispersion_index": null,
+          "estimate": 72.0,
+          "interval_method": "poisson_exact_fallback(<2 clusters or zero count)",
+          "n_clusters": 1,
+          "nb_alpha": null,
+          "outer_interval": [
+            1.8228821748688713,
+            401.1583241476007
+          ],
+          "per_scope": {
+            "active_hours": 0.013888888888888888,
+            "ci": [
+              1.8228821748688713,
+              401.1583241476007
+            ],
+            "count": 1,
+            "estimate": 72.0,
+            "interval_method": "poisson_exact_fallback(<2 clusters or zero count)"
+          },
+          "unknown_as_ai": {
+            "active_hours": 0.013888888888888888,
+            "ci": [
+              1.8228821748688713,
+              401.1583241476007
+            ],
+            "count": 1,
+            "estimate": 72.0,
+            "interval_method": "poisson_exact_fallback(<2 clusters or zero count)"
+          },
+          "unknown_as_human": {
+            "active_hours": 0.013888888888888888,
+            "ci": [
+              1.8228821748688713,
+              401.1583241476007
+            ],
+            "count": 1,
+            "estimate": 72.0,
+            "interval_method": "poisson_exact_fallback(<2 clusters or zero count)"
+          },
+          "unobserved": []
+        },
+        "n_robots": 1,
+        "n_sessions": 1,
+        "safety_stops_per_active_hour": {
+          "active_hours": 0.013888888888888888,
+          "automatic": {
+            "active_hours": 0.013888888888888888,
+            "ci": [
+              0.0,
+              265.59932069620334
+            ],
+            "count": 0,
+            "estimate": 0.0,
+            "interval_method": "poisson_exact_fallback(<2 clusters or zero count)"
+          },
+          "ci": [
+            0.0,
+            265.59932069620334
+          ],
+          "ci_poisson_exact": [
+            0.0,
+            265.59932069620334
+          ],
+          "cluster": "session",
+          "count": 0,
+          "definition": "whole-robot safety stops / active hours",
+          "dispersion_index": null,
+          "estimate": 0.0,
+          "human_triggered": {
+            "active_hours": 0.013888888888888888,
+            "ci": [
+              0.0,
+              265.59932069620334
+            ],
+            "count": 0,
+            "estimate": 0.0,
+            "interval_method": "poisson_exact_fallback(<2 clusters or zero count)"
+          },
+          "interval_method": "poisson_exact_fallback(<2 clusters or zero count)",
+          "n_clusters": 1,
+          "nb_alpha": null,
+          "per_scope": {
+            "active_hours": 0.013888888888888888,
+            "ci": [
+              0.0,
+              265.59932069620334
+            ],
+            "count": 0,
+            "estimate": 0.0,
+            "interval_method": "poisson_exact_fallback(<2 clusters or zero count)"
+          },
+          "unobserved": []
+        },
+        "sessions": [
+          {
+            "robot_id": "r01",
+            "session_id": "s4"
+          }
+        ],
+        "takeovers_per_active_hour": {
+          "active_hours": 0.013888888888888888,
+          "ci": [
+            0.0,
+            265.59932069620334
+          ],
+          "count": 0,
+          "definition": "whole-robot takeover interventions / active hours",
+          "estimate": 0.0,
+          "interval_method": "poisson_exact_fallback(<2 clusters or zero count)",
+          "unobserved": []
+        },
+        "task_autonomy_rate": {
+          "ci": [
+            0.0,
+            0.7934506856227627
+          ],
+          "ci_clopper_pearson": [
+            0.0,
+            0.975
+          ],
+          "ci_cluster_robust": [
+            0.0,
+            0.7934506856227627
+          ],
+          "ci_wilson": [
+            0.0,
+            0.7934506856227627
+          ],
+          "cluster": "session",
+          "cluster_robust_method": "wilson_fallback(single_cluster_or_degenerate)",
+          "definition": "closed tasks with no human help / closed tasks",
+          "estimate": 0.0,
+          "interval_method": "wilson",
+          "k": 0,
+          "n": 1,
+          "n_clusters": 1,
+          "n_tasks": 1,
+          "n_tasks_closed": 1,
+          "n_tasks_unclosed": 0,
+          "n_tasks_unknown_definition": 0,
+          "n_tasks_with_unknown": 0,
+          "outer_interval": [
+            0.0,
+            0.7934506856227627
+          ],
+          "unknown_as_ai": {
+            "ci": [
+              0.0,
+              0.7934506856227627
+            ],
+            "estimate": 0.0,
+            "interval_method": "wilson",
+            "k": 0,
+            "n": 1
+          },
+          "unknown_as_human": {
+            "ci": [
+              0.0,
+              0.7934506856227627
+            ],
+            "estimate": 0.0,
+            "interval_method": "wilson",
+            "k": 0,
+            "n": 1
+          },
+          "unobserved": []
+        },
+        "time_autonomy_share": {
+          "active_hours": 0.013888888888888888,
+          "ci": [
+            0.18267316432299135,
+            0.9990902323289776
+          ],
+          "ci_bootstrap_percentile": null,
+          "ci_wilson_effective_n": [
+            0.18267316432299135,
+            0.9990902323289776
+          ],
+          "cluster": "session",
+          "definition": "(ai_s - dwell moved from ai by approvals and hints) / active_s, whole-robot timeline",
+          "estimate": 0.94,
+          "human_local_share": {
+            "ci": [
+              0.0,
+              0.7934506856227627
+            ],
+            "estimate": 0.0,
+            "interval_method": "wilson_effective_n(single_cluster)",
+            "n_clusters": 1
+          },
+          "human_remote_share": {
+            "ci": [
+              0.0,
+              0.7934506856227627
+            ],
+            "estimate": 0.0,
+            "interval_method": "wilson_effective_n(single_cluster)",
+            "n_clusters": 1
+          },
+          "idle_share_of_observed": {
+            "ci": [
+              0.0,
+              0.7934506856227627
+            ],
+            "estimate": 0.0,
+            "interval_method": "wilson_effective_n(single_cluster)",
+            "n_clusters": 1
+          },
+          "idle_time_s": 0.0,
+          "interval_method": "wilson_effective_n(single_cluster)",
+          "n_clusters": 1,
+          "n_eff_segments": 1,
+          "outer_interval": [
+            0.18267316432299135,
+            0.9990902323289776
+          ],
+          "reset_human_share_of_active": {
+            "ci": [
+              0.0,
+              0.7934506856227627
+            ],
+            "estimate": 0.0,
+            "interval_method": "wilson_effective_n(single_cluster)",
+            "n_clusters": 1
+          },
+          "reset_human_time_s": 0.0,
+          "safety_stop_share": {
+            "ci": [
+              0.0,
+              0.7934506856227627
+            ],
+            "estimate": 0.0,
+            "interval_method": "wilson_effective_n(single_cluster)",
+            "n_clusters": 1
+          },
+          "scripted_share": {
+            "ci": [
+              0.0,
+              0.7934506856227627
+            ],
+            "estimate": 0.0,
+            "interval_method": "wilson_effective_n(single_cluster)",
+            "n_clusters": 1
+          },
+          "shared_share": {
+            "ci": [
+              0.0,
+              0.7934506856227627
+            ],
+            "estimate": 0.0,
+            "interval_method": "wilson_effective_n(single_cluster)",
+            "n_clusters": 1
+          },
+          "supported_active_time_s": 0.0,
+          "supported_share_of_active": {
+            "ci": [
+              0.0,
+              0.7934506856227627
+            ],
+            "estimate": 0.0,
+            "interval_method": "wilson_effective_n(single_cluster)",
+            "n_clusters": 1
+          },
+          "supported_time_s": 0.0,
+          "unknown_as_ai": {
+            "ci": [
+              0.18267316432299135,
+              0.9990902323289776
+            ],
+            "estimate": 0.94,
+            "interval_method": "wilson_effective_n(single_cluster)",
+            "n_clusters": 1
+          },
+          "unknown_as_human": {
+            "ci": [
+              0.18267316432299135,
+              0.9990902323289776
+            ],
+            "estimate": 0.94,
+            "interval_method": "wilson_effective_n(single_cluster)",
+            "n_clusters": 1
+          },
+          "unobserved": [],
+          "variants": {
+            "scope_weighted": {
+              "ci": [
+                0.18267316432299135,
+                0.9990902323289776
+              ],
+              "estimate": 0.94,
+              "interval_method": "wilson_effective_n(single_cluster)",
+              "n_clusters": 1
+            },
+            "shared_as_ai": {
+              "ci": [
+                0.18267316432299135,
+                0.9990902323289776
+              ],
+              "estimate": 0.94,
+              "interval_method": "wilson_effective_n(single_cluster)",
+              "n_clusters": 1
+            },
+            "unsupported": {
+              "ci": [
+                0.18267316432299135,
+                0.9990902323289776
+              ],
+              "estimate": 0.94,
+              "interval_method": "wilson_effective_n(single_cluster)",
+              "n_clusters": 1
+            },
+            "with_approvals": {
+              "approval_min_dwell_s": 3.0,
+              "ci": [
+                0.18267316432299135,
+                0.9990902323289776
+              ],
+              "estimate": 0.94,
+              "hint_min_dwell_s": 5.0,
+              "interval_method": "wilson_effective_n(single_cluster)",
+              "n_clusters": 1
+            }
+          }
+        },
+        "unmeasured": {
+          "active_time_s": 50.0,
+          "conformance": "complete",
+          "distinct_human_actors": 1,
+          "flag_counts": {
+            "clock_unsynced": 1
+          },
+          "human_actor_hours": 0.0008333333333333334,
+          "human_actor_seconds": 3.0,
+          "idle_time_s": 0.0,
+          "n_flags": 1,
+          "observed_time_s": 50.0,
+          "parameters": {
+            "approval_dwell_sensitivity_s": 5.0,
+            "approval_min_dwell_s": 0.0,
+            "approval_wait_max_s": 10.0,
+            "checkpoint_every_events": 1000,
+            "checkpoint_every_s": 600.0,
+            "clock_tolerance_s": 1.0,
+            "contention_window_s": 1.0,
+            "gap_tolerance_s": 2.0,
+            "goal_release_s": 1.0,
+            "heartbeat_interval_s": 1.0,
+            "help_latency_max_s": 120.0,
+            "hint_min_dwell_s": 0.0,
+            "hint_ttl_s": 60.0,
+            "idle_threshold_s": 30.0,
+            "max_commit_delay_s": 3600.0,
+            "simultaneity_window_s": 0.5,
+            "takeover_window_s": 60.0,
+            "unknown_share_max": 0.05
+          },
+          "supervision_ratio": 0.0,
+          "supervisor_hours_per_robot_hour": 0.0,
+          "unknown_share": 0.0,
+          "unknown_share_max": 0.05,
+          "unknown_time_s": 0.0,
+          "unobserved_sessions": {}
+        }
+      }
+    },
+    "options": {
+      "alpha": 0.05,
+      "cluster": "auto",
+      "drift_bin": "day",
+      "n_boot": 200,
+      "seed": 0
+    },
+    "sessions_without_session_start": []
+  },
+  "provenance": {
+    "counts": {
+      "robots": 2,
+      "sessions": 4,
+      "tasks": 7,
+      "utc_days": 3
+    },
+    "generated_at": "2026-11-13T12:00:00Z",
+    "input_files": [
+      {
+        "path": "anchors.jsonl",
+        "role": "anchor",
+        "sha256": "08b6257a9ce55a4125311ec722363b88a969822f03aab7ebf09af87ac19ac940"
+      },
+      {
+        "path": "s1.checkpoints.jsonl",
+        "role": "checkpoints",
+        "sha256": "3040219dfb2714bf38ee2e9aa1423524d877c897e90034e83f2e9a3306d8bf3a"
+      },
+      {
+        "path": "s2.checkpoints.jsonl",
+        "role": "checkpoints",
+        "sha256": "de5d059c13338f27c151015ec55b8de6fa35fbe302a380678fe9899601a87739"
+      },
+      {
+        "path": "s3.checkpoints.jsonl",
+        "role": "checkpoints",
+        "sha256": "70ef69c61bd9dfd50380d90bd33279b8e80e9b4613945bf0719ad31b33217553"
+      },
+      {
+        "path": "s4.checkpoints.jsonl",
+        "role": "checkpoints",
+        "sha256": "2b42a9b8fd4adea5d13e8e85575f4f73b6bc165d6d44a3e3370aa9c021af3109"
+      },
+      {
+        "path": "s1.jsonl",
+        "role": "log",
+        "sha256": "31e83d6bdabfddecae066b5bc4c536dd0e025b4e2a4859bd3aa11c562dc73e54"
+      },
+      {
+        "path": "s2.jsonl",
+        "role": "log",
+        "sha256": "f3ca30595aaa80784810412391f5e62eef98fba10e7f0c670a2f3453fc2fd4ac"
+      },
+      {
+        "path": "s3.jsonl",
+        "role": "log",
+        "sha256": "1fe728505e05812566d0bf822354d6f2ceee700db28a4d626375047122b4e5af"
+      },
+      {
+        "path": "s4.jsonl",
+        "role": "log",
+        "sha256": "87deb69705679e08d47c8cf5790d84cae8a59c57d29cb19f32fc4ea65ee5392e"
+      },
+      {
+        "path": "devices.json",
+        "role": "registry_devices",
+        "sha256": "8a9e62639de202817f4ef1dbcd40cc4d350b1707bb3963682b3591ffc3792cd6"
+      },
+      {
+        "path": "plan.json",
+        "role": "registry_plan",
+        "sha256": "5b8cdd0c441013ad1f8b7f28c4ff8b780a628eef116d868d6d6375b6e2b3062d"
+      },
+      {
+        "path": "tasks.json",
+        "role": "registry_tasks",
+        "sha256": "6132c432294e361ab923b7b32b655d58262653c4d511d2f3c62c4cbe0845eb93"
+      },
+      {
+        "path": "golden.vkey",
+        "role": "vkey",
+        "sha256": "e45643a726e41e80e031af9df635b546878a00c84fd354a4219a482947a8379e"
+      }
+    ],
+    "parameters": {
+      "approval_dwell_sensitivity_s": 5.0,
+      "approval_min_dwell_s": 0.0,
+      "approval_wait_max_s": 10.0,
+      "checkpoint_every_events": 1000,
+      "checkpoint_every_s": 600.0,
+      "clock_tolerance_s": 1.0,
+      "contention_window_s": 1.0,
+      "gap_tolerance_s": 2.0,
+      "goal_release_s": 1.0,
+      "heartbeat_interval_s": 1.0,
+      "help_latency_max_s": 120.0,
+      "hint_min_dwell_s": 0.0,
+      "hint_ttl_s": 60.0,
+      "idle_threshold_s": 30.0,
+      "max_commit_delay_s": 3600.0,
+      "simultaneity_window_s": 0.5,
+      "takeover_window_s": 60.0,
+      "unknown_share_max": 0.05
+    },
+    "period": {
+      "end": "2026-11-12T08:01:30.000000000Z",
+      "start": "2026-11-10T08:00:00.000000000Z"
+    },
+    "registry_hashes": {
+      "device_registry_hash": [
+        "9f3021707b264f8a8d4879909f759f1fb77c4f309632f4f7563500bcbb490481"
+      ],
+      "plan_hash": [
+        "a4270c51d38a2825e82c3864f8dbc781acd7dbb9f1868dba6d46598ac3d3e5f3"
+      ],
+      "task_registry_hash": [
+        "23edd05536c36dc1d83201c7443e834b6b1b7d55d0fb2fa7bf87025d1bda448d"
+      ]
+    },
+    "robots": [
+      "r01",
+      "r02"
+    ],
+    "software": {
+      "name": "autonometry",
+      "version": "0.0.1.dev0"
+    },
+    "spec_files": {
+      "checkpoint.schema.json": "df303f5e55b38a51baad7a02aabf3b7a83a8db2b1dd32c64577bd7e455f70a9c",
+      "definitions.md": "66ce3f4c80365b20cda3edb01fc4184ba9bf878530a2ea9c4ff4f3f8eb672081",
+      "device_registry.schema.json": "8e452d7fcb97f250e55a7113e71e984336628add214b722c9e636e497e881998",
+      "event.schema.json": "952aed101cfe58104fb753901754affd86df2e2a36b4017a474aed84b448c15c",
+      "plan.schema.json": "6028e9e8c31acfec5e10f054a7fb565dfd075035739361c77b3ff9ed950204a6",
+      "rules.toml": "83010a363918198736dcc3e82ffcafe8dddcdaf1ee78a3fdceddfa20d115f8c6",
+      "task_registry.schema.json": "98319a3b90bf272ae787cdb51ec1dfd8329df3ee72e04d577e08a0f844dcc1c1"
+    },
+    "spec_version": "0.3",
+    "statistics": {
+      "alpha": 0.05,
+      "cluster": "auto",
+      "drift_bin": "day",
+      "n_boot": 200,
+      "seed": 0
+    }
+  },
+  "sessions": [
+    {
+      "active_s": 150.0,
+      "ai_share": 0.92,
+      "flags": {
+        "clock_unsynced": 1
+      },
+      "in_metrics": true,
+      "interventions": 2,
+      "level": "L2",
+      "observed_s": 150.0,
+      "robot_id": "r01",
+      "session_id": "s1",
+      "simulated": false,
+      "status": "verified",
+      "unknown_share": 0.0
+    },
+    {
+      "active_s": 109.0,
+      "ai_share": 0.944954128440367,
+      "flags": {
+        "clock_unsynced": 1,
+        "task_not_closed": 1,
+        "time_gap": 2
+      },
+      "in_metrics": true,
+      "interventions": 1,
+      "level": "L2",
+      "observed_s": 130.0,
+      "robot_id": "r01",
+      "session_id": "s2",
+      "simulated": false,
+      "status": "verified",
+      "unknown_share": 0.16153846153846155
+    },
+    {
+      "active_s": 50.0,
+      "ai_share": 0.94,
+      "flags": {
+        "clock_unsynced": 1
+      },
+      "in_metrics": true,
+      "interventions": 1,
+      "level": "L2",
+      "observed_s": 50.0,
+      "robot_id": "r01",
+      "session_id": "s4",
+      "simulated": true,
+      "status": "verified",
+      "unknown_share": 0.0
+    },
+    {
+      "active_s": 90.0,
+      "ai_share": 0.8555555555555555,
+      "flags": {
+        "clock_unsynced": 1
+      },
+      "in_metrics": true,
+      "interventions": 2,
+      "level": "L2",
+      "observed_s": 90.0,
+      "robot_id": "r02",
+      "session_id": "s3",
+      "simulated": false,
+      "status": "verified",
+      "unknown_share": 0.0
+    }
+  ],
+  "statements": [
+    {
+      "code": "no_worst_case",
+      "group": "real",
+      "metrics": [
+        "interventions_per_active_hour"
+      ],
+      "text": "Unknown time exists, so this number has no true worst case: events can hide in unknown time. unknown_as_human assumes one hidden intervention per whole-robot run of unknown time between AI control; more could hide there."
+    },
+    {
+      "code": "no_worst_case",
+      "group": "real",
+      "metrics": [
+        "human_minutes_per_task"
+      ],
+      "text": "Unknown time exists, so this number has no true worst case: events can hide in unknown time. unknown_as_human counts each task's unknown time as human time; it assumes no more than that was hidden."
+    },
+    {
+      "code": "rare_events",
+      "count": 1,
+      "group": "real",
+      "level": 0.95,
+      "metrics": [
+        "safety_stops_per_active_hour"
+      ],
+      "text": "Fewer than 5 events (1): the one-sided 95 % upper bound (exact Poisson, Garwood) is shown beside the two-sided interval.",
+      "upper_bound": 48.93384603497444
+    },
+    {
+      "code": "rare_events",
+      "count": 1,
+      "group": "real",
+      "level": 0.95,
+      "metrics": [
+        "approvals_per_active_hour"
+      ],
+      "text": "Fewer than 5 events (1): the one-sided 95 % upper bound (exact Poisson, Garwood) is shown beside the two-sided interval.",
+      "upper_bound": 48.93384603497444
+    },
+    {
+      "code": "rare_events",
+      "count": 1,
+      "group": "real",
+      "level": 0.95,
+      "metrics": [
+        "hints_per_active_hour"
+      ],
+      "text": "Fewer than 5 events (1): the one-sided 95 % upper bound (exact Poisson, Garwood) is shown beside the two-sided interval.",
+      "upper_bound": 48.93384603497444
+    },
+    {
+      "code": "rare_events",
+      "count": 3,
+      "group": "real",
+      "level": 0.95,
+      "metrics": [
+        "takeovers_per_active_hour"
+      ],
+      "text": "Fewer than 5 events (3): the one-sided 95 % upper bound (exact Poisson, Garwood) is shown beside the two-sided interval.",
+      "upper_bound": 79.98041117638341
+    },
+    {
+      "code": "not_generalisable",
+      "group": "simulated",
+      "metrics": [
+        "time_autonomy_share"
+      ],
+      "n_clusters": 1,
+      "text": "This interval comes from a single cluster: it is not generalisable."
+    },
+    {
+      "code": "not_generalisable",
+      "group": "simulated",
+      "metrics": [
+        "task_autonomy_rate"
+      ],
+      "n_clusters": 1,
+      "text": "This interval comes from a single cluster: it is not generalisable."
+    },
+    {
+      "code": "not_generalisable",
+      "group": "simulated",
+      "metrics": [
+        "autonomous_success_rate"
+      ],
+      "n_clusters": 1,
+      "text": "This interval comes from a single cluster: it is not generalisable."
+    },
+    {
+      "code": "not_generalisable",
+      "group": "simulated",
+      "metrics": [
+        "interventions_per_active_hour"
+      ],
+      "n_clusters": 1,
+      "text": "This interval comes from a single cluster: it is not generalisable."
+    },
+    {
+      "code": "not_generalisable",
+      "group": "simulated",
+      "metrics": [
+        "human_minutes_per_task"
+      ],
+      "n_clusters": 1,
+      "text": "This interval comes from a single cluster: it is not generalisable."
+    },
+    {
+      "code": "not_generalisable",
+      "group": "simulated",
+      "metrics": [
+        "safety_stops_per_active_hour"
+      ],
+      "n_clusters": 1,
+      "text": "This interval comes from a single cluster: it is not generalisable."
+    },
+    {
+      "code": "rare_events",
+      "count": 1,
+      "group": "simulated",
+      "level": 0.95,
+      "metrics": [
+        "interventions_per_active_hour"
+      ],
+      "text": "Fewer than 5 events (1): the one-sided 95 % upper bound (exact Poisson, Garwood) is shown beside the two-sided interval.",
+      "upper_bound": 341.5582453241216
+    },
+    {
+      "code": "rare_events",
+      "count": 0,
+      "group": "simulated",
+      "level": 0.95,
+      "metrics": [
+        "safety_stops_per_active_hour"
+      ],
+      "text": "Fewer than 5 events (0): the one-sided 95 % upper bound (exact Poisson, Garwood) is shown beside the two-sided interval.",
+      "upper_bound": 215.69272369588725
+    },
+    {
+      "code": "rare_events",
+      "count": 1,
+      "group": "simulated",
+      "level": 0.95,
+      "metrics": [
+        "approvals_per_active_hour"
+      ],
+      "text": "Fewer than 5 events (1): the one-sided 95 % upper bound (exact Poisson, Garwood) is shown beside the two-sided interval.",
+      "upper_bound": 341.5582453241216
+    },
+    {
+      "code": "rare_events",
+      "count": 0,
+      "group": "simulated",
+      "level": 0.95,
+      "metrics": [
+        "hints_per_active_hour"
+      ],
+      "text": "Fewer than 5 events (0): the one-sided 95 % upper bound (exact Poisson, Garwood) is shown beside the two-sided interval.",
+      "upper_bound": 215.69272369588725
+    },
+    {
+      "code": "rare_events",
+      "count": 0,
+      "group": "simulated",
+      "level": 0.95,
+      "metrics": [
+        "takeovers_per_active_hour"
+      ],
+      "text": "Fewer than 5 events (0): the one-sided 95 % upper bound (exact Poisson, Garwood) is shown beside the two-sided interval.",
+      "upper_bound": 215.69272369588725
+    }
+  ],
+  "title": null,
+  "trust": {
+    "anchor_files": 1,
+    "file_problems": {
+      "by_code": {},
+      "count": 0,
+      "listed": []
+    },
+    "level": "L2",
+    "levels": {
+      "L1": "self-reported",
+      "L2": "sealed log",
+      "L3": "not available yet"
+    },
+    "notes": [
+      "No trusted TSA root was given: a timestamp token cannot anchor a checkpoint; only an anchor file can."
+    ],
+    "reasons": [],
+    "rejected_lines": {
+      "by_code": {},
+      "count": 0,
+      "listed": []
+    },
+    "sessions": [
+      {
+        "evidence": [],
+        "gaps": [],
+        "level": "L2",
+        "robot_id": "r01",
+        "sealed_through_seq": 15,
+        "session_id": "s1",
+        "status": "verified"
+      },
+      {
+        "evidence": [],
+        "gaps": [],
+        "level": "L2",
+        "robot_id": "r01",
+        "sealed_through_seq": 10,
+        "session_id": "s2",
+        "status": "verified"
+      },
+      {
+        "evidence": [],
+        "gaps": [],
+        "level": "L2",
+        "robot_id": "r01",
+        "sealed_through_seq": 5,
+        "session_id": "s4",
+        "status": "verified"
+      },
+      {
+        "evidence": [],
+        "gaps": [],
+        "level": "L2",
+        "robot_id": "r02",
+        "sealed_through_seq": 13,
+        "session_id": "s3",
+        "status": "verified"
+      }
+    ],
+    "status": "verified",
+    "trusted_keys": 1,
+    "trusted_tsa_roots": 0
+  },
+  "verdict": {
+    "census": "not_checked",
+    "clean": false,
+    "completeness": "incomplete",
+    "exclusions": 0,
+    "headline": {
+      "real": {
+        "human_minutes_per_task": {
+          "ci": [
+            -0.31219653093347033,
+            0.10716938160001255
+          ],
+          "estimate": 0.07222222222222222,
+          "interval_method": "cluster_bootstrap_t(session)",
+          "outer_interval": [
+            -0.31219653093347033,
+            0.3955386670602625
+          ]
+        },
+        "interventions_per_active_hour": {
+          "ci": [
+            16.746564482596888,
+            120.3610185832711
+          ],
+          "estimate": 51.57593123209169,
+          "interval_method": "poisson_exact_fallback(alpha_at_zero_boundary)",
+          "outer_interval": [
+            15.796083795746796,
+            140.3287332489961
+          ]
+        },
+        "task_autonomy_rate": {
+          "ci": [
+            0.0,
+            0.43448246478317487
+          ],
+          "estimate": 0.0,
+          "interval_method": "wilson",
+          "outer_interval": [
+            0.0,
+            0.43448246478317487
+          ]
+        },
+        "time_autonomy_share": {
+          "ci": [
+            0.8152420218193689,
+            1.0
+          ],
+          "estimate": 0.9111747851002865,
+          "interval_method": "ratio_linearised_t(session)",
+          "outer_interval": [
+            0.6799851655362424,
+            1.0
+          ]
+        }
+      },
+      "simulated": {
+        "human_minutes_per_task": {
+          "ci": null,
+          "estimate": 0.05,
+          "interval_method": "undefined(fewer_than_two_values)",
+          "outer_interval": null
+        },
+        "interventions_per_active_hour": {
+          "ci": [
+            1.8228821748688713,
+            401.1583241476007
+          ],
+          "estimate": 72.0,
+          "interval_method": "poisson_exact_fallback(<2 clusters or zero count)",
+          "outer_interval": [
+            1.8228821748688713,
+            401.1583241476007
+          ]
+        },
+        "task_autonomy_rate": {
+          "ci": [
+            0.0,
+            0.7934506856227627
+          ],
+          "estimate": 0.0,
+          "interval_method": "wilson",
+          "outer_interval": [
+            0.0,
+            0.7934506856227627
+          ]
+        },
+        "time_autonomy_share": {
+          "ci": [
+            0.18267316432299135,
+            0.9990902323289776
+          ],
+          "estimate": 0.94,
+          "interval_method": "wilson_effective_n(single_cluster)",
+          "outer_interval": [
+            0.18267316432299135,
+            0.9990902323289776
+          ]
+        }
+      }
+    },
+    "level": "L2",
+    "reasons": [
+      "incomplete"
+    ],
+    "status": "verified"
+  }
+}
