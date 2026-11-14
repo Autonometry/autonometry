@@ -125,7 +125,7 @@ signals:
   rate: set by the writer
   meaning: the hands scope follows its active writers, as S3
   reliability: high for who writes
-  observe_passively: subscribe; confirm the type names with discovery (S13) before decoding
+  observe_passively: subscribe; confirm the type names with discovery (S10) before decoding
   how_it_could_be_faked: as S3
   source_url:
   - https://github.com/unitreerobotics/xr_teleoperate/blob/817fb00c63cde15e5f24a0f8fa08e1e33ed89d3b/teleop/robot_control/robot_hand_unitree.py#L28-L31
