@@ -176,8 +176,6 @@ jobs:
     # - PYSEC-2026-113 (pyarrow < 23.0.1, CVE-2026-25087): a use-after-free in Arrow C++ when reading
     #   IPC files with pre-buffering, an option the Python bindings do not expose; we read Parquet
     #   through Python only. Only the lowest set (pyarrow 17.0.0) contains it.
-    env:
-      IGNORED: --ignore-vuln PYSEC-2026-3552 --ignore-vuln PYSEC-2026-113
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -194,7 +192,23 @@ jobs:
           uv pip compile pyproject.toml --all-extras --group dev --resolution lowest-direct
           --python-version 3.12 --universal --no-header --no-annotate
           --output-file "$RUNNER_TEMP/lowest.txt"
-      - name: Audit the locked set
-        run: uv run pip-audit --requirement "$RUNNER_TEMP/locked.txt" --no-deps --disable-pip $IGNORED
-      - name: Audit the lowest set
-        run: uv run pip-audit --requirement "$RUNNER_TEMP/lowest.txt" --no-deps --disable-pip $IGNORED
+      - name: Audit the locked and the lowest set
+        run: |
+          ignored=(--ignore-vuln PYSEC-2026-3552 --ignore-vuln PYSEC-2026-113)
+          for set in locked lowest; do
+            uv run pip-audit --requirement "$RUNNER_TEMP/$set.txt" --no-deps --disable-pip "${ignored[@]}"
+          done
+
+  workflows:
+    name: Workflow security (zizmor)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      # Script injection, excessive permissions, pull_request_target, cache poisoning, unpinned
+      # actions and the rest of zizmor's offline audits; any finding fails the job
+      # (docs/security-review-2026-11.md).
+      - run: uvx zizmor@1.32.0 --offline --persona auditor .github/workflows
