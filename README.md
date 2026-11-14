@@ -593,7 +593,7 @@ LeRobotDataset's per-frame `intervention` labels. Both follow LeRobot v0.6.1 (co
 `7e241bd6`); the log formats and dataset column names are copied from that source, and the code
 cites the file and line of each. Neither path opens the robot's serial port or imports anything
 into the control process, so neither can slow or stop the arm. Install the extra:
-`pip install 'autonometry[lerobot]'` (pyarrow, watchfiles).
+`pip install 'autonometry[lerobot]'` (pyarrow, watchfiles, psutil).
 
 **Sources.** LeRobot has no ROS graph. The connector matches the components the rollout names
 against the device registry's `match.node`: `policy:<--policy.path>` for the policy,
@@ -604,25 +604,65 @@ LeRobot's own move back to the start pose. A source no device matches is sent wi
 a recorder config are in [`connectors/lerobot/`](connectors/lerobot/).
 
 **Live: `autonometry lerobot watch`.** Start the recorder, then the watcher, then the rollout
-with its output in a file:
+with its output in a file. `PYTHONUNBUFFERED=1` matters: the re-record key's line is a `print`,
+which Python otherwise holds in its buffer while the output goes to a pipe or a file.
 
 ```
 autonometry record --config connectors/lerobot/recorder.toml &
-autonometry lerobot watch --config connectors/lerobot/recorder.toml --log rollout.log     --task "Pick up the cube and place it in the bin." &
-lerobot-rollout --strategy.type=dagger --strategy.record_autonomous=true ... 2>&1 | tee rollout.log
+autonometry lerobot watch --config connectors/lerobot/recorder.toml --log rollout.log \
+    --task "Pick up the cube and place it in the bin." &
+PYTHONUNBUFFERED=1 lerobot-rollout --strategy.type=dagger --strategy.record_autonomous=true \
+    ... 2>&1 | tee rollout.log
 ```
 
-The watcher reads the recorder's config for its socket, scopes and registries. It follows the
-log like `tail -F`: an existing log is read from its end unless you pass `--from-start`, and a
-truncated or replaced one from its start. It sends the state every 0.25 s. `--task` is the
-rollout's `--dataset.single_task`, matched against the task registry's `description` (or a
-`task_definition_id`); it can be omitted when the registry declares one task. Rules (dossier 14.1
-under spec v0.3; the first that applies decides):
+The watcher, like the recorder, runs on Linux and macOS. It reads the recorder's config for its
+socket, scopes and registries. It follows the log like `tail -F`: an existing log is read from
+where it ended when the watcher started, unless you pass `--from-start`, and a truncated or
+replaced log is read from its start. It sends the state every 0.25 s. `--task` is the rollout's
+`--dataset.single_task`, matched against the task registry's `description` (or a
+`task_definition_id`); it can be omitted when the registry declares one task.
+
+**The rollout's process.** The watcher also watches the rollout's process, read-only (psutil; it
+never signals or touches it), about once a second. A rollout killed without a word (kill -9,
+out of memory, a native crash, its window closed) then becomes `unknown` instead of keeping its
+last state. The watcher reads what is left in the log first, so the rollout's last lines still
+count. Then, unless the rollout logged `Rollout finished`, it does what that line does: it closes
+the open task with outcome `unknown`, makes every scope `unknown`, notes
+`x_lerobot_process_exit: unlogged` on a heartbeat and logs a warning. The process is the one
+`--pid` names. Without `--pid`, the watcher looks for it when it sees a rollout start, or joins
+one mid-run: the process on this computer whose program is `lerobot-rollout`, its `.exe`, or a
+Python running that script or `-m lerobot.scripts.lerobot_rollout`. A launcher and the Python it
+starts (`uv run`, the Windows `.exe` launcher) count as one rollout, and the deepest is watched.
+With none or several, the watcher warns once, notes `x_lerobot_liveness: unwatched` on a
+heartbeat, and the log alone decides. A log written on another computer cannot be watched this
+way.
+
+**Logs written on Windows.** These commands, tested with Windows PowerShell 5.1 and cmd on
+Windows 11, give a log the watcher reads in full:
+
+```
+# PowerShell (5.1 or 7)
+$env:PYTHONUNBUFFERED = "1"
+lerobot-rollout ... 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath rollout.log
+
+:: cmd
+set PYTHONUNBUFFERED=1
+lerobot-rollout ... > rollout.log 2>&1
+```
+
+PowerShell 5.1 writes the file as UTF-16 with a byte-order mark, and Python writes a redirected
+stream in the Windows code page. The watcher honours a byte-order mark and accepts LeRobot's dash
+in any code page. Without `ForEach-Object { "$_" }`, PowerShell 5.1 turns each line of stderr
+into an error record and wraps the long ones at the console width. That cuts the line that names
+the policy. The captures are in `tests/fixtures/lerobot_windows/`. The recorder, and so the
+watcher, does not run on Windows yet. PowerShell 7 was not tested.
+
+Rules (dossier 14.1 under spec v0.3; the first that applies decides):
 
 | Observed in the log | State or event |
 |---|---|
 | nothing that tells the state yet | no assertion: the recorder logs `unknown` |
-| `Rollout finished` | `unknown`: nothing is observed any more |
+| `Rollout finished`, or the rollout's process gone | `unknown`: nothing is observed any more |
 | the rollout started (`Building rollout context...`), its loop not yet | `idle` |
 | DAgger `AUTONOMOUS`, and the policy loops of `base`, `sentry`, `highlight` and `episodic` | `ai`, actor `ai:<policy path>` |
 | DAgger `PAUSED` (`Phase transition: autonomous -> paused`) | `shared`, `human_initiated`: a human pause (6.8) |
@@ -638,14 +678,16 @@ the re-record key was pressed during the episode. A re-record seen only after th
 is noted as `x_lerobot_rerecorded_task` on a heartbeat. DAgger's corrections-only episodes are
 clips of corrections, not units of work, so they open no task; declare `unobserved = ["tasks",
 ...]` for such runs. The log's own local time (1 s resolution, zone not recorded) travels as
-`x_src_ts` with `x_src_clock` `wall`; `ts` is the recorder's. A rollout that dies without a word
-(killed, power cut) leaves its last state in place until the watcher is stopped, which sends
-`unknown`: stop the watcher, or the recorder, when the rollout ends.
+`x_src_ts` with `x_src_clock` `wall`; `ts` is the recorder's. When the watcher stops it sends
+`unknown`. When a rollout is unwatched and dies without a word, its last state stays until the
+watcher stops, so stop the watcher, or the recorder, when such a rollout ends.
 
 **After the fact: `autonometry lerobot import`.**
 
 ```
-autonometry lerobot import DATASET_DIR --out logs --registry connectors/lerobot     --policy outputs/train/act_so101/checkpoints/last/pretrained_model --teleop so101_leader     [--robot-id so101_01] [--start 2026-10-19T06:10:24Z] [--simulated]
+autonometry lerobot import DATASET_DIR --out logs --registry connectors/lerobot \
+    --policy outputs/train/act_so101/checkpoints/last/pretrained_model --teleop so101_leader \
+    [--robot-id so101_01] [--start 2026-10-19T06:10:24Z] [--simulated]
 autonometry report logs/*/*/events.jsonl --out report
 ```
 
