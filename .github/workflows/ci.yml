@@ -91,6 +91,51 @@ jobs:
           export PATH="/opt/venv/bin:$PATH"
           connectors/ros2/ci/run_witness.sh
 
+  dds:
+    name: G1 watcher on Cyclone DDS 0.10.5 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+    env:
+      # The G1 runs Cyclone DDS 0.10 (unitree_sdk2 bundles 0.10.2). There are no 0.10 wheels for
+      # Python 3.12: build the C library from its tag and the binding from source (README).
+      CYCLONEDDS_VERSION: "0.10.5"
+      CYCLONEDDS_HOME: ${{ github.workspace }}/../cyclonedds
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+      - name: Cache the Cyclone DDS C library
+        id: cyclonedds
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CYCLONEDDS_HOME }}
+          key: cyclonedds-${{ env.CYCLONEDDS_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Build the Cyclone DDS C library from its tag
+        if: steps.cyclonedds.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch "$CYCLONEDDS_VERSION" \
+            https://github.com/eclipse-cyclonedds/cyclonedds.git "$RUNNER_TEMP/cyclonedds-src"
+          cmake -S "$RUNNER_TEMP/cyclonedds-src" -B "$RUNNER_TEMP/cyclonedds-build" \
+            -DCMAKE_INSTALL_PREFIX="$CYCLONEDDS_HOME" -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_EXAMPLES=OFF -DBUILD_TESTING=OFF -DENABLE_SSL=OFF -DENABLE_SECURITY=OFF
+          cmake --build "$RUNNER_TEMP/cyclonedds-build" --target install --parallel
+      - run: uv sync --extra g1 --dev --locked
+      - name: Install the Cyclone DDS binding from source
+        run: uv pip install --no-binary cyclonedds "cyclonedds==$CYCLONEDDS_VERSION"
+      # Five fake G1 programs, the observer, a DCPSPublication checker, discover, and watch with
+      # a recorder, all over loopback (tests/dds). --no-sync keeps the binding uv did not lock.
+      - name: DDS tests over loopback
+        env:
+          AUTONOMETRY_REQUIRE_DDS: "1"
+        run: uv run --no-sync pytest -m dds --no-cov tests/dds -v
+
   slow:
     name: Slow checks (Python 3.12)
     runs-on: ubuntu-24.04
