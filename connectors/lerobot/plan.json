@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "plan_item_id": "reset",
+      "kind": "reset",
+      "description": "Put the objects back with the leader arm in the reset phase between episodes (episodic strategy, --dataset.reset_time_s)."
+    },
+    {
+      "plan_item_id": "calibration",
+      "kind": "calibration",
+      "description": "lerobot-calibrate of the follower and leader arms before the session."
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+# Recorder config for an SO-101 on LeRobot (README, "LeRobot"). Relative paths are relative to
+# this file. Start the recorder, then the watcher, then the rollout:
+#   autonometry record --config recorder.toml &
+#   autonometry lerobot watch --config recorder.toml --log rollout.log &
+#   lerobot-rollout --strategy.type=dagger ... 2>&1 | tee rollout.log
+robot_id = "so101_01"
+data_dir = "run/data"
+socket_path = "run/recorder.sock"
+scopes = ["whole_robot"]              # one scope: all six joints move in one sync-write (dossier 14.7)
+hint_policy = "hint_as_shared"        # LeRobot has no hint, approval or help path (dossier 14.2)
+simulated = false
+# The SO-101 has no safety function (dossier summary 2); the rollout's log does not show a person
+# guiding the arm by hand, a second program on the bus or teleoperation outside DAgger (14.5).
+unobserved = ["safety_stops", "human_inputs"]
+clock_source = "ntp"
+key_path = "run/so101_01.key"
+device_registry = "devices.json"
+task_registry = "tasks.json"
+plan = "plan.json"

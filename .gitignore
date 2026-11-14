@@ -43,3 +43,5 @@ demo/tb4-sim/run/
 connectors/ros2/build/
 connectors/ros2/install/
 connectors/ros2/log/
+# LeRobot demo downloads, logs and report
+demo/lerobot/run/

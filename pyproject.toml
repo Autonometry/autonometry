@@ -32,7 +32,7 @@ dependencies = [
 
 [project.optional-dependencies]
 report = ["numpy>=1.26.0", "pandas>=2.1.1", "scipy>=1.11.2", "statsmodels>=0.14.1", "jinja2>=3.1.6", "markupsafe>=2.1.5", "matplotlib>=3.10.7"]
-lerobot = ["pyarrow>=17.0.0", "watchfiles>=0.21.0"]
+lerobot = ["psutil>=6.0.0", "pyarrow>=17.0.0", "watchfiles>=0.21.0"]
 
 [project.urls]
 Homepage = "https://github.com/Autonometry/autonometry"
@@ -70,7 +70,7 @@ src = ["src", "tests"]
 # research/ is reference-only design material: never linted, formatted, imported or shipped.
 extend-exclude = ["research"]
 # The recorder client is copied into connectors on older systems: Python 3.8 syntax only.
-per-file-target-version = { "clients/python/*.py" = "py38", "tests/client/*.py" = "py38", "connectors/ros2/autonometry_ros/autonometry_ros/autonometry_client.py" = "py38" }
+per-file-target-version = { "clients/python/*.py" = "py38", "tests/client/*.py" = "py38", "connectors/ros2/autonometry_ros/autonometry_ros/autonometry_client.py" = "py38", "src/autonometry/connectors/autonometry_client.py" = "py38" }
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "UP", "S", "SIM", "RUF", "PT", "N", "C4", "PL"]
@@ -95,9 +95,9 @@ files = ["src"]
 exclude = ["^research/"]
 plugins = ["pydantic.mypy"]
 
-# SciPy and statsmodels ship no type information; numpy does.
+# SciPy, statsmodels, pyarrow and psutil ship no type information; numpy does.
 [[tool.mypy.overrides]]
-module = ["scipy.*", "statsmodels.*"]
+module = ["scipy.*", "statsmodels.*", "pyarrow.*", "psutil", "psutil.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -107,8 +107,11 @@ testpaths = ["tests"]
 pythonpath = ["tests"]
 # research/ is reference-only design material: never collected, even by `pytest .`.
 norecursedirs = ["research", ".*", "build", "dist", "*.egg", ".venv", "node_modules"]
-addopts = "--strict-markers --strict-config --cov=autonometry --cov-report=term-missing --cov-fail-under=90 -m 'not slow'"
-markers = ["slow: slow statistical validation, skipped by default (run with -m slow)"]
+addopts = "--strict-markers --strict-config --cov=autonometry --cov-report=term-missing --cov-fail-under=90 -m 'not slow and not network'"
+markers = [
+  "slow: slow statistical validation, skipped by default (run with -m slow)",
+  "network: downloads public data from the internet, skipped by default (run with -m network)",
+]
 filterwarnings = ["error"]
 
 [tool.coverage.run]
