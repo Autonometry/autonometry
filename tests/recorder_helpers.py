@@ -76,6 +76,9 @@ def make_config(tmp_path: Path, **overrides: Any) -> RecorderConfig:
         "scopes": list(SCOPES),
         "simulated": True,
         "clock_source": "ntp",
+        # Tests never depend on the free space of the computer running them; the floor's own
+        # tests give the recorder a fake disk.
+        "min_free_bytes": 0,
         **{name: str(path) for name, path in inputs.items()},
     }
     data.update(overrides)

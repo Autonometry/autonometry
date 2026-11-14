@@ -48,6 +48,7 @@ RECORDER_X_FIELDS = frozenset(
         "x_truncated_bytes",
         "x_cause",
         "x_carried_task",
+        "x_disk_full_s",
     }
 )
 #: Fields only the recorder writes (definitions.md 8 common fields, section 10 sealing).

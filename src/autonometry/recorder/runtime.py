@@ -8,6 +8,7 @@ method; only the anchorer's thread runs beside it, and it never touches a file.
 import functools
 import logging
 import math
+import shutil
 import time
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
@@ -37,6 +38,17 @@ from autonometry.recorder.store import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: Seconds between two looks at the free space of the data folder's disk.
+DISK_CHECK_S = 1.0
+
+FreeBytes = Callable[[Path], int]
+
+
+def free_bytes(path: Path) -> int:
+    """Bytes an unprivileged user may still write on the disk holding ``path``."""
+    return shutil.disk_usage(path).free
+
 
 #: Bytes kept free per event a batch may write besides one client event (recorder-made
 #: transitions and heartbeats are far shorter), so a session never outgrows ``max_log_bytes``.
@@ -69,19 +81,25 @@ def tsa_anchorer(prepared: Prepared, notify: Callable[[], None]) -> Anchorer | N
 class Recorder:
     """Writes the sealed, crash-safe log of one robot (README, "Recorder")."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- the recorder's collaborators, each replaceable in tests
         self,
         prepared: Prepared,
         clock: Clock,
         ops: FileOps | None = None,
         read_clock_status: Callable[[], ClockStatus] | None = None,
         anchorer: Anchorer | None = None,
+        *,
+        disk_free: FreeBytes = free_bytes,
     ) -> None:
         config, rules = prepared.config, prepared.rules
         self._prepared = prepared
         self._clock = clock
         self._ops = ops or OsFileOps()
         self._anchorer = anchorer
+        self._disk_free = disk_free
+        #: Monotonic time recording stopped for want of disk space; None while recording.
+        self._full_since: float | None = None
+        self._next_disk_check = -math.inf
         settings = Settings(
             robot_id=config.robot_id,
             scopes=config.scopes,
@@ -209,7 +227,10 @@ class Recorder:
 
     def receive(self, data: bytes) -> None:
         """Handle one datagram. Whatever a datagram holds, the recorder keeps running: one the
-        engine fails on is counted as rejected and makes every scope ``unknown``."""
+        engine fails on is counted as rejected and makes every scope ``unknown``. While the disk
+        is below its free-space floor the datagram is dropped unread (:meth:`_room_to_write`)."""
+        if not self._room_to_write():
+            return
         try:
             events = self._engine.receive(data)
         except Exception as exc:  # process boundary: one datagram never stops the recorder
@@ -221,9 +242,11 @@ class Recorder:
         self._emit(events)
 
     def tick(self) -> None:
-        """Do what is due: append fetched tokens, write due events, fsync if due."""
-        self.deliver_tokens()
-        self._emit(self._engine.tick())
+        """Do what is due: append fetched tokens, write due events, fsync if due. Nothing new is
+        written while the disk is below its free-space floor."""
+        if self._room_to_write():
+            self.deliver_tokens()
+            self._emit(self._engine.tick())
         interval = self._prepared.config.fsync_interval_s
         deadline = self.session.sync_deadline(interval)
         now = self._clock.monotonic()
@@ -233,7 +256,44 @@ class Recorder:
     def next_deadline(self) -> float:
         """Monotonic time at which :meth:`tick` next has work."""
         sync = self.session.sync_deadline(self._prepared.config.fsync_interval_s)
-        return min(self._engine.next_deadline(), math.inf if sync is None else sync)
+        engine = math.inf if self._full_since is not None else self._engine.next_deadline()
+        return min(engine, self._next_disk_check, math.inf if sync is None else sync)
+
+    # -- disk space ---------------------------------------------------------------------------
+
+    def _room_to_write(self) -> bool:
+        """Whether the data folder's disk has at least ``min_free_bytes`` free, looked at once
+        every :data:`DISK_CHECK_S` seconds (product rule 1: the recorder never fills the robot's
+        disk). Below the floor recording stops with one error; datagrams are dropped unread, so
+        each connector's counter shows the loss. When space returns, a heartbeat with
+        ``x_disk_full_s`` and ``unknown`` on every scope resume the log: the time in between,
+        with no event and no heartbeat, is ``unknown`` (definitions.md 2)."""
+        now = self._clock.monotonic()
+        if now < self._next_disk_check:
+            return self._full_since is None
+        self._next_disk_check = now + DISK_CHECK_S
+        floor = self._prepared.config.min_free_bytes
+        data_dir = self._prepared.config.data_dir
+        try:
+            free = self._disk_free(data_dir) if floor else floor
+        except OSError as exc:
+            logger.debug("cannot read the free space of %s: %s", data_dir, exc)
+            return self._full_since is None
+        if free < floor and self._full_since is None:
+            self._full_since = now
+            logger.error(
+                "only %d bytes free on the disk of %s, below min_free_bytes (%d): recording "
+                "stops until there is room again; the time in between will be unknown",
+                free,
+                data_dir,
+                floor,
+            )
+        elif free >= floor and self._full_since is not None:
+            stopped_s, self._full_since = now - self._full_since, None
+            logger.warning("disk space is back after %.0f s; recording continues", stopped_s)
+            heartbeat = self._engine.heartbeat(x_disk_full_s=stopped_s)
+            self._emit([heartbeat, *self._engine.all_unknown("disk_full")])
+        return self._full_since is None
 
     def deliver_tokens(self) -> None:
         """Append every token the anchorer fetched as a timestamp record (definitions.md 10.4)."""
