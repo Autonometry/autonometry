@@ -93,6 +93,16 @@ DATA_COLUMNS: Final = ("episode_index", "frame_index", "intervention")
 #: lerobot/datasets/utils.py:89).
 MAX_META_BYTES: Final = 64 << 20
 MAX_DATA_BYTES: Final = 1 << 30
+#: Most rows read from one parquet file: about 92 hours of frames at 30 fps. A small compressed
+#: file can declare far more, so the count is checked before the rows are read.
+MAX_ROWS: Final = 10_000_000
+#: Longest episode imported, seconds: its declared length or last frame over the frame rate.
+#: Each heartbeat interval of an episode becomes an event, so a forged length cannot make the
+#: importer write an unbounded log.
+MAX_EPISODE_S: Final = 24 * 3600
+#: Largest index read (episode, frame, chunk, file): ``x_episode_index`` must stay an I-JSON
+#: integer (definitions.md 8).
+MAX_INDEX: Final = 2**53 - 1
 #: Longest log line kept, in characters; longer lines are dropped (rules.toml ``max_line_bytes``).
 MAX_LINE_CHARS: Final = 65536
 #: Most bytes read from the log per call, so one pass stays short.
@@ -251,19 +261,32 @@ def _parquet(path: Path, columns: Sequence[str], limit: int) -> dict[str, list[A
         schema = pq.read_schema(path)
         missing = [name for name in columns if name not in schema.names]
         if missing:
-            raise LeRobotError(f"{path}: no column {missing[0]!r}")
+            raise LeRobotError(f"{path}: no column {missing[0]!a}")
+        rows = pq.ParquetFile(path).metadata.num_rows
+        if rows > MAX_ROWS:
+            raise LeRobotError(f"{path} has {rows} rows, more than {MAX_ROWS}")
         table = pq.read_table(path, columns=list(columns))
-    except (pa.ArrowException, OSError) as exc:
+        return {name: table.column(name).to_pylist() for name in columns}
+    except (pa.ArrowException, OSError, OverflowError, ValueError) as exc:
+        # OverflowError and ValueError: values Python cannot hold (date32 days out of range).
         raise LeRobotError(
             f"{path} is not a readable parquet file ({type(exc).__name__})"
         ) from None
-    return {name: table.column(name).to_pylist() for name in columns}
 
 
 def _index(value: Any, what: str, path: Path) -> int:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise LeRobotError(f"{path}: {what} must be a non-negative integer")
+    if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= MAX_INDEX:
+        raise LeRobotError(f"{path}: {what} must be an integer from 0 to 2^53 - 1")
     return value
+
+
+def _check_span(index: int, frames: int, fps: Fraction) -> None:
+    """Refuse an episode longer than :data:`MAX_EPISODE_S` (``frames`` at ``fps``)."""
+    if frames > MAX_EPISODE_S * fps:
+        raise LeRobotError(
+            f"episode {index} covers {frames} frames, more than {MAX_EPISODE_S} s "
+            f"at {float(fps):g} fps"
+        )
 
 
 def _task_text(value: Any) -> str | None:
@@ -382,15 +405,30 @@ def _starts(
     return starts
 
 
+def _session_folder(out: Path, robot_id: str, session_id: str) -> Path:
+    """``<out>/<robot_id>/<session_id>``, refused when it would leave ``out`` (on Windows an id
+    such as ``C:`` names a drive and ``NUL`` a device) or already holds a log: an import never
+    replaces a log written before."""
+    folder = out / robot_id / session_id
+    if folder.resolve().parent.parent != out or folder.resolve().name != session_id:
+        raise LeRobotError(f"robot id {robot_id!r} cannot be a folder name on this system")
+    if (folder / "events.jsonl").exists():
+        raise LeRobotError(f"{folder} already holds a session log; import into another --out")
+    return folder
+
+
 def _write_session(
     out: Path, events: Sequence[Mapping[str, Any]], copies: Mapping[str, bytes]
 ) -> Path:
     first = events[0]
-    folder = out / str(first["robot_id"]) / str(first["session_id"])
-    make_private_dirs(folder)
-    atomic_write(folder / "events.jsonl", b"".join(rfc8785.dumps(e) + b"\n" for e in events))
-    for name, data in copies.items():
-        atomic_write(folder / name, data)
+    folder = _session_folder(out, str(first["robot_id"]), str(first["session_id"]))
+    try:
+        make_private_dirs(folder)
+        atomic_write(folder / "events.jsonl", b"".join(rfc8785.dumps(e) + b"\n" for e in events))
+        for name, data in copies.items():
+            atomic_write(folder / name, data)
+    except OSError as exc:
+        raise LeRobotError(f"cannot write {folder}: {exc.strerror or exc}") from None
     return folder
 
 
@@ -418,6 +456,8 @@ def import_dataset(  # noqa: PLR0913 -- the import CLI's documented options
     if not _ID_RE.fullmatch(robot):
         raise LeRobotError("robot id must be 1 to 128 letters, digits, '.', '_', ':' or '-'")
     metas = read_episode_meta(root)
+    for meta in metas:  # before anything is written
+        _check_span(meta.index, meta.length, info.fps)
     present = sorted({m.data_file for m in metas if (root / m.data_file).is_file()})
     mtimes = {name: (root / name).stat().st_mtime_ns for name in present}
     starts = _starts(metas, info.fps, start_ns, mtimes)
@@ -443,7 +483,13 @@ def import_dataset(  # noqa: PLR0913 -- the import CLI's documented options
             if not known and meta.task is not None and meta.task not in result.undeclared_tasks:
                 result.undeclared_tasks.append(meta.task)
             episode = _episode(meta, frames.get(meta.index, ()))
-            events = episode_events(settings, episode, starts[meta.index], definition)
+            _check_span(meta.index, episode.span, info.fps)
+            try:
+                events = episode_events(settings, episode, starts[meta.index], definition)
+            except (OverflowError, ValueError) as exc:  # a time outside years 1 to 9999
+                raise LeRobotError(
+                    f"episode {meta.index} cannot be placed in time ({type(exc).__name__})"
+                ) from None
             result.sessions.append(_write_session(out_root, events, registries.copies))
     result.missing_data = [m.index for m in metas if m.data_file not in present]
     result.sessions.sort()
@@ -479,6 +525,7 @@ class LogFollower:
         self._decoder: codecs.IncrementalDecoder | None = None
         self._buffer = ""
         self._skipping = False
+        self._lost = False
         #: The file and its size when following started: what is skipped unless ``from_start``.
         self._skip: tuple[tuple[int, int], int] | None = None
         if not from_start:
@@ -496,15 +543,27 @@ class LogFollower:
         self._decoder = None
         self._buffer, self._skipping = "", False
 
+    def take_lost(self) -> bool:
+        """True once after the file being read vanished, was replaced by another or was cut
+        shorter: lines may have gone where this follower cannot read them."""
+        lost, self._lost = self._lost, False
+        return lost
+
     def read(self) -> list[str]:
         """The complete lines written since the last call, without line endings."""
         try:
             status = os.stat(self._path)
         except OSError:
+            self._lost = self._lost or self._identity is not None
+            self._identity = None
             self.close()
             self._skip = None
             return []
         identity = (status.st_dev, status.st_ino)
+        changed = self._identity is not None and (
+            identity != self._identity or status.st_size < self._position
+        )
+        self._lost = self._lost or changed
         if self._handle is None or identity != self._identity or status.st_size < self._position:
             self.close()
             try:
@@ -778,8 +837,13 @@ def pump(
     liveness: Liveness | None = None,
 ) -> None:
     """One pass: every new line to the engine, the rollout's process checked, then the current
-    state (seconds, ``now``)."""
-    _observe(follower.read(), engine, send, now)
+    state (seconds, ``now``). A log that vanished, was replaced or was cut makes the state
+    ``unknown`` first (:meth:`LeRobotEngine.log_lost`); lines read from it afterwards tell it
+    again."""
+    lines = follower.read()
+    if follower.take_lost():
+        send(engine.log_lost(now))
+    _observe(lines, engine, send, now)
     if liveness is not None:
         liveness.check(now, follower, engine, send)
     send(engine.tick(now))

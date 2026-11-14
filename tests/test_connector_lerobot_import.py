@@ -356,7 +356,8 @@ def test_bad_episode_metadata_is_refused_in_one_line(tmp_path: Path) -> None:
     _rewrite_meta(dataset, episode_index=[0, 0])
     assert "episode 0 is listed twice" in _import(dataset, tmp_path / "o").output
     _rewrite_meta(dataset, episode_index=[0, -1])
-    assert "episode_index must be a non-negative integer" in _import(dataset, tmp_path / "o").output
+    expected = "episode_index must be an integer from 0 to 2^53 - 1"
+    assert expected in _import(dataset, tmp_path / "o").output
     _rewrite_meta(dataset, episode_index=[0, 1], length=None)
     assert "no column 'length'" in _import(dataset, tmp_path / "o").output
 
