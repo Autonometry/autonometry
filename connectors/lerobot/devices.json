@@ -1,0 +1,52 @@
+{
+  "devices": [
+    {
+      "device_id": "so101_policy",
+      "kind": "ai",
+      "match": {
+        "node": "policy:outputs/train/act_so101/checkpoints/last/pretrained_model"
+      },
+      "x_note": "the policy lerobot-rollout loads (--policy.path), logged as Loading policy from '<path>'...; a Hub repo id works the same way"
+    },
+    {
+      "device_id": "so101_leader",
+      "kind": "human",
+      "location": "local",
+      "actor_id": "op_01",
+      "match": {
+        "node": "teleop:so101_leader"
+      },
+      "x_note": "the SO-101 leader arm on the robot's host (--teleop.type=so101_leader), logged as Connecting teleoperator (so101_leader)..."
+    },
+    {
+      "device_id": "gamepad",
+      "kind": "human",
+      "location": "local",
+      "actor_id": "op_01",
+      "match": {
+        "node": "teleop:gamepad"
+      },
+      "x_note": "a USB or Bluetooth gamepad next to the robot (dossier 4a)"
+    },
+    {
+      "device_id": "phone_teleop",
+      "kind": "human",
+      "location": "remote",
+      "actor_id": "op_02",
+      "match": {
+        "node": "teleop:phone"
+      },
+      "x_note": "phone teleoperation over Wi-Fi or a network link: declared remote, since software cannot tell whether the phone is in the room (dossier 14.8 flag 4)"
+    },
+    {
+      "device_id": "return_to_start",
+      "kind": "script",
+      "match": {
+        "node": "script:return_to_initial_position"
+      },
+      "x_note": "LeRobot drives the arm back to its start pose at teardown and in episodic resets without a teleoperator: a fixed interpolation, scripted (definitions.md 6.9, 6.13)"
+    }
+  ],
+  "x_robot_model": "SO-101 follower on LeRobot v0.6.1",
+  "x_note": "SO-101 template (README, LeRobot). LeRobot has no ROS graph: the watcher matches what the rollout's log names as node policy:<path>, teleop:<type> or script:return_to_initial_position."
+}
