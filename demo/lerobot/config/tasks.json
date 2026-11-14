@@ -1,0 +1,13 @@
+{
+  "tasks": [
+    {
+      "task_definition_id": "pick_place_cube",
+      "description": "Pick up the cube and place it in the bin."
+    },
+    {
+      "task_definition_id": "place_part_red_slot",
+      "description": "place the part in the red target slot"
+    }
+  ],
+  "x_note": "A task's description is the text given to lerobot-rollout as --dataset.single_task, exactly; the connector finds the task definition by it."
+}

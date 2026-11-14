@@ -1,0 +1,30 @@
+{
+  "devices": [
+    {
+      "device_id": "dagger_policy",
+      "kind": "ai",
+      "match": {
+        "node": "policy:demo_dagger_policy"
+      },
+      "x_note": "the policy that ran the demo dataset's rollout; the dataset does not name it, so the demo passes --policy demo_dagger_policy"
+    },
+    {
+      "device_id": "so101_leader",
+      "kind": "human",
+      "location": "local",
+      "actor_id": "op_01",
+      "match": {
+        "node": "teleop:so101_leader"
+      },
+      "x_note": "the dataset does not name its teleoperator either; the demo assumes the SO-101 leader arm, local (--teleop so101_leader)"
+    },
+    {
+      "device_id": "return_to_start",
+      "kind": "script",
+      "match": {
+        "node": "script:return_to_initial_position"
+      }
+    }
+  ],
+  "x_note": "Registry for demo/lerobot (README beside it)."
+}
