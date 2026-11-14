@@ -65,8 +65,11 @@ or location.
 
 **Evidence** goes in ``x_`` fields: ``x_g1_cause`` and ``x_g1_fsm_id`` on every state,
 ``x_g1_weight`` on states decided by an ``rt/arm_sdk`` weight, and on heartbeat notes
-``x_g1_writers`` (the active writers with their observed identities, when that set changes) and
-``x_g1_tasks: "unreadable"`` (once, when the recorder's session log cannot be followed).
+``x_g1_writers`` (the active writers when that set changes: a declared one by topic and device,
+an undeclared one by topic, program and a pseudonym of its host, never the host name),
+``x_g1_tasks: "unreadable"`` (once, when the recorder's session log cannot be followed) and
+``x_g1_robot_returned`` (the robot came back after ``idle_threshold_s`` while released or in user
+control, which a restart ends without a request).
 """
 
 import hashlib
@@ -122,6 +125,7 @@ __all__ = [
     "WriterGone",
     "WriterSeen",
     "decode_remote",
+    "host_pseudonym",
     "registry_problems",
     "request_topic",
     "response_topic",
@@ -714,6 +718,28 @@ class _Pending:
     user_control: bool
 
 
+def host_pseudonym(host: str | None) -> str | None:
+    """A host name as it may appear in a log: the first 12 hex digits of its SHA-256, never the
+    name itself, which often holds a person's name (CLAUDE.md product rule 5). ``autonometry g1
+    discover`` prints it beside each host, so a log entry can be traced to a machine."""
+    if host is None:
+        return None
+    return hashlib.sha256(host.encode("utf-8", "replace")).hexdigest()[:_DIGEST_CHARS]
+
+
+def _writer_entry(writer: "_Writer") -> dict[str, Any]:
+    """A writer on ``x_g1_writers``: a declared one by its topic and device; an undeclared one by
+    its topic, program and host pseudonym (product rule 5)."""
+    if writer.device is not None:
+        return {"topic": writer.topic, "device_id": writer.device.device_id}
+    identified = writer.identified
+    return {
+        "topic": writer.topic,
+        "program": writer.source.participant if identified else None,
+        "host": host_pseudonym(writer.source.host) if identified else None,
+    }
+
+
 def _value_key(value: StateAssertion) -> tuple[str, str | None, str | None, str | None]:
     return value.state, value.reason, value.actor_id, value.device_id
 
@@ -945,7 +971,18 @@ class G1Engine:
         t = observation.t
         writer = self._writer(observation.key, LOWSTATE)
         writer.last_t = t
-        self._last_lowstate = t if self._last_lowstate is None else max(self._last_lowstate, t)
+        last = self._last_lowstate
+        if (
+            last is not None
+            and t - last > self._s.idle_threshold_s
+            and (self._released or self._user_control)
+        ):
+            # The robot was away long enough to have restarted, which ends a release or user
+            # control without a request: the mode stands (it never moves towards ai), and the
+            # log says the robot returned in it (README, restart the watcher too).
+            mode = "released" if self._released else "user_control"
+            self._notes.append(Note((("x_g1_robot_returned", mode),)))
+        self._last_lowstate = t if last is None else max(last, t)
         origin = self._remote_origin(writer)
         remote = decode_remote(observation.wireless_remote)
         if origin is None or remote is None:
@@ -1576,16 +1613,7 @@ class G1Engine:
         now = self._now
         active = [w for w in self._writers.values() if w.active(now, self._s.gap_tolerance_s)]
         entries = sorted(
-            (
-                {
-                    "topic": w.topic,
-                    "host": w.source.host if w.identified else None,
-                    "participant": w.source.participant if w.identified else None,
-                    "device_id": None if w.device is None else w.device.device_id,
-                }
-                for w in active
-            ),
-            key=lambda e: json.dumps(e, sort_keys=True),
+            (_writer_entry(w) for w in active), key=lambda e: json.dumps(e, sort_keys=True)
         )
         text = json.dumps(entries, sort_keys=True)
         if text == self._noted_writers:

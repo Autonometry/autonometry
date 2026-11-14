@@ -54,6 +54,26 @@ def test_no_cyclone_dds_is_refused__notes_3() -> None:
         g1_dds.check_cyclonedds(None)
 
 
+@pytest.mark.parametrize("version", [(3, 13), (3, 14), (3, 11)])
+def test_any_python_but_3_12_is_refused_in_one_line(version: tuple[int, int]) -> None:
+    with pytest.raises(G1Error, match=r"needs Python 3\.12") as caught:
+        g1_dds.check_python(version)
+    assert f"Python {version[0]}.{version[1]}" in str(caught.value)
+    assert "\n" not in str(caught.value)
+    g1_dds.check_python((3, 12, 7))
+
+
+def test_a_cyclone_dds_that_does_not_load_is_refused_with_the_hint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def broken(domain: int, interface: str | None) -> None:
+        raise ImportError("undefined symbol: _Py_IsFinalizing")
+
+    monkeypatch.setattr(g1_dds, "_CycloneBackend", broken)
+    with pytest.raises(G1Error, match=r"cannot be loaded \(ImportError\): the G1 watcher needs"):
+        g1_dds.open_backend(0, None)
+
+
 def test_cyclonedds_version_reads_the_installed_distribution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -506,15 +526,22 @@ def test_discovery_lists_participants_and_the_exact_match_strings__notes_4() -> 
     assert other == {
         "key": "c",
         "host": None,
+        "host_pseudonym": None,
         "program": None,
         "pid": None,
         "participant": None,
         "writers": [],
     }
     text = g1_dds.format_discovery(report)
-    assert text[0] == "participant a: host g1-pc1, program hg_lowstate (pid 100)"
+    assert robot["host_pseudonym"] == "2cd7dc141261"
+    assert text[0] == (
+        "participant a: host g1-pc1 (in logs 2cd7dc141261), program hg_lowstate (pid 100)"
+    )
     assert any("handheld remote match" in line for line in text)
-    assert "participant b: host robot-pc2, program python3 (pid 7), script " in "\n".join(text)
+    pseudonym = teleop["host_pseudonym"]
+    assert f"participant b: host robot-pc2 (in logs {pseudonym}), program python3" in "\n".join(
+        text
+    )
     assert "  writes nothing" in text
     assert text[-1] == 'Unitree\'s presets: match {"topic": "preset"}'
     json.dumps(report)
@@ -630,3 +657,23 @@ def test_run_watch_survives_a_failing_pass_and_ends_unknown__claude_md_process_b
     states = [m for m in sent if isinstance(m, g1.StateAssertion)]
     assert [m.state for m in states[-2:]] == ["unknown", "unknown"]
     assert {m.scope for m in states[-2:]} == {"legs", "upper_body"}
+
+
+def test_pump_warns_when_the_robot_returns_while_released__defs_6_14(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    note = g1.Note((("x_g1_robot_returned", "user_control"),))
+    eng = SimpleNamespace(observe=lambda o: [note], tick=lambda now: [])
+    sent: list[g1.Message] = []
+    with caplog.at_level(logging.WARNING):
+        g1_dds.pump(
+            SimpleNamespace(poll=lambda now: [g1.TaskClosed(now)]),
+            SimpleNamespace(poll=lambda now: []),
+            eng,  # type: ignore[arg-type]
+            sent.extend,
+            1.0,
+            tick=True,
+        )
+    assert sent == [note]
+    (record,) = [r for r in caplog.records if "restart the watcher" in r.message]
+    assert "user control" in record.message

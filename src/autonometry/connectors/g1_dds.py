@@ -54,6 +54,7 @@ __all__ = [
     "SampleRecord",
     "TaskFollower",
     "check_cyclonedds",
+    "check_python",
     "cyclonedds_version",
     "discover",
     "domain_config",
@@ -127,6 +128,25 @@ class G1Error(Exception):
 
 
 # -- Cyclone DDS --------------------------------------------------------------------------------
+
+
+#: The Python the G1 watcher runs on: Cyclone DDS 0.10 for Python does not load on 3.13 (its
+#: extension needs ``_Py_IsFinalizing``, gone from 3.13's ABI).
+SUPPORTED_PYTHON: Final = (3, 12)
+
+
+def check_python(version: Sequence[int]) -> None:
+    """Accept only Python 3.12, which Cyclone DDS 0.10 for Python supports.
+
+    Raises:
+        G1Error: another Python; the message says why in one line.
+    """
+    found = (int(version[0]), int(version[1]))
+    if found != SUPPORTED_PYTHON:
+        raise G1Error(
+            f"the G1 watcher needs Python 3.12: Cyclone DDS 0.10 for Python does not support "
+            f"Python {found[0]}.{found[1]} (README, Unitree G1)"
+        )
 
 
 def cyclonedds_version() -> str | None:
@@ -831,7 +851,13 @@ def open_backend(domain: int, interface: str | None) -> Backend:
     if not 0 <= domain <= MAX_DOMAIN:
         raise G1Error(f"--domain must be 0 to {MAX_DOMAIN}")
     domain_config(interface)
-    return _CycloneBackend(domain, interface)  # pragma: no cover -- needs Cyclone DDS
+    try:
+        return _CycloneBackend(domain, interface)
+    except ImportError as exc:
+        raise G1Error(
+            f"Cyclone DDS for Python cannot be loaded ({type(exc).__name__}): the G1 watcher "
+            "needs Python 3.12 and Cyclone DDS 0.10.5 built from source (README, Unitree G1)"
+        ) from None
 
 
 # -- discover -----------------------------------------------------------------------------------
@@ -888,6 +914,7 @@ class Discovery:
                 {
                     "key": key,
                     "host": info.host,
+                    "host_pseudonym": g1.host_pseudonym(info.host),
                     "program": info.program,
                     "pid": info.pid,
                     "participant": info.name,
@@ -927,7 +954,9 @@ def format_discovery(report: Mapping[str, Any]) -> list[str]:
     lines = []
     for participant in report["participants"]:
         pid, name = participant["pid"], participant["participant"]
-        head = f"participant {participant['key']}: host {participant['host'] or '?'}, "
+        host = participant["host"]
+        shown = "?" if host is None else f"{host} (in logs {participant['host_pseudonym']})"
+        head = f"participant {participant['key']}: host {shown}, "
         head += f"program {participant['program'] or '?'}"
         head += f" (pid {pid})" if pid is not None else ""
         head += f", script {name}" if name != participant["program"] else ""
@@ -1062,9 +1091,22 @@ def pump(  # noqa: PLR0913 -- the pass's collaborators
     """One pass: the tasks, then everything read from DDS, to the engine; then, when due, the
     state of every scope (seconds, ``now``)."""
     for observation in [*tasks.poll(now), *observer.poll(now)]:
-        send(engine.observe(observation))
+        send(_warned(engine.observe(observation)))
     if tick:
-        send(engine.tick(now))
+        send(_warned(engine.tick(now)))
+
+
+def _warned(messages: list[g1.Message]) -> list[g1.Message]:
+    """Messages unchanged; one warning when they say the robot returned while released or in
+    user control (a restart ends those modes without a request the watcher could see)."""
+    for message in messages:
+        if isinstance(message, g1.Note) and "x_g1_robot_returned" in dict(message.fields):
+            logger.warning(
+                "the robot's lowstate returned while it counts as %s; if the robot restarted, "
+                "restart the watcher too",
+                dict(message.fields)["x_g1_robot_returned"].replace("_", " "),
+            )
+    return messages
 
 
 def run_watch(  # noqa: PLR0913 -- the watch loop's collaborators

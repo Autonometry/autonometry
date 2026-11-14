@@ -11,6 +11,7 @@ import pytest
 from typer.testing import CliRunner
 
 from autonometry import cli, cli_g1
+from autonometry.connectors import g1_dds
 from autonometry.connectors.g1_dds import ParticipantRecord, PublicationRecord
 from g1_helpers import CONFIG
 
@@ -34,6 +35,31 @@ def _config(tmp_path: Path, devices: Path = CONFIG / "devices.json", **extra: st
     path = tmp_path / "recorder.toml"
     path.write_text("".join(f"{k} = {v}\n" for k, v in lines.items()), encoding="utf-8")
     return path
+
+
+@pytest.fixture(autouse=True)
+def python_3_12(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The commands' checks as on Python 3.12, whichever Python runs the tests."""
+    monkeypatch.setattr(cli_g1, "_python", lambda: (3, 12))
+
+
+@pytest.mark.parametrize("command", [["watch", "--config", "CONFIG"], ["discover"]])
+def test_g1_commands_refuse_python_3_13_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: list[str]
+) -> None:
+    monkeypatch.setattr(cli_g1, "_python", lambda: (3, 13))
+    monkeypatch.setattr(cli_g1, "cyclonedds_version", lambda: "0.10.5")
+    args = [str(_config(tmp_path)) if a == "CONFIG" else a for a in command]
+    result = runner.invoke(cli.app, ["g1", *args])
+    assert result.exit_code == 2
+    assert result.output.strip() == (
+        "error: the G1 watcher needs Python 3.12: Cyclone DDS 0.10 for Python does not "
+        "support Python 3.13 (README, Unitree G1)"
+    )
+
+
+def _broken(domain: int, interface: str | None) -> None:
+    raise ImportError("undefined symbol: _Py_IsFinalizing")
 
 
 @pytest.fixture
@@ -128,6 +154,8 @@ def test_watch_starts_on_linux_and_macos_only(
     started: list[Any] = []
     monkeypatch.setattr(sys, "platform", platform)
     monkeypatch.setattr(cli_g1, "_watch", lambda *args: started.append(args))
+    backend = object()
+    monkeypatch.setattr(cli_g1, "open_backend", lambda domain, interface: backend)
     config = _config(tmp_path, scopes='["legs", "upper_body", "hands"]')
     result = runner.invoke(cli.app, ["g1", "watch", "--config", str(config), "--domain", "3"])
     if platform == "win32":
@@ -138,7 +166,7 @@ def test_watch_starts_on_linux_and_macos_only(
         assert result.exit_code == 0, result.output
         (args,) = started
         assert args[1].hands
-        assert args[2:] == (None, 3, "g1_watch")
+        assert args[2:] == (backend, 3, "g1_watch")
 
 
 def test_g1_commands_need_psutil(
@@ -203,3 +231,25 @@ def test_discover_refuses_a_bad_interface_name(cyclone: None) -> None:
     result = runner.invoke(cli.app, ["g1", "discover", "--interface", "a b"])
     assert result.exit_code == 2
     assert "--interface" in result.output
+
+
+def test_discover_ends_in_one_line_when_cyclone_dds_does_not_load(
+    cyclone: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(g1_dds, "_CycloneBackend", _broken)
+    result = runner.invoke(cli.app, ["g1", "discover"])
+    assert result.exit_code == 2
+    assert len(result.output.strip().splitlines()) == 1
+    assert "needs Python 3.12" in result.output
+
+
+def test_watch_ends_in_one_line_when_cyclone_dds_does_not_load(
+    tmp_path: Path, cyclone: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("psutil")  # imported for this OS before the platform is patched
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(g1_dds, "_CycloneBackend", _broken)
+    result = runner.invoke(cli.app, ["g1", "watch", "--config", str(_config(tmp_path))])
+    assert result.exit_code == 2
+    assert len(result.output.strip().splitlines()) == 1
+    assert "Cyclone DDS for Python cannot be loaded" in result.output

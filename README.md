@@ -736,8 +736,10 @@ or resends to it. Run one watcher per robot network: on PC2 (192.168.123.164) or
 computer on 192.168.123.x. On the computer that runs the teleoperation and policy scripts it can
 also tell Python scripts apart (below).
 
-**Install.** Cyclone DDS 0.10 has no wheels for Python 3.12, so build the C library from the
-0.10.5 tag and the Python binding from source, as Unitree's Python SDK does for 0.10.2:
+**Install, with Python 3.12.** Cyclone DDS 0.10 for Python does not load on Python 3.13 (its
+extension needs a symbol 3.13 removed), so the G1 commands refuse any Python but 3.12 with one
+line. It has no wheels for 3.12 either: build the C library from the 0.10.5 tag and the Python
+binding from source, as Unitree's Python SDK does for 0.10.2:
 
 ```
 git clone --depth 1 --branch 0.10.5 https://github.com/eclipse-cyclonedds/cyclonedds.git
@@ -745,9 +747,12 @@ cmake -S cyclonedds -B cyclonedds/build -DCMAKE_INSTALL_PREFIX="$HOME/cyclonedds
     -DBUILD_EXAMPLES=OFF -DBUILD_TESTING=OFF
 cmake --build cyclonedds/build --target install --parallel
 export CYCLONEDDS_HOME="$HOME/cyclonedds"
-pip install --no-binary cyclonedds cyclonedds==0.10.5
+pip install --no-binary cyclonedds cyclonedds==0.10.5   # in a Python 3.12 environment
 pip install 'autonometry[g1]'          # psutil, to name Python programs by their script
 ```
+
+From a clone of this repository: `uv sync --python 3.12 --extra g1`, then
+`uv pip install --no-binary cyclonedds cyclonedds==0.10.5` and `uv run --no-sync autonometry g1 ...`.
 
 Keep `CYCLONEDDS_HOME` set when you run the watcher. Cyclone DDS is not a declared dependency of
 autonometry, so `pip install autonometry` never pulls a version that would harm the robot.
@@ -758,8 +763,9 @@ autonometry, so `pip install autonometry` never pulls a version that would harm 
 autonometry g1 discover --interface eth0            # --domain 0 by default; --json; --seconds 5
 ```
 
-It lists every participant with its host, program and pid, the topics and type names it
-publishes, and for each writer the exact `match` to copy into the device registry. A writer is
+It lists every participant with its host (and, beside it, the pseudonym under which the log
+names that host), program and pid, the topics and type names it publishes, and for each writer the
+exact `match` to copy into the device registry. A writer is
 observed as `(host, participant, topic)`: `host` is the participant's `__Hostname`; `participant`
 is its `__ProcessName`, except that a Python interpreter (`python`, `python3`, `python3.x`;
 `Python` on macOS) on the
@@ -794,13 +800,27 @@ autonometry g1 watch --config connectors/g1/recorder.toml --interface eth0
 
 The watcher, like the recorder, runs on Linux and macOS. It reads the recorder's config for its
 socket, scopes (`legs` and `upper_body`, and `hands` if declared), data folder and device registry,
-sends every scope's state every 0.25 s and on each change, and records the active writers with
-their identities as `x_g1_writers` on a heartbeat when they change. Host names and script names go
-into the log: choose host names that name no person. Tasks are the robot program's: it sends
+sends every scope's state every 0.25 s and on each change, and records the active writers as
+`x_g1_writers` on a heartbeat when they change. Tasks are the robot program's: it sends
 `task_start` and `task_end` to the recorder through the client library, and the watcher follows
 the recorder's current session log, read-only, to know whether a task is open. If it cannot read
 that log, every moment counts as outside a task, and it says so once on a heartbeat
 (`x_g1_tasks: "unreadable"`); run it as the recorder's user.
+
+**What the log holds.** Control metadata only (product rule 5): states, reasons, device ids and
+the pseudonymous actor ids of the registry, the `x_g1_` evidence above, and in `x_g1_writers` a
+writer that matches a device by its topic and `device_id` only. An undeclared writer is listed by
+its topic, its program (script or process name) and its host as a pseudonym, the first 12 hex
+digits of the SHA-256 of the host name, never the name itself, since machine names often hold a
+person's name; `discover` prints the same pseudonym beside each host, so a log entry can be traced
+to a machine. No video, audio, network address or process id is recorded.
+
+**Restart the watcher after restarting the robot.** Released (debug mode) and user control end
+only on a request the watcher sees. A restarted robot comes back in Unitree's built-in program,
+but the watcher keeps it released, which never counts towards `ai` and is safe, only wrong. When
+`rt/lowstate` returns after more than `idle_threshold_s` (30 s) while released or in user control,
+the watcher logs one warning and notes `x_g1_robot_returned` (`released` or `user_control`) on a
+heartbeat.
 
 Rules (notes section 6 under spec v0.3; for each scope, the first that applies decides):
 

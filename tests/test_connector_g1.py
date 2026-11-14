@@ -689,14 +689,48 @@ def test_active_writers_are_noted_when_they_change__notes_6() -> None:
     sim.run(1.0, command(0, XR_ARM, 1.0))
     noted = [dict(n.fields)["x_g1_writers"] for n in sim.notes if "x_g1_writers" in dict(n.fields)]
     assert len(noted) == 2
-    assert {
-        "topic": "rt/arm_sdk",
-        "host": "teleop-pc",
-        "participant": "teleop_hand_and_arm.py",
-        "device_id": "xr_teleop",
-    } in noted[-1]
+    assert {"topic": "rt/arm_sdk", "device_id": "xr_teleop"} in noted[-1]
     sim.run(2.0, command(0, XR_ARM, 1.0))
     assert len([n for n in sim.notes if "x_g1_writers" in dict(n.fields)]) == 2
+
+
+def test_writers_note_names_no_host__claude_md_product_rule_5() -> None:
+    """A declared writer by topic and device; an undeclared one by topic, program and a
+    pseudonym of its host (the first 12 hex digits of its SHA-256), never the host name."""
+    sim = Sim()
+    released(sim)
+    sim.run(1.0, command(0, STRANGER_LOWCMD), g1.Command(0, "w-new", g1.LOWCMD))
+    writers = [dict(n.fields)["x_g1_writers"] for n in sim.notes][-1]
+    assert {"topic": "rt/lowcmd", "program": "python3", "host": "5eec0dc419aa"} in writers
+    assert {"topic": "rt/lowcmd", "program": None, "host": None} in writers
+    assert {"topic": "rt/lowstate", "device_id": None} not in writers
+    text = str([dict(n.fields) for n in sim.notes])
+    for host in ("laptop", "teleop-pc", "g1-pc1", "g1-pc2"):
+        assert host not in text
+    assert g1.host_pseudonym("laptop") == "5eec0dc419aa"
+    assert g1.host_pseudonym(None) is None
+
+
+@pytest.mark.parametrize(("api", "mode"), [(1003, "released"), (7110, "user_control")])
+def test_the_robot_returning_while_released_is_noted_once__defs_6_14(api: int, mode: str) -> None:
+    """A restart ends a release or user control without a request: the mode stands (never
+    towards ai) and the log says the robot returned in it."""
+    sim = Sim()
+    key = XR_SWITCH if api == 1003 else POLICY_SPORT
+    service = "motion_switcher" if api == 1003 else "sport"
+    sim.step(request(0, key, service, api, {}))
+    sim.run(1.0)
+    sim.robot = False
+    sim.run(20.0)
+    sim.robot = True
+    sim.run(21.0)  # back within idle_threshold_s: nothing to say
+    sim.robot = False
+    sim.run(52.0)
+    sim.robot = True
+    sim.run(53.0)
+    returned = [dict(n.fields) for n in sim.notes if "x_g1_robot_returned" in dict(n.fields)]
+    assert returned == [{"x_g1_robot_returned": mode}]
+    assert cause(sim.state()).endswith(mode)
 
 
 def test_writers_note_is_capped(monkeypatch: pytest.MonkeyPatch) -> None:

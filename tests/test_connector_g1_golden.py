@@ -168,13 +168,16 @@ def test_log_matches_the_hand_worked_events__notes_6_defs_8(
 def test_active_writers_are_noted_on_heartbeats__notes_6(
     golden: tuple[Path, list[dict[str, Any]]],
 ) -> None:
-    _, events = golden
+    folder, events = golden
     noted = [e["x_g1_writers"] for e in events if "x_g1_writers" in e]
+    assert any({"topic": "rt/arm_sdk", "device_id": "xr_teleop"} in writers for writers in noted)
     assert any(
-        {"topic": "rt/arm_sdk", "host": "teleop-pc", "participant": "teleop_hand_and_arm.py",
-         "device_id": "xr_teleop"} in writers
+        {"topic": "rt/api/sport/request", "program": "python3", "host": "5eec0dc419aa"} in writers
         for writers in noted
-    )  # fmt: skip
+    )  # the undeclared laptop, its host as a pseudonym (product rule 5)
+    text = (folder / EVENTS_FILE).read_text(encoding="utf-8")
+    assert "laptop" not in text
+    assert "teleop-pc" not in text
 
 
 def test_timeline_matches_the_hand_worked_states_and_interventions__defs_3_5_6_6_6_7(

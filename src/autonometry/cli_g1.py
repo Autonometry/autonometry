@@ -15,10 +15,12 @@ import typer
 from autonometry.connectors import g1
 from autonometry.connectors.g1_dds import (
     MAX_DOMAIN,
+    Backend,
     G1Error,
     Observer,
     TaskFollower,
     check_cyclonedds,
+    check_python,
     cyclonedds_version,
     discover,
     domain_config,
@@ -56,9 +58,15 @@ def _fail(message: str, code: int = 2) -> NoReturn:
     raise typer.Exit(code)
 
 
+def _python() -> tuple[int, int]:
+    return sys.version_info[0], sys.version_info[1]
+
+
 def _cyclonedds() -> None:
-    """Refuse anything but Cyclone DDS 0.10 (S11), with a one-line reason and exit status 2."""
+    """Refuse anything but Python 3.12 and Cyclone DDS 0.10 (S11), with a one-line reason and
+    exit status 2."""
     try:
+        check_python(_python())
         check_cyclonedds(cyclonedds_version())
     except G1Error as exc:
         _fail(str(exc))
@@ -174,19 +182,22 @@ def watch_cmd(
     if sys.platform == "win32":
         _fail("the recorder and its socket run on Linux and macOS only")
     _need_psutil()
-    _watch(recorder_config, settings, interface, domain, client_name)
+    try:
+        backend = open_backend(domain, interface)
+    except G1Error as exc:
+        _fail(str(exc))
+    _watch(recorder_config, settings, backend, domain, client_name)
 
 
 def _watch(  # pragma: no cover -- needs Cyclone DDS: the dds tests run it
     config: RecorderConfig,
     settings: g1.Settings,
-    interface: str | None,
+    backend: Backend,
     domain: int,
     client_name: str,
 ) -> None:
     from autonometry.connectors.autonometry_client import Recorder  # noqa: PLC0415 -- POSIX use
 
-    backend = open_backend(domain, interface)
     tasks = TaskFollower(config.data_dir / config.robot_id)
     stop = threading.Event()
     for number in (signal.SIGINT, signal.SIGTERM):
