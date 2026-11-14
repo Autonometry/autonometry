@@ -623,10 +623,12 @@ session open, the station's input lost, or the scope not witnessed). A disagreem
 the other side's human time is *tolerated*: tau = robot clock error + station clock error (each
 side's `clock_max_error_s` on the heartbeat nearest the edge) + `react_s` (0.5 s). After the
 operator stops, a robot that keeps the last controller's state (6.14) is *held*, not disputed,
-when the station saw that run. A session is L3 when both logs are verified, neither clock is
-unsynced, and (station-only + unwitnessed) / base ≤ 0.5 % and (robot-only + station-only +
-unwitnessed) / base ≤ 2 %: unwitnessed time counts as disputed, since a station that cannot see
-cannot vouch. Station episodes the robot never logged raise an upper-bound intervention count.
+when the station saw that run. Station input while the robot logs `unknown` is reported on its
+own line (U). A session is L3 when both logs are verified, neither clock is unsynced, and
+(station-only + unwitnessed + U) / (base + U) ≤ 0.5 % and (robot-only + station-only +
+unwitnessed + U) / (base + U) ≤ 2 %: unwitnessed time counts as disputed, since a station that
+cannot see cannot vouch, and a robot that logs `unknown` while the station sees an operator does
+not show that person. Station episodes the robot never logged raise an upper-bound intervention count.
 The JSON lists, per robot session, the times, shares, tau, unmatched episodes and runs, and the
 reasons a session is not L3. Exit status: 0 only when every robot session is L3; 1 otherwise; 2 on
 bad usage or unreadable input. `autonometry report ... --station LOG` puts the same in the

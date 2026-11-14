@@ -1836,11 +1836,11 @@
     },
     "spec_files": {
       "checkpoint.schema.json": "df303f5e55b38a51baad7a02aabf3b7a83a8db2b1dd32c64577bd7e455f70a9c",
-      "definitions.md": "7adfc1076c1065b8eecd509d09a99d411be3d6a875a6f80a9030bfc7fc7b4546",
+      "definitions.md": "aa7c1984ed1acf360053701ce3b5b12d8f2d679ae39753bbd76aa751e5266701",
       "device_registry.schema.json": "8e452d7fcb97f250e55a7113e71e984336628add214b722c9e636e497e881998",
       "event.schema.json": "3d5db72b47c0f03e12debe5a214c0ef64ddbf89c774d07fd7711dc919f68b8e0",
       "plan.schema.json": "6028e9e8c31acfec5e10f054a7fb565dfd075035739361c77b3ff9ed950204a6",
-      "rules.toml": "a640813fc8f0d70deee14e9c1e0421f7152e21f74e65442701071b2c32fb5cdc",
+      "rules.toml": "6903c9ef535a211f8ef8ba813a6b16f399bb9ce5ea95bf97df9f6415a3321db3",
       "task_registry.schema.json": "98319a3b90bf272ae787cdb51ec1dfd8329df3ee72e04d577e08a0f844dcc1c1"
     },
     "spec_version": "0.3",

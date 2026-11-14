@@ -146,18 +146,18 @@ Trusted verifier keys: {{ r.trust.trusted_keys }}; trusted TSA roots: {{ r.trust
 <h2>Witness</h2>
 {% set w = r.witness %}
 {% if w.available %}
-<p>Each robot session is compared with the teleoperation station logs that witness it. Within tau of the other side's human time a disagreement is tolerated: tau is both clocks' reported errors plus react_s ({{ w.parameters.react_s | num }} s). A session is L3 when both logs are verified, both clocks synchronised, (station-only + unwitnessed) / base &le; {{ w.parameters.l3_station_only_max_share | pct }} and (disputed + unwitnessed) / base &le; {{ w.parameters.l3_disputed_max_share | pct }}. Times are scope-seconds.</p>
+<p>Each robot session is compared with the teleoperation station logs that witness it. Within tau of the other side's human time a disagreement is tolerated: tau is both clocks' reported errors plus react_s ({{ w.parameters.react_s | num }} s). A session is L3 when both logs are verified, both clocks synchronised, and with U the station's input while the robot logs unknown, (station-only + unwitnessed + U) / (base + U) &le; {{ w.parameters.l3_station_only_max_share | pct }} and (disputed + unwitnessed + U) / (base + U) &le; {{ w.parameters.l3_disputed_max_share | pct }}. Times are scope-seconds.</p>
 <div class="scroll"><table>
-<thead><tr><th>Robot</th><th>Session</th><th>Level</th><th>Stations</th><th>Base</th><th>Both human</th><th>of which tolerated, held</th><th>Robot only</th><th>Station only</th><th>Neither</th><th>Unwitnessed</th><th>(Disputed + unwitnessed) / base</th><th>Tau</th><th>Unmatched station episodes</th><th>Interventions, upper bound</th><th>Why not L3</th></tr></thead>
+<thead><tr><th>Robot</th><th>Session</th><th>Level</th><th>Stations</th><th>Base</th><th>Both human</th><th>of which tolerated, held</th><th>Robot only</th><th>Station only</th><th>Neither</th><th>Unwitnessed</th><th>Station input, robot unknown (U)</th><th>(Disputed + unwitnessed + U) / (base + U)</th><th>Tau</th><th>Unmatched station episodes</th><th>Interventions, upper bound</th><th>Why not L3</th></tr></thead>
 <tbody>
 {% for s in w.sessions %}
 <tr><td class="id">{{ s.robot_id }}</td><td class="id">{{ s.session_id }}</td><td>{{ s.level }}</td>
 <td>{% for st in s.stations %}<div class="id">{{ st.station_id or "" }} {{ st.session_id }} ({{ st.status or "not verified" }})</div>{% endfor %}</td>
 <td class="n">{{ s.times.base_s | num }} s</td><td class="n">{{ s.times.both_human_s | num }} s</td><td class="n">{{ s.times.tolerated_s | num }} s, {{ s.times.held_s | num }} s</td>
-<td class="n">{{ s.times.robot_only_s | num }} s</td><td class="n">{{ s.times.station_only_s | num }} s</td><td class="n">{{ s.times.neither_s | num }} s</td><td class="n">{{ s.times.unwitnessed_s | num }} s</td>
-<td class="n">{{ s.shares.disputed_with_unwitnessed | pct }}</td><td class="n">{{ s.tau_s.min | num }} to {{ s.tau_s.max | num }} s</td>
+<td class="n">{{ s.times.robot_only_s | num }} s</td><td class="n">{{ s.times.station_only_s | num }} s</td><td class="n">{{ s.times.neither_s | num }} s</td><td class="n">{{ s.times.unwitnessed_s | num }} s</td><td class="n">{{ s.station_human_robot_unknown_s | num }} s</td>
+<td class="n">{{ s.shares.l3_disputed | pct }}</td><td class="n">{{ s.tau_s.min | num }} to {{ s.tau_s.max | num }} s</td>
 <td class="n">{{ s.episodes.unmatched_station | length }}</td><td class="n">{{ s.interventions.robot }}, {{ s.interventions.upper_bound }}</td>
-<td>{% for reason in s.reasons %}<div>{{ reason.code }}: {{ reason.detail }}</div>{% endfor %}{% for f in s.flags %}<div>flag {{ f.code }} ({{ f.role }} {{ f.session_id }}): {{ f.detail }}</div>{% endfor %}</td></tr>
+<td>{% for reason in s.reasons %}<div>{{ reason.code }}: {{ reason.detail }}</div>{% endfor %}</td></tr>
 {% endfor %}
 </tbody></table></div>
 {% else %}

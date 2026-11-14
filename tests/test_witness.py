@@ -182,15 +182,11 @@ def test_no_reported_error_uses_clock_tolerance_and_gives_no_l3__defs_12_3() -> 
     assert codes(result) == ["robot_clock_unsynced"]
 
 
-def test_implausible_error_without_ptp_is_replaced_and_flagged__defs_12_3() -> None:
+def test_small_reported_errors_only_narrow_tau__defs_12_3() -> None:
     robot = session([(0, "ai")], 60)
     result = one(robot, station([], 60, clock_error=0.0001))
-    assert secs(result.tau_min_ns) == pytest.approx(0.01 + 0.05 + 0.5)
-    assert [(f.role, f.code) for f in result.flags] == [("station", "implausible_clock_error")]
+    assert secs(result.tau_min_ns) == pytest.approx(0.01 + 0.0001 + 0.5)
     assert result.l3
-    with_ptp = one(robot, station([], 60, clock_error=0.0001, clock_source="ptp"))
-    assert secs(with_ptp.tau_min_ns) == pytest.approx(0.01 + 0.0001 + 0.5)
-    assert with_ptp.flags == ()
 
 
 def test_unsynced_side_gives_no_l3__defs_12_3() -> None:
@@ -285,12 +281,33 @@ def test_scopes_reconciled_one_by_one_and_summed__defs_12_4() -> None:
     assert times(result)["disputed_s"] == 20.0
 
 
-def test_station_human_while_robot_unknown_is_reported_not_disputed__defs_12_4() -> None:
+def test_station_human_while_robot_unknown_is_reported_on_its_own__defs_12_4() -> None:
     robot = session([(0, "ai"), (20, "unknown"), (30, "ai")], 60)
     result = one(robot, station([(22, "human_remote"), (28, "idle")], 60))
     assert secs(result.station_human_robot_unknown_ns) == 6.0
     assert times(result)["base_s"] == 50.0
     assert times(result)["disputed_s"] == 0.0
+    assert result.shares()["station_human_robot_unknown"] == pytest.approx(6 / 50)
+
+
+def test_robot_unknown_while_a_hidden_operator_drives_gives_no_l3__defs_12_4_12_6() -> None:
+    """Review probe: the robot logger writes unknown exactly while the station shows input."""
+    robot = session([(1, "ai"), (100, "unknown"), (130, "ai")], 600)
+    result = one(robot, station([(100, "human_remote"), (130, "idle")], 601, start=-5))
+    assert secs(result.station_human_robot_unknown_ns) == 30.0
+    assert times(result)["base_s"] == 569.0
+    assert times(result)["disputed_s"] == 0.0
+    assert result.shares()["l3_station_only"] == pytest.approx(30 / 599)
+    assert codes(result) == ["station_only_above_max", "disputed_above_max"]
+    assert "station input while the robot is unknown" in result.reasons[0].detail
+
+
+def test_a_robot_only_unknown_under_station_input_has_no_base_but_fails__defs_12_6() -> None:
+    robot = session([(0, "unknown")], 60)
+    result = one(robot, station([(10, "human_remote"), (20, "idle")], 60))
+    assert result.cells.base_ns == 0
+    assert result.shares()["l3_station_only"] == 1.0
+    assert codes(result) == ["station_only_above_max", "disputed_above_max"]
 
 
 # -- 12.5 episodes ------------------------------------------------------------------------------
@@ -364,7 +381,7 @@ def test_honest_pair_reaches_l3__defs_12_6() -> None:
 def test_shares_at_the_maximum_pass_and_above_fail__defs_12_6() -> None:
     robot = session([(0, "ai")], 1000)
     at_max = one(robot, station([(100, "human_remote"), (105, "idle")], 1000))
-    assert at_max.shares()["station_only_with_unwitnessed"] == 0.005
+    assert at_max.shares()["l3_station_only"] == 0.005
     assert at_max.l3
     above = one(robot, station([(100, "human_remote"), (105.001, "idle")], 1000))
     assert codes(above) == ["station_only_above_max"]

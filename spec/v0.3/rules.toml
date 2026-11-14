@@ -112,21 +112,16 @@ list_max_per_code = 100
 # Trust levels (definitions.md 8, 6.12, 12; research/methods/trust.md section 7).
 [trust]
 reconstructed_events_max_level = 1
-# Witnesses (definitions.md 12.6): (station-only + unwitnessed) / base and
-# (disputed + unwitnessed) / base at most these for trust level L3.
+# Witnesses (definitions.md 12.6): the station-only and disputed shares (unwitnessed time and
+# station input while the robot is unknown counted in) at most these for trust level L3.
 l3_station_only_max_share = 0.005
 l3_disputed_max_share = 0.02
-# A clock error below this on a heartbeat whose clock_source is not ptp counts as
-# l3_eps_substitute_s and is flagged (definitions.md 12.3), seconds.
-l3_eps_min_without_ptp_s = 0.001
-l3_eps_substitute_s = 0.05
-# Why a robot session is not L3 (definitions.md 12.6), and the reconciler's flags (12.3).
+# Why a robot session is not L3 (definitions.md 12.6).
 l3_reasons = [
   "no_station", "robot_not_verified", "station_not_verified", "robot_clock_unsynced",
   "station_clock_unsynced", "invalid_station_state", "station_only_above_max",
   "disputed_above_max",
 ]
-l3_flags = ["implausible_clock_error"]
 # Robot states that count as robot human time, and the states a station scope may hold
 # (definitions.md 12.1, 12.4): its idle state means no human, its unknown state lost input.
 l3_robot_human_states = ["human_remote", "shared"]

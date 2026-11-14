@@ -77,7 +77,7 @@ def test_scenario_s2_station_only_time_gives_no_l3__defs_12_6() -> None:
         "disputed_above_max",
     ]
     assert hidden["interventions"] == {"robot": 0, "upper_bound": 1}
-    assert [f["code"] for f in hidden["flags"]] == ["implausible_clock_error"]
+    assert hidden["tau_s"] == {"min": pytest.approx(0.5101), "max": pytest.approx(0.5101)}
 
 
 def test_tampered_station_log_is_failed_and_gives_no_l3__defs_10_6_12_6(folder: Path) -> None:
@@ -195,7 +195,9 @@ def test_report_shows_l3_and_the_witness_section__defs_11_2_12(folder: Path) -> 
     assert [s["level"] for s in witness["sessions"]] == ["L3", "L2"]
     invariant = body["invariants"]["witnesses"]
     assert invariant["status"] == "fail"
-    assert invariant["failures"][0].startswith("r02/s01: (station-only + unwitnessed)")
+    assert invariant["failures"][0].startswith(
+        "r02/s01: (station-only + unwitnessed + station input"
+    )
     assert "invariant witnesses failed" in body["verdict"]["reasons"]
     roles = {f["role"] for f in body["provenance"]["input_files"]}
     assert {"station_log", "station_checkpoints", "station_registry_devices"} <= roles

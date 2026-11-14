@@ -29,7 +29,7 @@ from pydantic import (
     WrapSerializer,
 )
 
-from autonometry.events import EvidenceCode, FileCode, GapCode, WitnessFlag, WitnessReason
+from autonometry.events import EvidenceCode, FileCode, GapCode, WitnessReason
 
 logger = logging.getLogger(__name__)
 
@@ -155,16 +155,13 @@ class ErrorRules(_Frozen):
 
 
 class TrustRules(_Frozen):
-    """Trust thresholds (definitions.md 8, 12): the shares of 12.6, the implausible clock error
-    of 12.3 and its substitute (seconds), and the codes of the witness reconciler."""
+    """Trust thresholds (definitions.md 8, 12): the shares of 12.6, the reasons a robot session
+    is not L3, and the robot and station states the witness reconciler reads."""
 
     reconstructed_events_max_level: int
     l3_station_only_max_share: float
     l3_disputed_max_share: float
-    l3_eps_min_without_ptp_s: float
-    l3_eps_substitute_s: float
     l3_reasons: tuple[WitnessReason, ...]
-    l3_flags: tuple[WitnessFlag, ...]
     l3_robot_human_states: tuple[str, ...]
     l3_station_states: tuple[str, ...]
 
@@ -427,7 +424,6 @@ def find_inconsistencies(version: str, schema: dict[str, Any], rules: Rules) -> 
         "gap": rules.sealing.gap_codes,
         "file": rules.sealing.file_codes,
         "witness reason": rules.trust.l3_reasons,
-        "witness flag": rules.trust.l3_flags,
     }
     for kind, codes in code_tables.items():
         problems += _duplicates(f"{kind} code", codes)
@@ -456,7 +452,7 @@ def check_consistency(version: str) -> None:
 
     Rule states equal the schema state enum, rule reasons equal the schema reason enum, every state
     named in the rules exists, and flag, error, evidence, gap, file, witness reason and witness
-    flag codes are each unique and never shared across those seven tables.
+    codes are each unique and never shared across those six tables.
 
     Raises:
         SpecConsistencyError: all problems, on one line.

@@ -79,8 +79,8 @@ GapCode = Literal[
 # Codes of rules.toml [sealing] file_codes: records that cannot be tied to one session.
 FileCode = Literal["malformed_checkpoint", "orphan_timestamp"]
 
-# Codes of rules.toml [trust] l3_reasons and l3_flags: why a robot session is not trust level L3,
-# and what the witness reconciler flags (definitions.md 12.3, 12.6).
+# Codes of rules.toml [trust] l3_reasons: why a robot session is not trust level L3
+# (definitions.md 12.6).
 WitnessReason = Literal[
     "no_station",
     "robot_not_verified",
@@ -91,7 +91,6 @@ WitnessReason = Literal[
     "station_only_above_max",
     "disputed_above_max",
 ]
-WitnessFlag = Literal["implausible_clock_error"]
 
 TrustStatus = Literal["verified", "partial", "unverified", "failed"]
 TrustLevel = Literal["L1", "L2"]

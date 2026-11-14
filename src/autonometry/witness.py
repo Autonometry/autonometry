@@ -13,13 +13,13 @@ How each rule is applied:
   them has the scope in a state other than ``idle`` or ``unknown``; *unwitnessed* where none is
   human and none of those observed then declares the scope, or one has it ``unknown``.
 - Tolerance (12.3): ``tau(t)`` adds both sides' ``clock_max_error_s`` from the heartbeat nearest
-  to ``t`` and ``react_s``; an implausibly small error without PTP is replaced and flagged.
+  to ``t`` and ``react_s``.
 - Classification (12.4): per scope, the base (active time plus idle time under station input)
   is split into both-human (with its tolerated and held parts), robot-only, station-only,
   neither and unwitnessed; the scopes' times are added up.
 - Episodes (12.5): unmatched station episodes raise an upper-bound intervention count.
 - Verdict (12.6): verification, clocks, station states and the two shares, unwitnessed time
-  counted as disputed.
+  and station input while the robot logs ``unknown`` counted as disputed.
 """
 
 from bisect import bisect_left
@@ -28,9 +28,9 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Any, Final
 
-from autonometry.events import TrustStatus, WitnessFlag, WitnessReason
+from autonometry.events import TrustStatus, WitnessReason
 from autonometry.spec import Rules
-from autonometry.timeline import ClockSample, Span, Timeline
+from autonometry.timeline import Span, Timeline
 from autonometry.timestamps import ns_to_seconds, ns_to_ts, seconds_to_ns
 
 Interval = tuple[int, int]
@@ -38,7 +38,6 @@ Key = tuple[str, str]
 
 ROBOT: Final = "robot"
 STATION: Final = "station"
-_PTP: Final = "ptp"
 _CLOCK_UNSYNCED: Final = "clock_unsynced"
 _VERIFIED: Final = "verified"
 
@@ -110,13 +109,11 @@ class WitnessParams:
     """Everything the reconciler reads from ``rules.toml`` (definitions.md 9, 12): seconds,
     and shares as fractions of the base. ``robot_human_states`` make robot human time,
     ``station_states`` are the states a station scope may hold; a station state in
-    ``idle_states`` is no human and one in ``lost_states`` is lost input. ``reasons`` and
-    ``flags`` are the codes in the order reports list them."""
+    ``idle_states`` is no human and one in ``lost_states`` is lost input. ``reasons`` are the
+    codes in the order reports list them."""
 
     react_s: float
     clock_tolerance_s: float
-    eps_min_without_ptp_s: float
-    eps_substitute_s: float
     station_only_max_share: float
     disputed_max_share: float
     simultaneity_window_s: float
@@ -126,7 +123,6 @@ class WitnessParams:
     idle_states: frozenset[str]
     lost_states: frozenset[str]
     reasons: tuple[WitnessReason, ...]
-    flags: tuple[WitnessFlag, ...]
 
     @classmethod
     def from_rules(cls, rules: Rules) -> "WitnessParams":
@@ -135,8 +131,6 @@ class WitnessParams:
         return cls(
             react_s=rules.params.react_s,
             clock_tolerance_s=rules.sealing.clock_tolerance_s,
-            eps_min_without_ptp_s=trust.l3_eps_min_without_ptp_s,
-            eps_substitute_s=trust.l3_eps_substitute_s,
             station_only_max_share=trust.l3_station_only_max_share,
             disputed_max_share=trust.l3_disputed_max_share,
             simultaneity_window_s=rules.params.simultaneity_window_s,
@@ -150,15 +144,12 @@ class WitnessParams:
                 s for s, rule in rules.states.items() if rule.category == "unmeasured"
             ),
             reasons=trust.l3_reasons,
-            flags=trust.l3_flags,
         )
 
     def to_json(self) -> dict[str, Any]:
         return {
             "react_s": self.react_s,
             "clock_tolerance_s": self.clock_tolerance_s,
-            "l3_eps_min_without_ptp_s": self.eps_min_without_ptp_s,
-            "l3_eps_substitute_s": self.eps_substitute_s,
             "l3_station_only_max_share": self.station_only_max_share,
             "l3_disputed_max_share": self.disputed_max_share,
             "simultaneity_window_s": self.simultaneity_window_s,
@@ -170,7 +161,7 @@ class WitnessParams:
 
 @dataclass(frozen=True, slots=True)
 class _Clock:
-    """One side's reported clock errors by time (seconds), implausible ones replaced (12.3)."""
+    """One side's reported clock errors by time, seconds (12.3)."""
 
     times: tuple[int, ...]
     errors: tuple[float, ...]
@@ -189,45 +180,17 @@ class _Clock:
         return self.errors[i - 1] if before <= after else self.errors[i]
 
 
-def _implausible(sample: ClockSample, params: WitnessParams) -> bool:
-    return (
-        sample.max_error_s is not None
-        and sample.max_error_s < params.eps_min_without_ptp_s
-        and sample.source != _PTP
-    )
-
-
 def _clock(timelines: Iterable[Timeline], params: WitnessParams) -> _Clock:
     """The clock of one side: every heartbeat that reports an error, from all its sessions."""
     samples = sorted(
-        (s for t in timelines for s in t.clock if s.max_error_s is not None),
-        key=lambda s: s.ts_ns,
+        ((s.ts_ns, s.max_error_s) for t in timelines for s in t.clock if s.max_error_s is not None),
+        key=lambda s: s[0],
     )
-    errors = tuple(
-        params.eps_substitute_s if _implausible(s, params) else float(s.max_error_s or 0.0)
-        for s in samples
+    return _Clock(
+        tuple(ts for ts, _ in samples),
+        tuple(float(error) for _, error in samples),
+        params.clock_tolerance_s,
     )
-    return _Clock(tuple(s.ts_ns for s in samples), errors, params.clock_tolerance_s)
-
-
-def _clock_flags(timeline: Timeline, params: WitnessParams) -> list["WitnessFlagItem"]:
-    count = sum(1 for s in timeline.clock if _implausible(s, params))
-    if not count:
-        return []
-    detail = (
-        f"{count} heartbeat(s) report clock_max_error_s below "
-        f"{params.eps_min_without_ptp_s:g} s without PTP; each counts as "
-        f"{params.eps_substitute_s:g} s"
-    )
-    return [
-        WitnessFlagItem(
-            timeline.role,
-            timeline.session_id,
-            timeline.station_id,
-            "implausible_clock_error",
-            detail,
-        )
-    ]
 
 
 # -- results ------------------------------------------------------------------------------------
@@ -312,26 +275,6 @@ class Reason:
 
 
 @dataclass(frozen=True, slots=True)
-class WitnessFlagItem:
-    """A flag the reconciler raised on one session (12.3)."""
-
-    role: str
-    session_id: str
-    station_id: str | None
-    code: WitnessFlag
-    detail: str
-
-    def to_json(self) -> dict[str, Any]:
-        return {
-            "role": self.role,
-            "session_id": self.session_id,
-            "station_id": self.station_id,
-            "code": self.code,
-            "detail": self.detail,
-        }
-
-
-@dataclass(frozen=True, slots=True)
 class WitnessRef:
     """A station session that witnesses a robot session, with its verification status."""
 
@@ -347,7 +290,9 @@ class SessionWitness:
     ``cells`` are summed over the scopes in ``by_scope``; ``tau_min_ns`` and ``tau_max_ns`` span
     the tolerances used (at the robot session's start when no edge needed one);
     ``robot_interventions`` is the robot's whole-robot count and ``upper_bound_interventions``
-    adds the unmatched station episodes (12.5). ``l3`` is true when ``reasons`` is empty.
+    adds the unmatched station episodes (12.5); ``station_human_robot_unknown_ns`` is station
+    human time while the robot logs ``unknown`` (12.4). ``l3`` is true when ``reasons`` is
+    empty.
     """
 
     robot_id: str
@@ -365,7 +310,6 @@ class SessionWitness:
     robot_interventions: int
     upper_bound_interventions: int
     reasons: tuple[Reason, ...]
-    flags: tuple[WitnessFlagItem, ...]
     station_only_max_share: float
     disputed_max_share: float
 
@@ -381,17 +325,21 @@ class SessionWitness:
         return "L2" if self.status == _VERIFIED else "L1"
 
     def shares(self) -> dict[str, float | None]:
-        """Shares of the base; ``None`` without base time. The last two are the ones 12.6
-        compares with its maxima."""
+        """Shares of the base, ``None`` without base time; then the two shares 12.6 compares
+        with its maxima, ``None`` when their denominator is 0."""
         cells, base = self.cells, self.cells.base_ns
         values = {
             "station_only": cells.station_only_ns,
             "disputed": cells.disputed_ns,
             "unwitnessed": cells.unwitnessed_ns,
-            "station_only_with_unwitnessed": cells.station_only_ns + cells.unwitnessed_ns,
-            "disputed_with_unwitnessed": cells.disputed_ns + cells.unwitnessed_ns,
+            "station_human_robot_unknown": self.station_human_robot_unknown_ns,
         }
-        return {name: (value / base if base else None) for name, value in values.items()}
+        out = {name: (value / base if base else None) for name, value in values.items()}
+        for name, (numerator, denominator) in l3_shares(
+            cells, self.station_human_robot_unknown_ns
+        ).items():
+            out[name] = numerator / denominator if denominator else None
+        return out
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -412,8 +360,8 @@ class SessionWitness:
             "times": self.cells.to_json(),
             "shares": self.shares(),
             "maxima": {
-                "station_only_with_unwitnessed": self.station_only_max_share,
-                "disputed_with_unwitnessed": self.disputed_max_share,
+                "l3_station_only": self.station_only_max_share,
+                "l3_disputed": self.disputed_max_share,
             },
             "by_scope": {scope: cells.to_json() for scope, cells in self.by_scope.items()},
             "station_human_robot_unknown_s": ns_to_seconds(self.station_human_robot_unknown_ns),
@@ -426,7 +374,6 @@ class SessionWitness:
                 "robot": self.robot_interventions,
                 "upper_bound": self.upper_bound_interventions,
             },
-            "flags": [f.to_json() for f in self.flags],
         }
 
 
@@ -434,7 +381,7 @@ class SessionWitness:
 class StationWitness:
     """One station session (12.1): its status, the robot sessions it witnesses, its human time
     (scope-nanoseconds) and the part outside every robot session of its robot given, the
-    states it holds that 12.1 does not allow, and its flags."""
+    states it holds that 12.1 does not allow."""
 
     robot_id: str
     session_id: str
@@ -444,7 +391,6 @@ class StationWitness:
     human_ns: int
     human_outside_robot_sessions_ns: int
     invalid_states: tuple[str, ...]
-    flags: tuple[WitnessFlagItem, ...]
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -456,7 +402,6 @@ class StationWitness:
             "human_s": ns_to_seconds(self.human_ns),
             "human_outside_robot_sessions_s": ns_to_seconds(self.human_outside_robot_sessions_ns),
             "invalid_states": list(self.invalid_states),
-            "flags": [f.to_json() for f in self.flags],
         }
 
 
@@ -662,6 +607,18 @@ def _group_count(stretches: Sequence[Stretch], window_ns: int) -> int:
     return count
 
 
+def l3_shares(cells: Cells, robot_unknown_ns: int) -> dict[str, tuple[int, int]]:
+    """Numerator and denominator of the two shares of 12.6 (4) and (5), nanoseconds.
+    Unwitnessed time counts as disputed, and station human time while the robot logs
+    ``unknown`` counts as station-only time added to the base: the robot's log does not show
+    the person the station saw (12.4)."""
+    base = cells.base_ns + robot_unknown_ns
+    return {
+        "l3_station_only": (cells.station_only_ns + cells.unwitnessed_ns + robot_unknown_ns, base),
+        "l3_disputed": (cells.disputed_ns + cells.unwitnessed_ns + robot_unknown_ns, base),
+    }
+
+
 def _share_above(numerator: int, base: int, maximum: float) -> bool:
     return base > 0 and Fraction(numerator, base) > Fraction(maximum)
 
@@ -677,6 +634,7 @@ def _reasons(  # noqa: PLR0913, PLR0917 -- every fact the verdict of 12.6 weighs
     status: TrustStatus | None,
     station_status: Mapping[Key, TrustStatus],
     cells: Cells,
+    robot_unknown_ns: int,
     params: WitnessParams,
 ) -> tuple[Reason, ...]:
     """Every reason of 12.6 that holds, in the order of ``l3_reasons``."""
@@ -705,25 +663,32 @@ def _reasons(  # noqa: PLR0913, PLR0917 -- every fact the verdict of 12.6 weighs
     if invalid:
         found["invalid_station_state"] = "states a station may not hold: " + "; ".join(invalid)
     if witnesses:
-        found |= _share_reasons(cells, params)
+        found |= _share_reasons(cells, robot_unknown_ns, params)
     return tuple(Reason(code, found[code]) for code in params.reasons if code in found)
 
 
-def _share_reasons(cells: Cells, params: WitnessParams) -> dict[WitnessReason, str]:
-    base = cells.base_ns
+_SHARE_TEXT: Final = {
+    "l3_station_only": "(station-only + unwitnessed + station input while the robot is unknown)",
+    "l3_disputed": "(disputed + unwitnessed + station input while the robot is unknown)",
+}
+
+
+def _share_reasons(
+    cells: Cells, robot_unknown_ns: int, params: WitnessParams
+) -> dict[WitnessReason, str]:
+    shares = l3_shares(cells, robot_unknown_ns)
+    checks: list[tuple[str, WitnessReason, float]] = [
+        ("l3_station_only", "station_only_above_max", params.station_only_max_share),
+        ("l3_disputed", "disputed_above_max", params.disputed_max_share),
+    ]
     found: dict[WitnessReason, str] = {}
-    station_only = cells.station_only_ns + cells.unwitnessed_ns
-    if _share_above(station_only, base, params.station_only_max_share):
-        found["station_only_above_max"] = (
-            f"(station-only + unwitnessed) / base = {station_only / base:.4f} "
-            f"> {params.station_only_max_share:g}"
-        )
-    disputed = cells.disputed_ns + cells.unwitnessed_ns
-    if _share_above(disputed, base, params.disputed_max_share):
-        found["disputed_above_max"] = (
-            f"(disputed + unwitnessed) / base = {disputed / base:.4f} "
-            f"> {params.disputed_max_share:g}"
-        )
+    for name, code, maximum in checks:
+        numerator, denominator = shares[name]
+        if _share_above(numerator, denominator, maximum):
+            found[code] = (
+                f"{_SHARE_TEXT[name]} / (base + station input while the robot is unknown) = "
+                f"{numerator / denominator:.4f} > {maximum:g}"
+            )
     return found
 
 
@@ -757,7 +722,7 @@ def _session(
     )
     window_ns = seconds_to_ns(params.simultaneity_window_s)
     status = robot_status.get((robot.robot_id, robot.session_id))
-    flags = [f for t in (robot, *witnesses) for f in _clock_flags(t, params)]
+    robot_unknown = sum(r.station_unknown_ns for r in results)
     return SessionWitness(
         robot_id=robot.robot_id,
         session_id=robot.session_id,
@@ -768,7 +733,7 @@ def _session(
         ),
         cells=cells,
         by_scope=by_scope,
-        station_human_robot_unknown_ns=sum(r.station_unknown_ns for r in results),
+        station_human_robot_unknown_ns=robot_unknown,
         tau_min_ns=min(taus),
         tau_max_ns=max(taus),
         matched_station_episodes=sum(r.matched for r in results),
@@ -782,8 +747,7 @@ def _session(
         robot_interventions=robot.interventions_whole_robot,
         upper_bound_interventions=robot.interventions_whole_robot
         + _group_count(unmatched, window_ns),
-        reasons=_reasons(robot, witnesses, status, station_status, cells, params),
-        flags=tuple(flags),
+        reasons=_reasons(robot, witnesses, status, station_status, cells, robot_unknown, params),
         station_only_max_share=params.station_only_max_share,
         disputed_max_share=params.disputed_max_share,
     )
@@ -816,7 +780,6 @@ def _station(
         human_ns=sum(_length(h) for h in human),
         human_outside_robot_sessions_ns=sum(_length(_subtract(h, windows)) for h in human),
         invalid_states=_invalid_states(station, params),
-        flags=tuple(_clock_flags(station, params)),
     )
 
 
