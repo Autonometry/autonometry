@@ -459,12 +459,19 @@ class LogFollower:
 
     def __init__(self, path: Path, from_start: bool = False) -> None:
         self._path = path
-        self._from_start = from_start or not path.exists()
         self._handle: IO[bytes] | None = None
         self._identity: tuple[int, int] | None = None
         self._position = 0
         self._buffer = b""
         self._skipping = False
+        #: The file and its size when following started: what is skipped unless ``from_start``.
+        self._skip: tuple[tuple[int, int], int] | None = None
+        if not from_start:
+            try:
+                status = os.stat(path)
+            except OSError:
+                return
+            self._skip = ((status.st_dev, status.st_ino), status.st_size)
 
     def close(self) -> None:
         """Close the file; a later read opens it again from its start."""
@@ -472,7 +479,6 @@ class LogFollower:
             self._handle.close()
         self._handle = None
         self._buffer, self._skipping = b"", False
-        self._from_start = self._from_start or self._identity is not None
 
     def read(self) -> list[str]:
         """The complete lines written since the last call, without line endings."""
@@ -480,19 +486,19 @@ class LogFollower:
             status = os.stat(self._path)
         except OSError:
             self.close()
-            self._from_start = True
+            self._skip = None
             return []
         identity = (status.st_dev, status.st_ino)
         if self._handle is None or identity != self._identity or status.st_size < self._position:
-            from_start = self._from_start or self._handle is not None
             self.close()
             try:
                 self._handle = open(self._path, "rb")  # noqa: SIM115 -- kept open between reads
             except OSError:
                 return []
+            skip, self._skip = self._skip, None
+            same = skip is not None and skip[0] == identity and skip[1] <= status.st_size
             self._identity = identity
-            self._position = 0 if from_start else status.st_size
-            self._from_start = True
+            self._position = skip[1] if same and skip is not None else 0
             self._handle.seek(self._position)
         data = self._handle.read(MAX_READ_BYTES)
         self._position += len(data)

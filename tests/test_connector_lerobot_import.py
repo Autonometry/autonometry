@@ -493,13 +493,26 @@ def test_follower_rereads_a_replaced_file(tmp_path: Path) -> None:
     log = tmp_path / "rollout.log"
     log.write_bytes(b"")
     tail = lerobot_io.LogFollower(log)
-    _append(log, b"one\n")
-    assert tail.read() == ["one"]
-    other = tmp_path / "other.log"
-    other.write_bytes(b"two\n")
-    os.replace(other, log)
-    assert tail.read() == ["two"]
-    tail.close()
+    try:
+        _append(log, b"one\n")
+        assert tail.read() == ["one"]
+        other = tmp_path / "other.log"
+        other.write_bytes(b"two\n")
+        os.replace(other, log)
+        assert tail.read() == ["two"]
+    finally:
+        tail.close()
+
+
+def test_follower_keeps_lines_written_before_its_first_read(tmp_path: Path) -> None:
+    log = tmp_path / "rollout.log"
+    log.write_bytes(b"before\n")
+    tail = lerobot_io.LogFollower(log)
+    try:
+        _append(log, b"after\n")
+        assert tail.read() == ["after"]
+    finally:
+        tail.close()
 
 
 def test_follower_drops_lines_longer_than_the_limit__claude_md_limits(
