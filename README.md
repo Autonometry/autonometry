@@ -584,6 +584,96 @@ ring; battery and power-off shutdown (`session_end` causes); the Create 3's own 
 collision monitor's slowdown; behaviour-tree recovery counts; authenticated publisher identity
 (SROS2).
 
+## LeRobot
+
+`autonometry.connectors.lerobot` measures robots run by Hugging Face
+[LeRobot](https://github.com/huggingface/lerobot), such as the SO-101 arm, in two ways: **live**,
+from the log `lerobot-rollout` writes as it runs, and **after the fact**, from a
+LeRobotDataset's per-frame `intervention` labels. Both follow LeRobot v0.6.1 (commit
+`7e241bd6`); the log formats and dataset column names are copied from that source, and the code
+cites the file and line of each. Neither path opens the robot's serial port or imports anything
+into the control process, so neither can slow or stop the arm. Install the extra:
+`pip install 'autonometry[lerobot]'` (pyarrow, watchfiles).
+
+**Sources.** LeRobot has no ROS graph. The connector matches the components the rollout names
+against the device registry's `match.node`: `policy:<--policy.path>` for the policy,
+`teleop:<--teleop.type>` for the teleoperator, and `script:return_to_initial_position` for
+LeRobot's own move back to the start pose. A source no device matches is sent without
+`device_id`, and the loader counts it as `human_remote` (6.10). Example registries for an SO-101
+(the leader arm local, a phone or network teleoperator remote, the policy, the return motion) and
+a recorder config are in [`connectors/lerobot/`](connectors/lerobot/).
+
+**Live: `autonometry lerobot watch`.** Start the recorder, then the watcher, then the rollout
+with its output in a file:
+
+```
+autonometry record --config connectors/lerobot/recorder.toml &
+autonometry lerobot watch --config connectors/lerobot/recorder.toml --log rollout.log     --task "Pick up the cube and place it in the bin." &
+lerobot-rollout --strategy.type=dagger --strategy.record_autonomous=true ... 2>&1 | tee rollout.log
+```
+
+The watcher reads the recorder's config for its socket, scopes and registries. It follows the
+log like `tail -F`: an existing log is read from its end unless you pass `--from-start`, and a
+truncated or replaced one from its start. It sends the state every 0.25 s. `--task` is the
+rollout's `--dataset.single_task`, matched against the task registry's `description` (or a
+`task_definition_id`); it can be omitted when the registry declares one task. Rules (dossier 14.1
+under spec v0.3; the first that applies decides):
+
+| Observed in the log | State or event |
+|---|---|
+| nothing that tells the state yet | no assertion: the recorder logs `unknown` |
+| `Rollout finished` | `unknown`: nothing is observed any more |
+| the rollout started (`Building rollout context...`), its loop not yet | `idle` |
+| DAgger `AUTONOMOUS`, and the policy loops of `base`, `sentry`, `highlight` and `episodic` | `ai`, actor `ai:<policy path>` |
+| DAgger `PAUSED` (`Phase transition: autonomous -> paused`) | `shared`, `human_initiated`: a human pause (6.8) |
+| DAgger `CORRECTING` | `human_local`, or `human_remote` when the teleoperator's device is declared remote (6.10) |
+| episodic `Reset the environment` with a teleoperator | `human_local` or `human_remote`, `planned` with the plan's `reset` item (6.3) |
+| `Returning robot to initial position`, or an episodic reset without a teleoperator | `scripted`, actor `script:return_to_initial_position` (6.9, 6.13) |
+| a control loop ended, the robot disconnected | the last controller's state, then `idle` after `idle_threshold_s` (6.14) |
+
+Episodes are tasks (5): DAgger with `record_autonomous=true` and sentry open one with the control
+loop and at each `Episode saved`; episodic opens one at `Recording episode N` and closes it at
+`Reset the environment`. The outcome is `unknown` (LeRobot records no success), or `aborted` when
+the re-record key was pressed during the episode. A re-record seen only after the episode closed
+is noted as `x_lerobot_rerecorded_task` on a heartbeat. DAgger's corrections-only episodes are
+clips of corrections, not units of work, so they open no task; declare `unobserved = ["tasks",
+...]` for such runs. The log's own local time (1 s resolution, zone not recorded) travels as
+`x_src_ts` with `x_src_clock` `wall`; `ts` is the recorder's. A rollout that dies without a word
+(killed, power cut) leaves its last state in place until the watcher is stopped, which sends
+`unknown`: stop the watcher, or the recorder, when the rollout ends.
+
+**After the fact: `autonometry lerobot import`.**
+
+```
+autonometry lerobot import DATASET_DIR --out logs --registry connectors/lerobot     --policy outputs/train/act_so101/checkpoints/last/pretrained_model --teleop so101_leader     [--robot-id so101_01] [--start 2026-10-19T06:10:24Z] [--simulated]
+autonometry report logs/*/*/events.jsonl --out report
+```
+
+It reads a LeRobotDataset v3.0 recorded by DAgger (`meta/info.json`, `meta/episodes/`,
+`data/chunk-*/file-*.parquet`) and writes one log per episode, `logs/<robot_id>/<session_id>/
+events.jsonl`, with the registries copied beside it. Each episode is its own session, since the
+time between episodes was never observed. The log holds `task_start` at frame 0, a transition at
+each change of `intervention` (true: the teleoperator's state; false: `ai`), `unknown` for
+missing frames or labels, and `task_end` with outcome `unknown`. Timestamps are rebuilt as an
+anchor plus `frame_index / fps`: `--start` for the first episode, with episodes back to back, or
+by default each data file's modification time as the end of its last episode. Every event
+carries `x_ts_reconstructed: true`, so the logs are trust level L1 at most (8, 10.6). The
+sessions declare `unobserved: ["safety_stops", "human_inputs"]`: the SO-101 has no safety
+function, and pauses and resets are never recorded. Episodes listed in the metadata whose data
+file is missing are named and skipped. A task text not in the task registry gets an id
+`lerobot_task_<hash>`, and its tasks are flagged `unknown_task_definition`.
+
+**Demo.** [`demo/lerobot/run_demo.py`](demo/lerobot/README.md) downloads the metadata and first
+data files of a public DAgger dataset from the Hugging Face Hub, using the standard library only.
+It prints the size first and stops above 100 MB. Then it imports and reports: a time autonomy
+share of 0.779, 95 % CI [0.668, 0.891] over 18 episodes, and 20 interventions, as in the dossier.
+
+**Deferred.** Bus taps on real hardware: a UART receiver on the leader and follower buses for
+leader polling, torque writes and follower commands (integration notes part B). Capture of
+asynchronous inference (`policy_server` over gRPC on port 8080). `lerobot-replay`, which would be
+`scripted` replay of recorded actions. The Foxglove WebSocket tap. HIL-SERL's `is_intervention`,
+which no dataset keeps. `lerobot-record` teleoperation logs.
+
 ## Station witness (trust level L3)
 
 A sealed log proves nothing was changed afterwards; it cannot prove the recorder told the truth
