@@ -44,6 +44,8 @@ _TYPES: dict[str, type[Any]] = {
         tb4.CmdVelSmoothed,
         tb4.ChainPublishers,
         tb4.ActionStatus,
+        tb4.ActionFeedback,
+        tb4.ActionServers,
         tb4.CollisionMonitorState,
         tb4.FunctionCall,
         tb4.ButtonEdge,
@@ -73,7 +75,7 @@ def observation(record: dict[str, Any]) -> tb4.Observation:
     cls = _TYPES[fields.pop("kind")]
     if fields.get("source") is not None:
         fields["source"] = tb4.Source(**fields["source"])
-    for name in ("candidates", "requesters", "publishers"):
+    for name in ("candidates", "requesters", "publishers", "servers"):
         if name in fields:
             fields[name] = tuple(tb4.Source(**s) for s in fields[name])
     if "goals" in fields:
@@ -111,9 +113,21 @@ def last_state(messages: Iterable[tb4.Message]) -> tb4.StateAssertion:
 
 
 def nav(
-    t: float, status: int, goal: str = GOAL, requesters: tuple[tb4.Source, ...] = (RVIZ,)
+    t: float,
+    status: int,
+    goal: str = GOAL,
+    requesters: tuple[tb4.Source, ...] = (RVIZ,),
+    publishers: tuple[tb4.Source, ...] = (BT_NAVIGATOR,),
 ) -> tb4.ActionStatus:
-    return tb4.ActionStatus(t, tb4.NAVIGATE, (tb4.GoalStatus(goal, status),), requesters)
+    """A navigate_to_pose status, published by Nav2's bt_navigator (the declared action server)."""
+    goals = (tb4.GoalStatus(goal, status),)
+    return tb4.ActionStatus(t, tb4.NAVIGATE, goals, requesters, publishers)
+
+
+def feedback(t: float, action: str = tb4.NAVIGATE) -> tb4.ActionFeedback:
+    """Feedback of a running Nav2 action from its declared server."""
+    server = WAYPOINTS if action == "follow_waypoints" else BT_NAVIGATOR
+    return tb4.ActionFeedback(t, action, (server,))
 
 
 def cmd(t: float, vx: float, source: tb4.Source | None = None, wz: float = 0.0) -> tb4.CmdVel:
@@ -129,6 +143,7 @@ def nav2_cmd(t: float, vx: float, relayed: float | None = None) -> list[tb4.Obse
     return [
         tb4.CmdVelSmoothed(t, vx, 0.0, 0.0),
         tb4.CmdVel(t, out_vx, 0.0, 0.0, None, CMD_PUBLISHERS),
+        feedback(t),  # Nav2 publishes feedback all along a goal; ignored outside a task
     ]
 
 

@@ -24,9 +24,11 @@ spec v0.3; the state of the one motion scope, ``base``, is decided by the first 
    counts as undeclared: a name is not an identity.
 5. Motion on ``/odom`` with no command for ``gap_tolerance_s``: ``unknown`` with
    ``x_out_of_band`` (notes B.6 item 5).
-6. An open Nav2 task: ``safety_stop`` while the collision monitor says STOP (automatic, no actor);
-   ``shared`` while a person's re-goal or initial pose is not yet consumed (``hint_as_shared``)
-   or after a person cancelled the goal; else ``ai`` (UC-8, 6.2, 6.8).
+6. An open Nav2 task: ``unknown`` once Nav2 left the ROS graph, or when nothing from it (status
+   or feedback of the task's action) came for more than ``gap_tolerance_s`` (definitions.md 2,
+   6.14: lost input is never ``ai``); ``safety_stop`` while the collision monitor says STOP
+   (automatic, no actor); ``shared`` while a person's re-goal or initial pose is not yet consumed
+   (``hint_as_shared``) or after a person cancelled the goal; else ``ai`` (UC-8, 6.2, 6.8).
 7. ``/cmd_vel`` from a declared AI or script outside a task: ``ai`` or ``scripted``.
 8. No task and no command for ``idle_threshold_s``: ``idle``, docked or not (section 2).
 9. After the wheels are enabled again with no commander yet: ``unknown`` (UC-7).
@@ -45,12 +47,16 @@ AI started, runs or ended less than ``gap_tolerance_s`` ago. Otherwise it is a p
 ``human_remote``; its device is the one possible origin when the chain leaves only one, else
 undeclared and ``x_attribution_inferred``. A chain topic whose publishers were never observed
 leaves the origin open. While a routine a person started runs, the commands it relays are the
-routine's.
+routine's. Each ``/cmd_vel_smoothed`` message accounts for one relayed command: further commands
+that match it are another publisher's, so a person driving in Nav2's direction makes the scope
+``shared`` (rule 4), never ``ai``.
 
 Nav2 goals open and close tasks (:data:`TASK_ACTIONS`: navigate to pose, navigate through
-poses, follow waypoints; another task action inside the task, such as the waypoint follower's
-goals, is part of it unless a person sent it): a goal ``EXECUTING`` with no task open gives
-``task_start``;
+poses, follow waypoints), counted only from Nav2 itself: the action's status and feedback count
+only when every publisher of its status topic in the ROS graph is a declared AI node and no name
+is shared, so a goal status anyone else publishes opens no task (security review M10,
+decision 7). Another task action inside the task, such as the waypoint follower's goals, is part
+of it unless a person sent it. A goal ``EXECUTING`` with no task open gives ``task_start``;
 ``SUCCEEDED``, ``ABORTED`` and ``CANCELED`` give ``task_end`` with outcome ``success``,
 ``failure`` and ``aborted``. Under ``hint_as_event``, a person's re-goal or cancel is a ``hint``
 event; under ``hint_as_shared`` a ``hint`` event is sent only when a higher rule hides the shared
@@ -78,6 +84,8 @@ __all__ = [
     "ROUTINE_CALLS",
     "SUCCEEDED",
     "TASK_ACTIONS",
+    "ActionFeedback",
+    "ActionServers",
     "ActionStatus",
     "ButtonEdge",
     "ChainPublishers",
@@ -327,12 +335,34 @@ class GoalStatus:
 @dataclass(frozen=True, slots=True)
 class ActionStatus:
     """``/<action>/_action/status``; ``requesters`` are the action's clients in the ROS graph
-    (the observer excluded): who may have sent a goal or cancel."""
+    (the observer excluded): who may have sent a goal or cancel; ``publishers`` the publishers of
+    the status topic in the graph, one entry per publisher: who says it (the action server)."""
 
     t: float
     action: str
     goals: tuple[GoalStatus, ...]
     requesters: tuple[Source, ...] = ()
+    publishers: tuple[Source, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ActionFeedback:
+    """A feedback message on ``/<action>/_action/feedback``, which a running Nav2 action publishes
+    all along; ``publishers`` as for :class:`ActionStatus`."""
+
+    t: float
+    action: str
+    publishers: tuple[Source, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ActionServers:
+    """The publishers of ``/<action>/_action/status`` in the ROS graph, one entry per publisher,
+    sent when they change: an empty tuple when the action's server left the graph."""
+
+    t: float
+    action: str
+    servers: tuple[Source, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -429,6 +459,8 @@ Observation = (
     | CmdVelSmoothed
     | ChainPublishers
     | ActionStatus
+    | ActionFeedback
+    | ActionServers
     | CollisionMonitorState
     | FunctionCall
     | ButtonEdge
@@ -567,6 +599,8 @@ class _Nav:
     task_id: str
     goal_id: str
     executing_since: float | None
+    #: Receive time of the latest status or feedback of the task's action from Nav2 (seconds).
+    heard: float
     hint: _Hint | None = None
 
 
@@ -634,6 +668,9 @@ class Tb4Engine:
         self._released = False
         self._commanders: dict[str, _Commander] = {}
         self._smoothed: tuple[float, tuple[float, float, float]] | None = None
+        #: The latest ``/cmd_vel_smoothed`` already accounts for a relayed command.
+        self._smoothed_used = False
+        self._servers: dict[str, tuple[Source, ...]] = {}
         self._pending: list[CmdVel] = []
         self._chain: dict[str, tuple[Source, ...]] = {}
         self._ai_action_ended: float | None = None
@@ -713,6 +750,10 @@ class Tb4Engine:
                     self._chain[observation.topic] = observation.publishers[:_MAX_PENDING]
             case ActionStatus():
                 self._on_action(observation, out)
+            case ActionFeedback():
+                self._on_feedback(observation)
+            case ActionServers():
+                self._servers[observation.action] = observation.servers[:_MAX_PENDING]
             case CollisionMonitorState():
                 self._collision_stop = observation.action_type == COLLISION_STOP
             case FunctionCall():
@@ -811,14 +852,20 @@ class Tb4Engine:
     # -- topics -----------------------------------------------------------------------------
 
     def _relayed(self, observation: CmdVel) -> bool:
-        """True when the command relays the latest ``/cmd_vel_smoothed`` (topic-level rule)."""
+        """True when the command relays the latest ``/cmd_vel_smoothed`` (topic-level rule) and
+        no other command relayed it yet: the collision monitor relays each message once, so a
+        second match is another publisher driving the same way. A match takes the message."""
         smoothed = self._smoothed
         command = (observation.linear_x, observation.linear_y, observation.angular_z)
-        return (
-            smoothed is not None
-            and abs(observation.t - smoothed[0]) <= self._s.smoothed_match_s
-            and relays(command, smoothed[1])
-        )
+        if (
+            smoothed is None
+            or self._smoothed_used
+            or abs(observation.t - smoothed[0]) > self._s.smoothed_match_s
+            or not relays(command, smoothed[1])
+        ):
+            return False
+        self._smoothed_used = True
+        return True
 
     def _other(self, observation: CmdVel) -> Source | None:
         """The publisher of a command that relays nothing: the one candidate besides Nav2's
@@ -853,6 +900,7 @@ class Tb4Engine:
             observation.t,
             (observation.linear_x, observation.linear_y, observation.angular_z),
         )
+        self._smoothed_used = False
         waiting, self._pending = self._pending, []
         for command in waiting:
             if self._relayed(command):
@@ -905,10 +953,10 @@ class Tb4Engine:
         return ended is not None and 0 <= t - ended < self._s.gap_tolerance_s
 
     def _ai_action(self, t: float) -> bool:
-        """A Nav2 task, or a routine a declared AI started, runs or ended less than
-        ``gap_tolerance_s`` before ``t``."""
+        """A Nav2 task that still shows Nav2 at work, or a routine a declared AI started, runs or
+        ended less than ``gap_tolerance_s`` before ``t``."""
         if self._nav is not None:
-            return True
+            return self._nav_lost(t) is None
         if self._routine is not None and self._routine.value.state == "ai":
             return True
         ended = self._ai_action_ended
@@ -1072,7 +1120,45 @@ class Tb4Engine:
 
     # -- actions ----------------------------------------------------------------------------
 
+    def _from_nav2(self, publishers: Sequence[Source]) -> bool:
+        """True when ``publishers`` (of an action's status topic) are known, every one a declared
+        AI node, and no name among them is shared: Nav2 itself, not someone posing as it."""
+        if not publishers:
+            return False
+        twice = _duplicated(publishers)
+        return all(s not in twice and self._role(self._device(s)) == "ai" for s in publishers)
+
+    def _nav_lost(self, now: float) -> str | None:
+        """Why an open Nav2 task no longer shows Nav2 at work: ``nav2_left_graph`` when the
+        task action's server is no declared AI node any more, ``nav2_silent`` when no status or
+        feedback of any task action came from Nav2 for more than ``gap_tolerance_s``; ``None``
+        while it does."""
+        nav = self._nav
+        if nav is None:
+            return None
+        servers = self._servers.get(nav.action)
+        if servers is not None and not self._from_nav2(servers):
+            return "nav2_left_graph"
+        if now - nav.heard > self._s.gap_tolerance_s:
+            return "nav2_silent"
+        return None
+
+    def _on_feedback(self, observation: ActionFeedback) -> None:
+        nav = self._nav
+        if (
+            nav is not None
+            and observation.action in dict(self._s.task_definitions)
+            and self._from_nav2(observation.publishers)
+        ):
+            nav.heard = max(nav.heard, observation.t)
+
     def _on_action(self, observation: ActionStatus, out: list[Message]) -> None:
+        tasks = dict(self._s.task_definitions)
+        if observation.action in tasks:
+            if not self._from_nav2(observation.publishers):
+                return  # a task status only Nav2 may give (decision 7)
+            if self._nav is not None:  # any task action of Nav2's (a waypoint goal inside a patrol)
+                self._nav.heard = max(self._nav.heard, observation.t)
         known = self._goals.get(observation.action, {})
         changes = [
             (goal, known.get(goal.goal_id))
@@ -1082,7 +1168,6 @@ class Tb4Engine:
         # Execution first: Nav2 aborts a preempted goal before its successor runs.
         changes.sort(key=lambda change: change[0].status != EXECUTING)
         self._goals[observation.action] = {g.goal_id: g.status for g in observation.goals}
-        tasks = dict(self._s.task_definitions)
         for goal, _ in changes:
             if observation.action in tasks:
                 self._nav_change(goal, observation, out)
@@ -1138,7 +1223,7 @@ class Tb4Engine:
                 (("x_trigger", f"/{action}/_action/status:EXECUTING"),),
             )
         )
-        self._nav = _Nav(action, task_id, goal_id, t)
+        self._nav = _Nav(action, task_id, goal_id, t, t)
         self._touch(t)
         self._flush(out)
 
@@ -1252,6 +1337,9 @@ class Tb4Engine:
             return self._control(commanded)
         if self._out_of_band(now):
             return StateAssertion(s.scope, "unknown", fields=(("x_out_of_band", True),))
+        lost = self._nav_lost(now)
+        if lost is not None:
+            return StateAssertion(s.scope, "unknown", fields=(("x_cause", lost),))
         if self._nav is not None:
             return self._task_value(now)
         machine = self._machine(now)

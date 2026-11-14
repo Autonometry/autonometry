@@ -30,6 +30,7 @@ from tb4_helpers import (
     chain,
     cmd,
     engine,
+    feedback,
     last_state,
     nav,
     nav2_cmd,
@@ -57,6 +58,14 @@ def fields(value: tb4.StateAssertion | tb4.Hint) -> dict[str, object]:
 
 def on_task(e: tb4.Tb4Engine, t: float = 1.0) -> list[tb4.Message]:
     return e.observe(nav(t, tb4.EXECUTING))
+
+
+def working(e: tb4.Tb4Engine, start: float, end: float, action: str = tb4.NAVIGATE) -> None:
+    """Nav2's feedback every 0.5 s from ``start`` to ``end``, as a running goal publishes it."""
+    t = start
+    while t <= end:
+        e.observe(feedback(t, action))
+        t += 0.5
 
 
 # -- Nav2 goals and tasks ---------------------------------------------------------------------
@@ -93,7 +102,7 @@ def test_regoal_from_a_person_is_shared_until_nav2_follows_it__defs_6_2_notes_b2
     e = started()
     on_task(e)
     goals = (tb4.GoalStatus(GOAL, tb4.ABORTED), tb4.GoalStatus(GOAL_2, tb4.ACCEPTED))
-    out = e.observe(tb4.ActionStatus(5.0, tb4.NAVIGATE, goals, (RVIZ,)))
+    out = e.observe(tb4.ActionStatus(5.0, tb4.NAVIGATE, goals, (RVIZ,), (BT_NAVIGATOR,)))
     assert not [m for m in out if isinstance(m, tb4.TaskEnd)]  # a preemption, not an end
     hint = last_state(out)
     assert (hint.state, hint.reason, hint.actor_id) == ("shared", "human_initiated", "op_01")
@@ -113,6 +122,7 @@ def test_regoal_hint_lasts_at_most_hint_ttl__defs_6_2() -> None:
     e = started()
     on_task(e)
     e.observe(nav(5.0, tb4.EXECUTING, GOAL_2))
+    working(e, 5.0, 64.5)
     assert state(e, 64.9).state == "shared"
     assert state(e, 65.0).state == "ai"
 
@@ -154,6 +164,7 @@ def test_cancel_is_shared_while_open_then_task_end_aborted__defs_6_8_notes_b2_uc
     out = e.observe(nav(5.0, tb4.CANCELING))
     value = last_state(out)
     assert (value.state, fields(value)["x_hint"]) == ("shared", "cancel")
+    working(e, 5.0, 9.0)
     assert state(e, 9.0).state == "shared"
     out = e.observe(nav(9.5, tb4.CANCELED))
     assert [(m.outcome) for m in out if isinstance(m, tb4.TaskEnd)] == ["aborted"]
@@ -270,6 +281,7 @@ def test_a_hidden_publisher_upstream_of_the_relay_during_a_goal_is_shared__defs_
     on_task(e)
     for o in chain(1.5, HIDDEN):
         e.observe(o)
+    working(e, 1.0, 4.0)
     for k in range(20):
         t = 2.0 + 0.1 * k
         e.observe(tb4.CmdVelSmoothed(t, 0.3, 0.0, 0.0))
@@ -803,15 +815,19 @@ def test_a_recovery_bt_navigator_starts_is_ai_and_its_commands_too__defs_6_13() 
 )
 def test_other_nav2_task_actions_open_tasks__defs_5(action: str, definition: str) -> None:
     e = started()
-    out = e.observe(tb4.ActionStatus(1.0, action, (tb4.GoalStatus(GOAL, tb4.EXECUTING),), (RVIZ,)))
+    server = (WAYPOINTS,) if action == "follow_waypoints" else (BT_NAVIGATOR,)
+    goals = (tb4.GoalStatus(GOAL, tb4.EXECUTING),)
+    out = e.observe(tb4.ActionStatus(1.0, action, goals, (RVIZ,), server))
     assert [(m.task_definition_id) for m in out if isinstance(m, tb4.TaskStart)] == [definition]
-    out = e.observe(tb4.ActionStatus(9.0, action, (tb4.GoalStatus(GOAL, tb4.SUCCEEDED),), (RVIZ,)))
+    goals = (tb4.GoalStatus(GOAL, tb4.SUCCEEDED),)
+    out = e.observe(tb4.ActionStatus(9.0, action, goals, (RVIZ,), server))
     assert [m.outcome for m in out if isinstance(m, tb4.TaskEnd)] == ["success"]
 
 
 def test_waypoint_goals_inside_a_follow_waypoints_task_are_part_of_it__defs_5() -> None:
     e = started()
-    e.observe(tb4.ActionStatus(1.0, "follow_waypoints", (tb4.GoalStatus(GOAL, tb4.EXECUTING),)))
+    goals = (tb4.GoalStatus(GOAL, tb4.EXECUTING),)
+    e.observe(tb4.ActionStatus(1.0, "follow_waypoints", goals, (), (WAYPOINTS,)))
     out = e.observe(nav(2.0, tb4.EXECUTING, GOAL_2, requesters=(WAYPOINTS,)))
     out += e.observe(nav(5.0, tb4.SUCCEEDED, GOAL_2, requesters=(WAYPOINTS,)))
     assert not [m for m in out if isinstance(m, (tb4.TaskStart, tb4.TaskEnd, tb4.Hint))]
@@ -840,3 +856,87 @@ def test_relays_just_after_a_persons_routine_stay_the_routines__defs_6_13_6_14()
     e.observe(cmd(3.5, 0.0, NAV2, wz=0.3))  # the behaviour's last command, relayed late
     assert state(e, 4.0).state == "shared"
     assert not e._commanders
+
+
+# -- security review M10, decision 7 ------------------------------------------------------------
+
+
+def test_a_person_driving_in_nav2s_direction_is_shared_never_ai__defs_6_12() -> None:
+    """Each /cmd_vel_smoothed message accounts for one relayed command: a joystick at 40 Hz in
+    the direction of Nav2's 10 Hz commands is a person in contention, ``shared``, never ``ai``
+    once its first command was counted (a command whose publisher the graph cannot tell waits
+    ``smoothed_match_s`` for the smoothed message it might relay)."""
+    e = started()
+    on_task(e)
+    seen = []
+    for k in range(80):
+        t = 2.0 + 0.025 * k
+        if k % 4 == 0:
+            e.observe(tb4.CmdVelSmoothed(t, 0.26, 0.0, 0.0))
+            e.observe(tb4.CmdVel(t, 0.26, 0.0, 0.0, None, (NAV2, JOY)))
+            e.observe(feedback(t))
+        e.observe(tb4.CmdVel(t, 0.20, 0.0, 0.0, None, (NAV2, JOY)))
+        seen.append((t, state(e, t + 0.001)))
+    late = [value for t, value in seen if t >= 2.0 + 2 * 0.25]
+    assert {value.state for value in late} == {"shared"}
+    assert all(dict(value.fields).get("x_attribution_inferred") for value in late)
+
+
+def test_a_relay_counts_once_per_smoothed_message__defs_6_12() -> None:
+    e = started()
+    on_task(e)
+    for k in range(10):
+        t = 2.0 + 0.1 * k
+        e.observe(feedback(t))
+        for o in nav2_cmd(t, 0.25):
+            e.observe(o)
+    assert state(e, 3.0).state == "ai"
+
+
+@pytest.mark.parametrize(
+    "publishers",
+    [(), (STRANGER,), (BT_NAVIGATOR, STRANGER), (BT_NAVIGATOR, BT_NAVIGATOR)],
+    ids=["unknown", "stranger", "nav2_and_a_stranger", "shared_name"],
+)
+def test_a_task_status_counts_only_from_nav2_itself__defs_5_6_10(
+    publishers: tuple[tb4.Source, ...],
+) -> None:
+    """Decision 7: a goal status from anyone but a declared AI action server (or with a name two
+    publishers share) opens no task, so it cannot make the robot ai."""
+    e = started()
+    out = e.observe(nav(1.0, tb4.EXECUTING, publishers=publishers))
+    assert not [m for m in out if isinstance(m, tb4.TaskStart)]
+    assert state(e, 1.5).state != "ai"
+
+
+def test_nav2_silent_mid_task_is_unknown_until_it_is_heard_again__defs_2_6_14() -> None:
+    e = started()
+    on_task(e)
+    working(e, 1.0, 3.0)
+    assert state(e, 4.9).state == "ai"
+    value = state(e, 5.1)  # 2.1 s since the last feedback
+    assert (value.state, fields(value)) == ("unknown", {"x_cause": "nav2_silent"})
+    e.observe(feedback(6.0))
+    assert state(e, 6.1).state == "ai"
+
+
+def test_feedback_from_a_stranger_does_not_keep_a_task_alive__defs_2() -> None:
+    e = started()
+    on_task(e)
+    for k in range(10):
+        e.observe(tb4.ActionFeedback(1.5 + 0.5 * k, tb4.NAVIGATE, (STRANGER,)))
+    assert state(e, 6.0).state == "unknown"
+
+
+def test_nav2_leaving_the_graph_mid_task_is_unknown_at_once__defs_2_6_14() -> None:
+    e = started()
+    on_task(e)
+    working(e, 1.0, 2.0)
+    e.observe(tb4.ActionServers(2.1, tb4.NAVIGATE, ()))
+    value = state(e, 2.2)
+    assert (value.state, fields(value)) == ("unknown", {"x_cause": "nav2_left_graph"})
+    e.observe(tb4.ActionServers(3.0, tb4.NAVIGATE, (STRANGER,)))
+    assert state(e, 3.1).state == "unknown"
+    e.observe(tb4.ActionServers(4.0, tb4.NAVIGATE, (BT_NAVIGATOR,)))
+    working(e, 4.0, 4.5)
+    assert state(e, 4.6).state == "ai"
