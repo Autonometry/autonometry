@@ -63,6 +63,11 @@ def test_minimal_config_has_spec_defaults_and_relative_paths(tmp_path: Path) -> 
         ("fsync_interval_s = 0\n", "fsync_interval_s"),
         ("max_log_bytes = 1000\n", "max_log_bytes"),
         ('socket_group = "bad group"\n', "socket_group"),
+        ('role = "station"\n', "station_id must be given"),
+        ('station_id = "pc_1"\n', "station_id must be given"),
+        ('role = "robot"\nstation_id = "pc_1"\n', "station_id must be given"),
+        ('role = "operator"\n', "role"),
+        ('role = "station"\nstation_id = "pc 1"\n', "station_id"),
     ],
 )
 def test_bad_config_is_one_line_error(tmp_path: Path, extra: str, message: str) -> None:
@@ -115,6 +120,15 @@ def test_prepare_without_optional_inputs(tmp_path: Path) -> None:
     declaration = prepare(make_config(tmp_path)).declaration()
     assert "scope_weights" not in declaration
     assert "unobserved" not in declaration
+    assert "role" not in declaration
+    assert "station_id" not in declaration
+
+
+def test_station_recorder_declares_role_and_station_id__defs_12_1(tmp_path: Path) -> None:
+    config = make_config(tmp_path, role="station", station_id="teleop_pc_1")
+    declaration = prepare(config).declaration()
+    assert (declaration["role"], declaration["station_id"]) == ("station", "teleop_pc_1")
+    assert parse_config(MINIMAL, tmp_path).role == "robot"
 
 
 def test_a_device_registry_is_required__defs_6_10(tmp_path: Path) -> None:

@@ -80,7 +80,7 @@ ul.notes { padding-left: 1.2rem; }
 <p>Not a clean report:</p>
 <ul>{% for reason in v.reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
 {% else %}
-<p>Clean: verified at L2, complete, no census gap, nothing left out, no invariant failed.</p>
+<p>Clean: verified at L2 or L3, complete, no census gap, nothing left out, no invariant failed.</p>
 {% endif %}
 {% if headline %}
 <div class="scroll"><table>
@@ -116,6 +116,18 @@ Trusted verifier keys: {{ r.trust.trusted_keys }}; trusted TSA roots: {{ r.trust
 <td>{% for i in s.evidence %}<div><span class="fail">evidence {{ i.code }}</span>: {{ i.detail }}</div>{% endfor %}{% for i in s.gaps %}<div>gap {{ i.code }}: {{ i.detail }}</div>{% endfor %}</td></tr>
 {% endfor %}
 </tbody></table></div>
+{% if r.trust.stations %}
+<h3>Station sessions (witnesses)</h3>
+<p>Teleoperation station logs, verified like the robot's; a failed one makes the report failed.</p>
+<div class="scroll"><table>
+<thead><tr><th>Robot</th><th>Session</th><th>Status</th><th>Sealed through seq</th><th>Evidence and gaps</th></tr></thead>
+<tbody>
+{% for s in r.trust.stations.sessions %}
+<tr><td class="id">{{ s.robot_id }}</td><td class="id">{{ s.session_id }}</td><td>{{ s.status }}</td><td class="n">{{ s.sealed_through_seq if s.sealed_through_seq is not none else "" }}</td>
+<td>{% for i in s.evidence %}<div><span class="fail">evidence {{ i.code }}</span>: {{ i.detail }}</div>{% endfor %}{% for i in s.gaps %}<div>gap {{ i.code }}: {{ i.detail }}</div>{% endfor %}</td></tr>
+{% endfor %}
+</tbody></table></div>
+{% endif %}
 <h3>Rejected lines and file problems</h3>
 <p>Rejected lines: {{ r.trust.rejected_lines.count }}; file problems: {{ r.trust.file_problems.count }}. Either makes the report not verified.</p>
 {% if r.trust.rejected_lines.listed or r.trust.file_problems.listed %}
@@ -128,6 +140,30 @@ Trusted verifier keys: {{ r.trust.trusted_keys }}; trusted TSA roots: {{ r.trust
 {% endfor %}
 </tbody></table></div>
 {% endif %}
+</section>
+
+<section id="witness">
+<h2>Witness</h2>
+{% set w = r.witness %}
+{% if w.available %}
+<p>Each robot session is compared with the teleoperation station logs that witness it. Within tau of the other side's human time a disagreement is tolerated: tau is both clocks' reported errors plus react_s ({{ w.parameters.react_s | num }} s). A session is L3 when both logs are verified, both clocks synchronised, and with U the station's input while the robot logs unknown, (station-only + unwitnessed + U) / (base + U) &le; {{ w.parameters.l3_station_only_max_share | pct }} and (disputed + unwitnessed + U) / (base + U) &le; {{ w.parameters.l3_disputed_max_share | pct }}. Times are scope-seconds.</p>
+<div class="scroll"><table>
+<thead><tr><th>Robot</th><th>Session</th><th>Level</th><th>Stations</th><th>Base</th><th>Both human</th><th>of which tolerated, held</th><th>Robot only</th><th>Station only</th><th>Neither</th><th>Unwitnessed</th><th>Station input, robot unknown (U)</th><th>(Disputed + unwitnessed + U) / (base + U)</th><th>Tau</th><th>Unmatched station episodes</th><th>Interventions, upper bound</th><th>Why not L3</th></tr></thead>
+<tbody>
+{% for s in w.sessions %}
+<tr><td class="id">{{ s.robot_id }}</td><td class="id">{{ s.session_id }}</td><td>{{ s.level }}</td>
+<td>{% for st in s.stations %}<div class="id">{{ st.station_id or "" }} {{ st.session_id }} ({{ st.status or "not verified" }})</div>{% endfor %}</td>
+<td class="n">{{ s.times.base_s | num }} s</td><td class="n">{{ s.times.both_human_s | num }} s</td><td class="n">{{ s.times.tolerated_s | num }} s, {{ s.times.held_s | num }} s</td>
+<td class="n">{{ s.times.robot_only_s | num }} s</td><td class="n">{{ s.times.station_only_s | num }} s</td><td class="n">{{ s.times.neither_s | num }} s</td><td class="n">{{ s.times.unwitnessed_s | num }} s</td><td class="n">{{ s.station_human_robot_unknown_s | num }} s</td>
+<td class="n">{{ s.shares.l3_disputed | pct }}</td><td class="n">{{ s.tau_s.min | num }} to {{ s.tau_s.max | num }} s</td>
+<td class="n">{{ s.episodes.unmatched_station | length }}</td><td class="n">{{ s.interventions.robot }}, {{ s.interventions.upper_bound }}</td>
+<td>{% for reason in s.reasons %}<div>{{ reason.code }}: {{ reason.detail }}</div>{% endfor %}</td></tr>
+{% endfor %}
+</tbody></table></div>
+{% else %}
+<p>Trust level L3 is {{ w.detail }}.</p>
+{% endif %}
+<p class="muted">{{ w.statement }}</p>
 </section>
 
 <section id="census">

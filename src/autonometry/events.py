@@ -79,6 +79,19 @@ GapCode = Literal[
 # Codes of rules.toml [sealing] file_codes: records that cannot be tied to one session.
 FileCode = Literal["malformed_checkpoint", "orphan_timestamp"]
 
+# Codes of rules.toml [trust] l3_reasons: why a robot session is not trust level L3
+# (definitions.md 12.6).
+WitnessReason = Literal[
+    "no_station",
+    "robot_not_verified",
+    "station_not_verified",
+    "robot_clock_unsynced",
+    "station_clock_unsynced",
+    "invalid_station_state",
+    "station_only_above_max",
+    "disputed_above_max",
+]
+
 TrustStatus = Literal["verified", "partial", "unverified", "failed"]
 TrustLevel = Literal["L1", "L2"]
 
@@ -120,6 +133,8 @@ class Event(TypedDict, total=False):
     device_registry_hash: NotRequired[str]
     simulated: NotRequired[bool]
     unobserved: NotRequired[list[str]]
+    role: NotRequired[str]
+    station_id: NotRequired[str]
     clock_source: NotRequired[str]
     clock_max_error_s: NotRequired[float]
     prev_hash: NotRequired[str | None]

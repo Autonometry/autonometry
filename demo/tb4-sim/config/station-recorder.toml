@@ -1,0 +1,15 @@
+# Recorder config of the teleoperation station: the operator's PC (definitions.md 12.1; README,
+# "Station witness"). A second, independent witness: its own key, its own log, its own socket.
+# robot_id names the robot this station can command. Relative paths are relative to this file.
+robot_id = "tb4_sim_01"
+role = "station"
+station_id = "operator_pc_1"
+data_dir = "../run/station-data"
+socket_path = "../run/station.sock"
+scopes = ["base"]                     # the robot scopes this station witnesses
+simulated = true
+clock_source = "ntp"
+key_path = "../run/operator_pc_1.key"
+device_registry = "station-devices.json"
+task_registry = "tasks.json"          # a station log holds no tasks; the robot's registries serve
+plan = "plan.json"

@@ -83,6 +83,13 @@ jobs:
           source /opt/ros/jazzy/setup.bash
           export PATH="/opt/venv/bin:$PATH"
           connectors/ros2/ci/run_e2e.sh
+      # The station witness (definitions.md 12): an honest run with a teleoperation station's own
+      # recorder and observer beside the robot's; reconcile the two sealed logs and require L3.
+      - name: Station witness check
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          export PATH="/opt/venv/bin:$PATH"
+          connectors/ros2/ci/run_witness.sh
 
   slow:
     name: Slow checks (Python 3.12)

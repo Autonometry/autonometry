@@ -9,6 +9,7 @@ import unicodedata
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
@@ -21,7 +22,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from autonometry import __version__, keys, sealfile, sealing, signednote, tsa
 from autonometry import verify as verify_
-from autonometry.events import LogCheck, Session, TrustLevel, VerifyResult
+from autonometry.events import LogCheck, Session, TrustLevel, TrustStatus, VerifyResult
 from autonometry.fileio import PUBLIC_FILE_MODE, append_durably, atomic_write
 from autonometry.reader import LogReadError, read_logs
 from autonometry.registry import (
@@ -43,6 +44,7 @@ from autonometry.spec import (
     spec_file_hashes,
 )
 from autonometry.timeline import Registries, StateTotals, Timeline, build_timeline
+from autonometry.witness import Reconciliation, WitnessParams, reconcile
 
 logger = logging.getLogger(__name__)
 
@@ -1065,6 +1067,239 @@ def verify_cmd(  # noqa: PLR0913, PLR0917 -- matches the verify CLI's documented
         raise typer.Exit(1)
 
 
+@dataclass(frozen=True, slots=True)
+class _Side:
+    """What one side of a reconciliation read (definitions.md 12): its checked logs, the
+    timelines of the sessions whose registries match, the others with their problems, and the
+    checkpoint files and registries it read."""
+
+    log_check: LogCheck
+    timelines: tuple[Timeline, ...]
+    registry_errors: tuple[tuple[Session, str], ...]
+    checkpoint_paths: tuple[Path, ...]
+    checkpoint_files: tuple[SealFile, ...]
+    registries: tuple[tuple[RegistryKind, Path], ...]
+
+    def keys(self) -> set[tuple[str, str]]:
+        return {(s.robot_id, s.session_id) for s in self.log_check.sessions}
+
+
+def _read_side(
+    logs: Sequence[Path], given: Mapping[RegistryKind, Path | None], version: str
+) -> _Side:
+    """Read and check one side's logs and checkpoint files (definitions.md 8, 10.4) and build
+    the timelines of its sessions; stops with exit status 1 on input it cannot read."""
+    used: set[tuple[RegistryKind, Path]] = set()
+    log_check, rules, timelines, errors = _build_timelines(logs, given, version, used)
+    checkpoint_paths = [p for log in logs if (p := sealfile.checkpoints_path(log)).exists()]
+    return _Side(
+        log_check,
+        tuple(timelines),
+        tuple(errors),
+        tuple(checkpoint_paths),
+        tuple(_read_seal_files(checkpoint_paths, version, rules)),
+        tuple(sorted(used)),
+    )
+
+
+def _merged(first: LogCheck, second: LogCheck) -> LogCheck:
+    """Two reads as one, for a verifier that must see every session an anchor file names."""
+    codes = Counter(first.counts.errors_by_code) + Counter(second.counts.errors_by_code)
+    return replace(
+        first,
+        sessions=first.sessions + second.sessions,
+        errors=first.errors + second.errors,
+        counts=replace(first.counts, errors_by_code=dict(sorted(codes.items()))),
+    )
+
+
+def _verify_sides(  # noqa: PLR0913, PLR0917 -- both sides and the verifier's trust roots
+    robots: _Side,
+    stations: _Side | None,
+    anchor_files: Sequence[SealFile],
+    trusted_keys: Sequence[VerifierKey],
+    trusted_roots: Sequence[x509.Certificate],
+    rules: Rules,
+) -> tuple[VerifyResult, VerifyResult | None]:
+    """Verify both sides in one pass (definitions.md 10.6), since one anchor file may hold the
+    checkpoints of both, then split the sessions: the station's are those its logs hold. The
+    rejected lines and file problems of every file read stay with the robot side, once."""
+    log_check, files = robots.log_check, robots.checkpoint_files
+    if stations is not None:
+        log_check = _merged(log_check, stations.log_check)
+        files += stations.checkpoint_files
+    try:
+        result = verify_.verify_log(
+            log_check, files, anchor_files, trusted_keys, trusted_roots, rules
+        )
+    except SpecError as exc:
+        _fail(str(exc))
+    if stations is None:
+        return result, None
+    mine = stations.keys()
+    robot = replace(
+        result,
+        sessions=tuple(v for v in result.sessions if (v.robot_id, v.session_id) not in mine),
+    )
+    station = replace(
+        result,
+        sessions=tuple(v for v in result.sessions if (v.robot_id, v.session_id) in mine),
+        rejected_lines=(),
+        rejected_by_code={},
+        file_problems=(),
+        file_problems_by_code={},
+    )
+    return robot, station
+
+
+def _statuses(result: VerifyResult) -> dict[tuple[str, str], TrustStatus]:
+    return {(v.robot_id, v.session_id): v.status for v in result.sessions}
+
+
+def _rules(version: str) -> Rules:
+    try:
+        return load_rules(version)
+    except SpecError as exc:
+        _fail(str(exc))
+
+
+def _side_files(prefix: str, logs: Sequence[Path], side: _Side) -> list[tuple[str, Path]]:
+    """The input files of one side for the report's provenance (11.1), roles prefixed."""
+    return [
+        *((f"{prefix}log", p) for p in logs),
+        *((f"{prefix}checkpoints", p) for p in side.checkpoint_paths),
+        *((f"{prefix}registry_{kind}", p) for kind, p in side.registries),
+    ]
+
+
+def _registry_errors_json(role: str, side: _Side) -> list[dict[str, str]]:
+    return [
+        {"role": role, "robot_id": s.robot_id, "session_id": s.session_id, "problem": problem}
+        for s, problem in side.registry_errors
+    ]
+
+
+def _reconcile_sides(
+    robots: _Side,
+    stations: _Side,
+    robot_result: VerifyResult,
+    station_result: VerifyResult,
+    rules: Rules,
+) -> Reconciliation:
+    return reconcile(
+        robots.timelines,
+        stations.timelines,
+        WitnessParams.from_rules(rules),
+        _statuses(robot_result),
+        _statuses(station_result),
+    )
+
+
+_NO_REGISTRY: Mapping[RegistryKind, Path | None] = {"devices": None, "tasks": None, "plan": None}
+
+
+@app.command("reconcile")
+def reconcile_cmd(  # noqa: PLR0913, PLR0917 -- matches the reconcile CLI's documented options
+    robot: Annotated[
+        list[Path],
+        typer.Option(
+            "--robot",
+            help="Robot event log; repeatable.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            show_default=False,
+        ),
+    ],
+    station: Annotated[
+        list[Path],
+        typer.Option(
+            "--station",
+            help="Teleoperation station event log (role station); repeatable.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            show_default=False,
+        ),
+    ],
+    vkey: Annotated[
+        list[Path] | None,
+        typer.Option("--vkey", help="File of trusted vkeys, one per line; repeatable."),
+    ] = None,
+    tsa_root: Annotated[
+        list[Path] | None,
+        typer.Option("--tsa-root", help="Trusted TSA root certificate (PEM); repeatable."),
+    ] = None,
+    anchor: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--anchor", help="Anchor file, same format as a checkpoints file; repeatable."
+        ),
+    ] = None,
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", dir_okay=False, help="Write the JSON here instead of stdout."),
+    ] = None,
+    spec: Annotated[
+        str | None, typer.Option("--spec", help="Spec version, for example 0.3.")
+    ] = None,
+) -> None:
+    """Reconcile robot logs with teleoperation station logs (definitions.md 12) and write JSON:
+    per robot session the five times, the disputed share, tau, matched and unmatched episodes
+    and whether it reaches trust level L3, with the reasons when it does not.
+
+    Both sides are verified (section 10.6) with the same trusted keys, TSA roots and anchor
+    files; registries are read from each log's folder. Exit status: 0 only when every robot
+    session is L3 and every session's registries match; 1 otherwise; 2 on bad usage or input
+    that cannot be read. No network access; actor ids never appear in the output.
+    """
+    with _input_errors_exit(2):
+        version = _spec_version(spec)
+        rules = _rules(version)
+        trusted_keys = _load_vkeys(vkey or [])
+        trusted_roots = _load_tsa_roots(tsa_root or [])
+        anchors = _read_seal_files(anchor or [], version, rules)
+        robots = _read_side(robot, _NO_REGISTRY, version)
+        stations = _read_side(station, _NO_REGISTRY, version)
+        robot_result, station_result = _verify_sides(
+            robots, stations, anchors, trusted_keys, trusted_roots, rules
+        )
+    assert station_result is not None  # noqa: S101 -- _verify_sides was given stations
+    result = _reconcile_sides(robots, stations, robot_result, station_result, rules)
+    errors = _registry_errors_json("robot", robots) + _registry_errors_json("station", stations)
+    body = {
+        "spec_version": version,
+        **result.to_json(),
+        "registry_errors": errors,
+        "verification": {
+            "robot": {
+                "verified": robot_result.verified("L2"),
+                "reasons": robot_result.reasons("L2"),
+            },
+            "station": {
+                "verified": station_result.verified("L2"),
+                "reasons": station_result.reasons("L2"),
+            },
+        },
+    }
+    text = json.dumps(body, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    if out is None:
+        typer.echo(text, nl=False)
+    else:
+        try:
+            atomic_write(out, text.encode("utf-8"), PUBLIC_FILE_MODE)
+        except OSError as exc:
+            typer.echo(f"error: cannot write {out}: {exc.strerror or exc}", err=True)
+            raise typer.Exit(2) from None
+        counts = result.to_json()["counts"]
+        typer.echo(
+            f"reconciled {counts['robot_sessions']} robot session(s) with "
+            f"{counts['station_sessions']} station session(s): {counts['l3']} at L3"
+        )
+    if errors or not result.all_l3:
+        raise typer.Exit(1)
+
+
 #: Limits on text the report shows as given (definitions.md 11; CLAUDE.md, input limits).
 _TITLE_MAX_CHARS = 200
 _ABOUT_MAX_BYTES = 65536
@@ -1234,12 +1469,25 @@ def report_cmd(  # noqa: PLR0913, PLR0917 -- matches the report CLI's documented
             readable=True,
         ),
     ] = None,
+    station: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--station",
+            help="Teleoperation station log (role station) witnessing the robots; repeatable.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
     spec: Annotated[
         str | None, typer.Option("--spec", help="Spec version, for example 0.3.")
     ] = None,
 ) -> None:
     """Write a report a buyer, insurer or auditor can read (definitions.md 11): verification,
     census, exclusions, metrics per group with their uncertainty, statements and invariants.
+    With ``--station`` logs (definitions.md 12), the robot sessions are reconciled with them:
+    a session whose two witnesses agree is trust level L3, and a Witness section shows the
+    discrepancies. Station logs are verified like the robot's, with the same trust roots.
 
     Writes DIR/report.json and DIR/report.html (self-contained: no scripts, no links to other
     sites) atomically. Exit status: 0 only when the report is verified at L2, complete, has no
@@ -1258,43 +1506,36 @@ def report_cmd(  # noqa: PLR0913, PLR0917 -- matches the report CLI's documented
         )
         raise typer.Exit(2) from None
     given: dict[RegistryKind, Path | None] = {"devices": devices, "tasks": tasks, "plan": plan}
-    used: set[tuple[RegistryKind, Path]] = set()
     with _input_errors_exit(2):
         version = _spec_version(spec)
-        log_check, rules, timelines, registry_errors = _build_timelines(logs, given, version, used)
+        rules = _rules(version)
         trusted_keys = _load_vkeys(vkey or [])
         trusted_roots = _load_tsa_roots(tsa_root or [])
-        checkpoint_paths = [
-            p for log_path in logs if (p := sealfile.checkpoints_path(log_path)).exists()
-        ]
-        checkpoint_files = _read_seal_files(checkpoint_paths, version, rules)
         anchor_files = _read_seal_files(anchor or [], version, rules)
+        robots = _read_side(logs, given, version)
+        stations = _read_side(station, _NO_REGISTRY, version) if station else None
+        robot_result, station_result = _verify_sides(
+            robots, stations, anchor_files, trusted_keys, trusted_roots, rules
+        )
         about_text = None if about is None else _read_about(about)
         files = _input_files(
             [
-                *(("log", p) for p in logs),
-                *(("checkpoints", p) for p in checkpoint_paths),
+                *_side_files("", logs, robots),
                 *(("anchor", p) for p in anchor or []),
-                *(("registry_" + kind, p) for kind, p in used),
                 *(("vkey", p) for p in vkey or []),
                 *(("tsa_root", p) for p in tsa_root or []),
                 *([] if about is None else [("about", about)]),
+                *([] if stations is None else _side_files("station_", station or [], stations)),
             ]
         )
-        try:
-            verification = verify_.verify_log(
-                log_check, checkpoint_files, anchor_files, trusted_keys, trusted_roots, rules
-            )
-        except SpecError as exc:
-            _fail(str(exc))
     problems: dict[tuple[str, str], tuple[str, ...]] = {}
-    for session, problem in registry_errors:
+    for session, problem in robots.registry_errors:
         key = (session.robot_id, session.session_id)
         problems[key] = (*problems.get(key, ()), problem)
     inputs = build.ReportInputs(
-        log_check=log_check,
-        verification=verification,
-        timelines=tuple(timelines),
+        log_check=robots.log_check,
+        verification=robot_result,
+        timelines=robots.timelines,
         generated_at=_utc_now(),
         registry_problems=problems,
         files=tuple(build.InputFile(*row) for row in files),
@@ -1304,6 +1545,10 @@ def report_cmd(  # noqa: PLR0913, PLR0917 -- matches the report CLI's documented
         anchor_files=len(anchor or []),
         title=title,
         about=about_text,
+        witness=None
+        if stations is None or station_result is None
+        else _reconcile_sides(robots, stations, robot_result, station_result, rules),
+        station_verification=station_result,
     )
     options = metrics.Options(alpha, n_boot, seed, cluster.value, drift_bin.value)
     body = build.build_report(inputs, rules, options)

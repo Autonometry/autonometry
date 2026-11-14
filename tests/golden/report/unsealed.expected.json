@@ -199,7 +199,7 @@
       "status": "pass"
     },
     "witnesses": {
-      "detail": "not available (L3)",
+      "detail": "no robot session is witnessed by a station log",
       "failure_count": 0,
       "failures": [],
       "status": "not_available"
@@ -1043,6 +1043,7 @@
             "hint_ttl_s": 60.0,
             "idle_threshold_s": 30.0,
             "max_commit_delay_s": 3600.0,
+            "react_s": 0.5,
             "simultaneity_window_s": 0.5,
             "takeover_window_s": 60.0,
             "unknown_share_max": 0.05
@@ -1718,6 +1719,7 @@
             "hint_ttl_s": 60.0,
             "idle_threshold_s": 30.0,
             "max_commit_delay_s": 3600.0,
+            "react_s": 0.5,
             "simultaneity_window_s": 0.5,
             "takeover_window_s": 60.0,
             "unknown_share_max": 0.05
@@ -1738,7 +1740,8 @@
       "n_boot": 200,
       "seed": 0
     },
-    "sessions_without_session_start": []
+    "sessions_without_session_start": [],
+    "station_sessions": []
   },
   "provenance": {
     "counts": {
@@ -1803,6 +1806,7 @@
       "max_commit_delay_s": 3600.0,
       "min_clusters": 2,
       "rare_rate_events": 5,
+      "react_s": 0.5,
       "simultaneity_window_s": 0.5,
       "takeover_window_s": 60.0,
       "unknown_share_max": 0.05
@@ -1832,11 +1836,11 @@
     },
     "spec_files": {
       "checkpoint.schema.json": "df303f5e55b38a51baad7a02aabf3b7a83a8db2b1dd32c64577bd7e455f70a9c",
-      "definitions.md": "929a2e38df3d4a4dc5d96ddedf83ef336cdd7a40721bb12933ee2a14dcbd669b",
+      "definitions.md": "aa7c1984ed1acf360053701ce3b5b12d8f2d679ae39753bbd76aa751e5266701",
       "device_registry.schema.json": "8e452d7fcb97f250e55a7113e71e984336628add214b722c9e636e497e881998",
-      "event.schema.json": "952aed101cfe58104fb753901754affd86df2e2a36b4017a474aed84b448c15c",
+      "event.schema.json": "3d5db72b47c0f03e12debe5a214c0ef64ddbf89c774d07fd7711dc919f68b8e0",
       "plan.schema.json": "6028e9e8c31acfec5e10f054a7fb565dfd075035739361c77b3ff9ed950204a6",
-      "rules.toml": "0984b0ad41b1e3af6a118a6e0c34e704e2bfce1750ec66e3caf9f026c93b355d",
+      "rules.toml": "6903c9ef535a211f8ef8ba813a6b16f399bb9ce5ea95bf97df9f6415a3321db3",
       "task_registry.schema.json": "98319a3b90bf272ae787cdb51ec1dfd8329df3ee72e04d577e08a0f844dcc1c1"
     },
     "spec_version": "0.3",
@@ -2099,7 +2103,7 @@
     "levels": {
       "L1": "self-reported",
       "L2": "sealed log",
-      "L3": "not available yet"
+      "L3": "not available: no station log was given"
     },
     "notes": [
       "No trusted verifier key was given: no checkpoint can be trusted, so no session can reach L2.",
@@ -2174,6 +2178,7 @@
         "status": "unverified"
       }
     ],
+    "stations": null,
     "status": "not_verified",
     "trusted_keys": 0,
     "trusted_tsa_roots": 0
@@ -2286,5 +2291,10 @@
       "incomplete"
     ],
     "status": "not_verified"
+  },
+  "witness": {
+    "available": false,
+    "detail": "not available: no station log was given",
+    "statement": "L3 shows that a remote operator who used the witnessed station appears in the robot's log, to within tau. It says nothing about an operator using a client the station does not witness (another station, a laptop, a direct radio link, a maintenance interface): only a witness of the control channel itself, the network witness of trust level L4, can expose that. Nor does it show that the station's logger is honest: the two keys must belong to separate software identities."
   }
 }

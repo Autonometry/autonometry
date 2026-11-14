@@ -1,6 +1,7 @@
 """The invariants of a report (definitions.md 11.7), each ``pass``, ``fail`` or
-``not_checked`` with what failed; witnesses are ``not_available`` until L3. Pure standard
-library: the metrics arrive as the JSON blocks of :mod:`autonometry.stats.metrics`."""
+``not_checked`` with what failed; witnesses are ``not_available`` when no robot session is
+witnessed (12). Pure standard library: the metrics arrive as the JSON blocks of
+:mod:`autonometry.stats.metrics`."""
 
 from collections import Counter
 from collections.abc import Mapping, Sequence
@@ -8,6 +9,7 @@ from typing import Any, Final
 
 from autonometry.events import LogCheck, Session, VerifyResult
 from autonometry.timeline import StateTotals, Timeline
+from autonometry.witness import Reconciliation
 
 Json = dict[str, Any]
 
@@ -161,17 +163,37 @@ def bounds(groups: Mapping[str, Json]) -> Json:
     return _result("fail" if failures else "pass", f"{checked} metric(s) checked", failures)
 
 
-def witnesses() -> Json:
-    """Two-witness reconciliation needs trust level L3, which a later version specifies."""
-    return _result("not_available", "not available (L3)")
+#: Reasons of 12.6 that say the two witnesses disagree (conditions 4 and 5).
+DISAGREEMENT: Final = ("station_only_above_max", "disputed_above_max")
 
 
-def invariants(
+def witnesses(witness: Reconciliation | None) -> Json:
+    """Every robot session a station session witnesses meets conditions 4 and 5 of 12.6;
+    ``not_available`` when no robot session is witnessed (11.7)."""
+    witnessed = [] if witness is None else [s for s in witness.sessions if s.stations]
+    if not witnessed:
+        return _result("not_available", "no robot session is witnessed by a station log")
+    failures = [
+        f"{s.robot_id}/{s.session_id}: {r.detail}"
+        for s in witnessed
+        for r in s.reasons
+        if r.code in DISAGREEMENT
+    ]
+    return _result(
+        "fail" if failures else "pass",
+        f"{len(witnessed)} witnessed session(s): station-only, disputed and unwitnessed time "
+        "within the maxima",
+        failures,
+    )
+
+
+def invariants(  # noqa: PLR0913, PLR0917 -- every input of 11.7
     log_check: LogCheck,
     result: VerifyResult,
     timelines: Sequence[Timeline],
     census_status: str,
     groups: Mapping[str, Json],
+    witness: Reconciliation | None = None,
 ) -> Json:
     """Every invariant of 11.7 by name."""
     census_detail = {
@@ -186,5 +208,5 @@ def invariants(
         "census": _result(census_status, census_detail),
         "tasks": tasks(log_check, timelines),
         "bounds": bounds(groups),
-        "witnesses": witnesses(),
+        "witnesses": witnesses(witness),
     }

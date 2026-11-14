@@ -91,6 +91,7 @@ simultaneity_window_s = 0.5
 goal_release_s = 1.0
 contention_window_s = 1.0
 unknown_share_max = 0.05
+react_s = 0.5  # definitions.md 12.3
 
 # Loader flag codes (definitions.md 3, 5, 6.1, 6.8, 6.10, 6.12, 8).
 [flags]
@@ -108,12 +109,23 @@ codes = ["invalid_utf8", "invalid_unicode", "line_too_long", "invalid_json", "no
 max_line_bytes = 65536
 list_max_per_code = 100
 
-# Trust levels (definitions.md 8, 6.12; research/methods/trust.md section 7).
+# Trust levels (definitions.md 8, 6.12, 12; research/methods/trust.md section 7).
 [trust]
 reconstructed_events_max_level = 1
+# Witnesses (definitions.md 12.6): the station-only and disputed shares (unwitnessed time and
+# station input while the robot is unknown counted in) at most these for trust level L3.
 l3_station_only_max_share = 0.005
 l3_disputed_max_share = 0.02
-default_tau_s = 1.0
+# Why a robot session is not L3 (definitions.md 12.6).
+l3_reasons = [
+  "no_station", "robot_not_verified", "station_not_verified", "robot_clock_unsynced",
+  "station_clock_unsynced", "invalid_station_state", "station_only_above_max",
+  "disputed_above_max",
+]
+# Robot states that count as robot human time, and the states a station scope may hold
+# (definitions.md 12.1, 12.4): its idle state means no human, its unknown state lost input.
+l3_robot_human_states = ["human_remote", "shared"]
+l3_station_states = ["human_remote", "idle", "unknown"]
 
 # Thresholds of the report's statements (definitions.md 11.6). Printed with the parameters.
 [report]

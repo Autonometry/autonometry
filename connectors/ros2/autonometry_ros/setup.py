@@ -20,7 +20,12 @@ setup(
     zip_safe=True,
     maintainer="Autonometry maintainers",
     maintainer_email="maintainers@autonometry.invalid",
-    description="Read-only Autonometry observer for the TurtleBot 4.",
+    description="Read-only Autonometry observers for a TurtleBot 4 and its teleop station.",
     license="Apache-2.0",
-    entry_points={"console_scripts": [f"observer = {PACKAGE}.observer:main"]},
+    entry_points={
+        "console_scripts": [
+            f"observer = {PACKAGE}.observer:main",
+            f"station_observer = {PACKAGE}.station_observer:main",
+        ]
+    },
 )
