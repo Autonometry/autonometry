@@ -24,6 +24,7 @@ from autonometry import __version__, keys, sealfile, sealing, signednote, tsa
 from autonometry import verify as verify_
 from autonometry.cli_g1 import g1_app
 from autonometry.cli_lerobot import lerobot_app
+from autonometry.display import echo, printable
 from autonometry.events import LogCheck, Session, TrustLevel, TrustStatus, VerifyResult
 from autonometry.fileio import PUBLIC_FILE_MODE, append_durably, atomic_write
 from autonometry.reader import LogReadError, read_logs
@@ -81,7 +82,7 @@ class _OneLineFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         message = record.getMessage().splitlines() or [""]
-        return f"{record.levelname.lower()}: {message[0]}"
+        return f"{record.levelname.lower()}: {printable(message[0])}"
 
 
 def _configure_logging() -> None:
@@ -105,13 +106,13 @@ def _set_verbose(value: bool) -> None:
 
 
 def _fail(message: str) -> NoReturn:
-    typer.echo(f"error: {message}", err=True)
+    echo(f"error: {message}", err=True)
     raise typer.Exit(1)
 
 
 def _print_version(value: bool) -> None:
     if value:
-        typer.echo(f"autonometry {__version__}")
+        echo(f"autonometry {__version__}")
         raise typer.Exit
 
 
@@ -139,7 +140,7 @@ def spec_list() -> None:
     except SpecError as exc:
         _fail(str(exc))
     for version in versions:
-        typer.echo(version)
+        echo(version)
 
 
 @spec_app.command("show")
@@ -152,7 +153,7 @@ def spec_show(
     except SpecError as exc:
         _fail(str(exc))
     for name, digest in hashes.items():
-        typer.echo(f"{digest}  {name}")
+        echo(f"{digest}  {name}")
 
 
 def _spec_version(spec: str | None) -> str:
@@ -198,10 +199,10 @@ def validate(
     except (SpecError, LogReadError) as exc:
         _fail(str(exc))
     if as_json:
-        typer.echo(json.dumps(result.to_json(), indent=2, sort_keys=True))
+        echo(json.dumps(result.to_json(), indent=2, sort_keys=True))
     else:
         for line in summary_lines(result):
-            typer.echo(line)
+            echo(line)
     if result.errors:
         raise typer.Exit(1)
 
@@ -257,14 +258,14 @@ def registry_check(
     except (SpecError, RegistryReadError) as exc:
         _fail(str(exc))
     if as_json:
-        typer.echo(json.dumps(result.to_json(), indent=2, sort_keys=True))
+        echo(json.dumps(result.to_json(), indent=2, sort_keys=True))
     elif result.sha256 is not None:
-        typer.echo(f"spec {version}: {result.entries} {_ENTRY_NAMES[registry_kind]}, valid")
-        typer.echo(f"sha256 {result.sha256}")
+        echo(f"spec {version}: {result.entries} {_ENTRY_NAMES[registry_kind]}, valid")
+        echo(f"sha256 {result.sha256}")
     else:
-        typer.echo(f"spec {version}: NOT valid")
+        echo(f"spec {version}: NOT valid")
         for problem in result.problems:
-            typer.echo(f"  {problem}")
+            echo(f"  {problem}")
     if not result.valid:
         raise typer.Exit(1)
 
@@ -498,10 +499,10 @@ def timeline_cmd(  # noqa: PLR0913, PLR0917 -- matches the timeline CLI's docume
     result, _, timelines, registry_errors = _build_timelines(logs, given, _spec_version(spec))
     if as_json:
         report = _timeline_report(result, timelines, registry_errors)
-        typer.echo(json.dumps(report, indent=2, sort_keys=True))
+        echo(json.dumps(report, indent=2, sort_keys=True))
     else:
         for line in _timeline_summary(result, timelines, registry_errors):
-            typer.echo(line)
+            echo(line)
     if result.errors or registry_errors:
         raise typer.Exit(1)
 
@@ -695,7 +696,7 @@ def metrics_cmd(  # noqa: PLR0913, PLR0917 -- matches the metrics CLI's document
     try:
         from autonometry.stats import metrics, report  # noqa: PLC0415 -- optional extra
     except ImportError:
-        typer.echo(
+        echo(
             "error: autonometry metrics needs the report extra: pip install 'autonometry[report]'",
             err=True,
         )
@@ -720,13 +721,13 @@ def metrics_cmd(  # noqa: PLR0913, PLR0917 -- matches the metrics CLI's document
     }
     text = report.to_json(body)
     for robot_id, session_id in left_out:
-        typer.echo(f"error: session {robot_id}/{session_id} left out: no timeline", err=True)
+        echo(f"error: session {robot_id}/{session_id} left out: no timeline", err=True)
     for session, problem in registry_errors:
-        typer.echo(f"  {session.robot_id}/{session.session_id}: {problem}", err=True)
+        echo(f"  {session.robot_id}/{session.session_id}: {problem}", err=True)
     if result.errors:
-        typer.echo(f"error: {result.counts.rejected_lines} rejected line(s)", err=True)
+        echo(f"error: {result.counts.rejected_lines} rejected line(s)", err=True)
     if out is None:
-        typer.echo(text, nl=False)
+        echo(text, nl=False)
     else:
         atomic_write(out, text.encode("utf-8"), PUBLIC_FILE_MODE)
     if result.errors or registry_errors:
@@ -753,9 +754,9 @@ def keys_generate(
         vkey_path = keys.generate(name, out)
     except (SignedNoteError, keys.SigningKeyError) as exc:
         _fail(str(exc))
-    typer.echo(f"private key: {out}")
-    typer.echo(f"vkey file:   {vkey_path}")
-    typer.echo(vkey_path.read_text(encoding="utf-8").strip())
+    echo(f"private key: {out}")
+    echo(f"vkey file:   {vkey_path}")
+    echo(vkey_path.read_text(encoding="utf-8").strip())
 
 
 def _key_name(key_path: Path) -> str:
@@ -855,8 +856,8 @@ def seal(
     atomic_write(out, b"".join(sealed_lines))
     atomic_write(checkpoints_out, b"".join(checkpoint_lines))
     total_events = sum(len(session.events) for session in log_check.sessions)
-    typer.echo(f"sealed {total_events} event(s) in {len(log_check.sessions)} session(s)")
-    typer.echo(f"wrote {out} and {checkpoints_out}")
+    echo(f"sealed {total_events} event(s) in {len(log_check.sessions)} session(s)")
+    echo(f"wrote {out} and {checkpoints_out}")
 
 
 @app.command("timestamp")
@@ -907,7 +908,7 @@ def timestamp(
         append_durably(checkpoints_file, sealfile.encode_timestamp_line(note_sha256, tsr))
         have.add(note_sha256)
         appended += 1
-    typer.echo(f"appended {appended} timestamp record(s); {failures} checkpoint(s) not timestamped")
+    echo(f"appended {appended} timestamp record(s); {failures} checkpoint(s) not timestamped")
     if failures:
         raise typer.Exit(1)
 
@@ -1063,10 +1064,10 @@ def verify_cmd(  # noqa: PLR0913, PLR0917 -- matches the verify CLI's documented
         _fail(str(exc))
 
     if as_json:
-        typer.echo(json.dumps(result.to_json(level), indent=2, sort_keys=True))
+        echo(json.dumps(result.to_json(level), indent=2, sort_keys=True))
     else:
         for line in verify_summary_lines(result, level):
-            typer.echo(line)
+            echo(line)
     if not result.verified(level):
         raise typer.Exit(1)
 
@@ -1288,15 +1289,15 @@ def reconcile_cmd(  # noqa: PLR0913, PLR0917 -- matches the reconcile CLI's docu
     }
     text = json.dumps(body, indent=2, sort_keys=True, allow_nan=False) + "\n"
     if out is None:
-        typer.echo(text, nl=False)
+        echo(text, nl=False)
     else:
         try:
             atomic_write(out, text.encode("utf-8"), PUBLIC_FILE_MODE)
         except OSError as exc:
-            typer.echo(f"error: cannot write {out}: {exc.strerror or exc}", err=True)
+            echo(f"error: cannot write {out}: {exc.strerror or exc}", err=True)
             raise typer.Exit(2) from None
         counts = result.to_json()["counts"]
-        typer.echo(
+        echo(
             f"reconciled {counts['robot_sessions']} robot session(s) with "
             f"{counts['station_sessions']} station session(s): {counts['l3']} at L3"
         )
@@ -1504,7 +1505,7 @@ def report_cmd(  # noqa: PLR0913, PLR0917 -- matches the report CLI's documented
         from autonometry.stats import metrics  # noqa: PLC0415 -- optional extra
         from autonometry.stats import report as stats_report  # noqa: PLC0415 -- optional extra
     except ImportError:
-        typer.echo(
+        echo(
             "error: autonometry report needs the report extra: pip install 'autonometry[report]'",
             err=True,
         )
@@ -1563,16 +1564,16 @@ def report_cmd(  # noqa: PLR0913, PLR0917 -- matches the report CLI's documented
         atomic_write(out / "report.json", text.encode("utf-8"), PUBLIC_FILE_MODE)
         atomic_write(out / "report.html", page.encode("utf-8"), PUBLIC_FILE_MODE)
     except OSError as exc:
-        typer.echo(f"error: cannot write the report to {out}: {exc.strerror or exc}", err=True)
+        echo(f"error: cannot write the report to {out}: {exc.strerror or exc}", err=True)
         raise typer.Exit(2) from None
     verdict = body["verdict"]
-    typer.echo(
+    echo(
         f"report: {verdict['status']}, level {verdict['level']}, {verdict['completeness']}; "
         f"census {verdict['census']}; {verdict['exclusions']} session(s) left out"
     )
-    typer.echo(f"wrote {out / 'report.json'} and {out / 'report.html'}")
+    echo(f"wrote {out / 'report.json'} and {out / 'report.html'}")
     if not verdict["clean"]:
-        typer.echo(f"not clean: {'; '.join(verdict['reasons'])}")
+        echo(f"not clean: {'; '.join(verdict['reasons'])}")
         raise typer.Exit(1)
 
 
@@ -1593,7 +1594,7 @@ def record(
     Operational messages go to stderr and never contain event contents.
     """
     if sys.platform == "win32":
-        typer.echo("error: the recorder runs on Linux and macOS only", err=True)
+        echo("error: the recorder runs on Linux and macOS only", err=True)
         raise typer.Exit(2)
     from autonometry.recorder.config import ConfigError, load_config, prepare  # noqa: PLC0415
     from autonometry.recorder.service import serve  # noqa: PLC0415 -- POSIX-only modules
@@ -1601,7 +1602,7 @@ def record(
     try:
         prepared = prepare(load_config(config))
     except ConfigError as exc:
-        typer.echo(f"error: {exc}", err=True)
+        echo(f"error: {exc}", err=True)
         raise typer.Exit(2) from None
     recorder_logger = logging.getLogger("autonometry.recorder")
     if recorder_logger.getEffectiveLevel() > logging.INFO:
@@ -1616,5 +1617,5 @@ def main() -> None:
         app()
     except Exception as exc:  # process boundary: never show a traceback unless --verbose
         logger.debug("unexpected failure", exc_info=True)
-        typer.echo(f"error: unexpected failure ({type(exc).__name__})", err=True)
+        echo(f"error: unexpected failure ({type(exc).__name__})", err=True)
         sys.exit(1)

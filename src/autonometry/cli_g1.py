@@ -30,6 +30,7 @@ from autonometry.connectors.g1_dds import (
     run_watch,
 )
 from autonometry.connectors.tb4 import Device, devices_from_registry
+from autonometry.display import echo
 from autonometry.recorder.config import ConfigError, RecorderConfig, load_config, read_input
 from autonometry.registry import check_registry_bytes
 from autonometry.spec import SpecError, available_versions, load_rules
@@ -54,7 +55,7 @@ Domain = Annotated[
 
 
 def _fail(message: str, code: int = 2) -> NoReturn:
-    typer.echo(f"error: {message}", err=True)
+    echo(f"error: {message}", err=True)
     raise typer.Exit(code)
 
 
@@ -103,12 +104,12 @@ def discover_cmd(
         _fail(str(exc))
     report = discover(backend, seconds)
     if json_out:
-        typer.echo(json.dumps(report, indent=2, sort_keys=True))
+        echo(json.dumps(report, indent=2, sort_keys=True))
         return
     for line in format_discovery(report):
-        typer.echo(line)
+        echo(line)
     if not report["participants"]:
-        typer.echo("no participant found: check --interface and --domain")
+        echo("no participant found: check --interface and --domain")
 
 
 def _devices(config: RecorderConfig, version: str) -> tuple[Device, ...]:

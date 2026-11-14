@@ -22,6 +22,7 @@ from autonometry.connectors.lerobot_io import (
     recorder_sender,
     watch_log,
 )
+from autonometry.display import echo
 from autonometry.recorder.config import (
     DEVICES_COPY,
     PLAN_COPY,
@@ -46,7 +47,7 @@ _SHOWN = 10
 
 
 def _fail(message: str, code: int = 1) -> NoReturn:
-    typer.echo(f"error: {message}", err=True)
+    echo(f"error: {message}", err=True)
     raise typer.Exit(code)
 
 
@@ -188,7 +189,7 @@ def import_cmd(  # noqa: PLR0913, PLR0917 -- matches the import CLI's documented
             "unknown_task_definition",
             len(result.undeclared_tasks),
         )
-    typer.echo(f"wrote {len(result.sessions)} session log(s) under {out}")
+    echo(f"wrote {len(result.sessions)} session log(s) under {out}")
 
 
 def _task(registries: Registries, task: str | None) -> str:
