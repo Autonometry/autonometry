@@ -39,6 +39,8 @@ POLICY_LOWCMD, POLICY_ARM, POLICY_SPORT, POLICY_ARM_REQ = (
 )
 REPLAY_LOWCMD = "w-replay-low"
 STRANGER_LOWCMD, STRANGER_SPORT = "w-stranger-low", "w-stranger-sport"
+#: The built-in controller's answers (its rt/sportmodestate identity) and a stranger's.
+ROBOT_SWITCH_RESPONSE, STRANGER_SWITCH_RESPONSE = "w-resp-ms", "w-stranger-resp"
 
 _WRITERS: dict[str, tuple[str | None, str | None, str]] = {
     LOWSTATE: (PC1, "hg_lowstate", g1.LOWSTATE),
@@ -56,6 +58,8 @@ _WRITERS: dict[str, tuple[str | None, str | None, str]] = {
     REPLAY_LOWCMD: (PC2, "replay_robot.py", g1.LOWCMD),
     STRANGER_LOWCMD: ("laptop", "python3", g1.LOWCMD),
     STRANGER_SPORT: ("laptop", "python3", g1.request_topic("sport")),
+    ROBOT_SWITCH_RESPONSE: (PC1, "ai_sport", g1.response_topic("motion_switcher")),
+    STRANGER_SWITCH_RESPONSE: ("laptop", "python3", g1.response_topic("motion_switcher")),
 }
 
 
