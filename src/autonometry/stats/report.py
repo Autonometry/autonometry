@@ -20,11 +20,15 @@ GROUPS: Final[Mapping[bool, str]] = {False: "real", True: "simulated"}
 
 def metrics_report(timelines: Sequence[Timeline], rules: Rules, options: Options) -> Json:
     """Every metric for every group present. A session without ``session_start`` has no
-    observed time and no declared ``simulated``; it is listed, never assigned to a group."""
+    observed time and no declared ``simulated``; it is listed, never assigned to a group. So is a
+    station log (definitions.md 12.1): it witnesses a robot, it is not one."""
     groups: dict[str, list[Timeline]] = {}
     without_start: list[Timeline] = []
+    stations: list[Timeline] = []
     for timeline in timelines:
-        if timeline.start_ns is None or timeline.simulated is None:
+        if timeline.role == "station":
+            stations.append(timeline)
+        elif timeline.start_ns is None or timeline.simulated is None:
             without_start.append(timeline)
         else:
             groups.setdefault(GROUPS[timeline.simulated], []).append(timeline)
@@ -40,11 +44,16 @@ def metrics_report(timelines: Sequence[Timeline], rules: Rules, options: Options
             name: group_metrics([session_facts(t, rules) for t in members], options, rules)
             for name, members in sorted(groups.items())
         },
-        "sessions_without_session_start": sorted(
-            ({"robot_id": t.robot_id, "session_id": t.session_id} for t in without_start),
-            key=lambda item: (item["robot_id"], item["session_id"]),
-        ),
+        "sessions_without_session_start": _keys(without_start),
+        "station_sessions": _keys(stations),
     }
+
+
+def _keys(timelines: Sequence[Timeline]) -> list[dict[str, str]]:
+    return sorted(
+        ({"robot_id": t.robot_id, "session_id": t.session_id} for t in timelines),
+        key=lambda item: (item["robot_id"], item["session_id"]),
+    )
 
 
 def clean(value: Any) -> Any:

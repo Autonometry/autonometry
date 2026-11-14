@@ -843,6 +843,7 @@
           "hint_ttl_s": 60.0,
           "idle_threshold_s": 30.0,
           "max_commit_delay_s": 3600.0,
+          "react_s": 0.5,
           "simultaneity_window_s": 0.5,
           "takeover_window_s": 60.0,
           "unknown_share_max": 0.05
@@ -1518,6 +1519,7 @@
           "hint_ttl_s": 60.0,
           "idle_threshold_s": 30.0,
           "max_commit_delay_s": 3600.0,
+          "react_s": 0.5,
           "simultaneity_window_s": 0.5,
           "takeover_window_s": 60.0,
           "unknown_share_max": 0.05
@@ -1540,5 +1542,6 @@
   },
   "sessions_left_out": [],
   "sessions_without_session_start": [],
-  "spec_version": "0.3"
+  "spec_version": "0.3",
+  "station_sessions": []
 }

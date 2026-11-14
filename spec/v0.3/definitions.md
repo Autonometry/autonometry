@@ -45,6 +45,7 @@ Resolves the cases that the TurtleBot 4 and Unitree G1 research found uncovered 
 32. Distance at an instant is the latest `distance_m` at or before it, and 0 before the first sample (Section 8).
 33. New Section 11, the report: provenance, trust, session census, exclusions, metrics per group, the statements printed beside them, and invariants (Section 11).
 34. Outside an open task, a scope that no source commands keeps its last controller's state until it is `idle`; `unknown` is for lost input, not for a robot seen standing still (Section 6.14).
+35. New Section 12, witnesses (trust level L3): a teleoperation station keeps its own sealed log (`session_start.role` `station`, `station_id`); a reconciler compares it with the robot's log within a clock tolerance tau that uses the new parameter `react_s`, and a robot session reaches L3 when the two agree; the report shows L3 and the witnesses invariant (Sections 8, 9, 11, 12).
 
 ## Changes in v0.2 (2026-10-31)
 
@@ -248,7 +249,7 @@ The log is JSON Lines (one JSON object per line) validated against `event.schema
 
 | `type` | Required fields beyond the common ones | Purpose |
 |---|---|---|
-| `session_start` | `scopes`, `initial_states`, `heartbeat_interval_s`, `hint_policy`, `task_registry_hash`, `plan_hash`, `simulated`; optional `scope_weights`, `device_registry_hash`, `unobserved` | Opens a session; declares scopes and parameters. |
+| `session_start` | `scopes`, `initial_states`, `heartbeat_interval_s`, `hint_policy`, `task_registry_hash`, `plan_hash`, `simulated`; optional `scope_weights`, `device_registry_hash`, `unobserved`, `role` (`robot` or `station`, default `robot`), `station_id` (required for a station) | Opens a session; declares scopes and parameters, and whether the log is a robot's or a teleoperation station's (Section 12). |
 | `session_end` | — | Closes a session. |
 | `transition` | `scope`, `state`; `reason`/`actor_id` per Section 3; optional `plan_item_id`, `related_seq`, `device_id` | State change. |
 | `approval` | `scope`, `actor_id`, `reason`; optional `dwell_s`, `device_id` | Discrete human decision (6.1). |
@@ -261,7 +262,7 @@ The log is JSON Lines (one JSON object per line) validated against `event.schema
 | `support_start` | optional `scope`, `device_id` | Physical support begins (6.15). |
 | `support_end` | optional `scope`, `device_id` | Physical support ends. |
 
-Common fields on every event: `robot_id`, `session_id`, `task_id` (nullable), `seq`, `ts`, `type`; optional `distance_m` (cumulative metres since `session_start`, non-decreasing), `prev_hash`, `hash`. Distance at an instant is the latest `distance_m` at or before it, and 0 before the first sample. `hash` is the lower-case hex SHA-256 of the event serialised with the RFC 8785 JSON Canonicalization Scheme (https://www.rfc-editor.org/rfc/rfc8785), without its own `hash` field and including `prev_hash`. `prev_hash` is the previous event's `hash`; for the first event of a session it is the genesis hash SHA-256 of the UTF-8 string `autonometry/chain-v1|<robot_id>|<session_id>` (the prefix names the hashing scheme, not the spec version, so it changes only if the hashing itself changes). `prev_hash` may be null only in unsealed (trust level L1) logs; a verifier asked for L2 or above MUST fail when any event lacks `hash` or `prev_hash`. Section 10 specifies sealing and trust levels L1 and L2; L3 and L4 follow in later versions.
+Common fields on every event: `robot_id`, `session_id`, `task_id` (nullable), `seq`, `ts`, `type`; optional `distance_m` (cumulative metres since `session_start`, non-decreasing), `prev_hash`, `hash`. Distance at an instant is the latest `distance_m` at or before it, and 0 before the first sample. `hash` is the lower-case hex SHA-256 of the event serialised with the RFC 8785 JSON Canonicalization Scheme (https://www.rfc-editor.org/rfc/rfc8785), without its own `hash` field and including `prev_hash`. `prev_hash` is the previous event's `hash`; for the first event of a session it is the genesis hash SHA-256 of the UTF-8 string `autonometry/chain-v1|<robot_id>|<session_id>` (the prefix names the hashing scheme, not the spec version, so it changes only if the hashing itself changes). `prev_hash` may be null only in unsealed (trust level L1) logs; a verifier asked for L2 or above MUST fail when any event lacks `hash` or `prev_hash`. Section 10 specifies sealing and trust levels L1 and L2, Section 12 trust level L3; L4 follows in a later version.
 
 **Identifiers.** `robot_id`, `session_id`, `task_id`, `task_definition_id`, `actor_id`, `device_id` and `plan_item_id` are 1 to 128 ASCII letters, digits, `.`, `_`, `:` or `-`, starting with a letter or digit. Scope names are 1 to 64 ASCII letters, digits, `_`, `.` or `-`. Identifiers are therefore safe to print in terminals and reports.
 
@@ -293,6 +294,7 @@ Common fields on every event: `robot_id`, `session_id`, `task_id` (nullable), `s
 | `simultaneity_window_s` | 0.5 | 6.6 |
 | `goal_release_s` | 1 | 6.11 |
 | `contention_window_s` | 1 | 6.12 |
+| `react_s` | 0.5 | 12 |
 | `unknown_share_max` | 0.05 | 7 |
 | `checkpoint_every_events` | 1000 | 10.3 |
 | `checkpoint_every_s` | 600 | 10.3 |
@@ -345,11 +347,11 @@ A report turns one or more logs into a document a buyer, insurer or auditor can 
 
 **11.1 Provenance.** The spec version; the software name and version; `generated_at` (RFC 3339 UTC); the robots; the period, from the first to the last observed instant; the counts of sessions, robots, UTC calendar days with observed time, and tasks; the registry hashes the sessions declare (`device_registry_hash`, `task_registry_hash`, `plan_hash`); the SHA-256 of every input file (logs, checkpoint and anchor files, registries, trusted keys, trusted TSA roots and any other file read); and every parameter of Section 9 and the statistics options (confidence level, resampling count and seed, cluster choice, drift bin).
 
-**11.2 Trust.** Each session's status (Section 10.6) and its level: L2 only for a `verified` session, else L1; with its evidence and gap codes. The rejected lines and file problems of every file read. The report's level is the lowest of its sessions'. The report is `verified` only when every session is `verified` and there are no rejected lines and no file problems; it is `failed` when any session is `failed`, and the report MUST then say `failed` at the top. A failed session stays in the metrics: leaving it out would reward corrupting a bad session. The report MUST say so when no trusted key or no trusted TSA root was given. L3 is shown as not available until a later version specifies it.
+**11.2 Trust.** Each session's status (Section 10.6) and its level: L3 when Section 12.6 says so for the station logs given, else L2 for a `verified` session, else L1; with its evidence and gap codes. The rejected lines and file problems of every file read. The report's level is the lowest of its robot sessions'. Station sessions given as witnesses are listed with their status and count like the robot's for the report's status. The report is `verified` only when every session is `verified` and there are no rejected lines and no file problems; it is `failed` when any session is `failed`, and the report MUST then say `failed` at the top. A failed session stays in the metrics: leaving it out would reward corrupting a bad session. The report MUST say so when no trusted key or no trusted TSA root was given. With station logs, the report has a Witness section: per robot session the five times of Section 12.4 with the tolerated and held parts, the shares, the range of tau, the unmatched station episodes, the upper-bound intervention count and the reasons a session is not L3; and the statement of Section 12.7. Without station logs, L3 is shown as not available.
 
 **11.3 Session census.** For the session ids of the recorder's form, `<counter>-<YYYYMMDD>T<hhmmss>Z-<4 lower-case hex digits>` with a counter of 6 to 16 digits, the report lists for each robot the counters missing between its lowest and its highest present counter. Sessions with ids of any other form are listed as not checked.
 
-**11.4 Exclusions.** Every session left out of the metrics, with the reason: a registry that does not match its hash (Section 8, Registries), no `session_start` (no observed time and no group), or a session named by a checkpoint or anchor but absent from the logs.
+**11.4 Exclusions.** Every session left out of the metrics, with the reason: a registry that does not match its hash (Section 8, Registries), no `session_start` (no observed time and no group), a session named by a checkpoint or anchor but absent from the logs, or a station log (`role` `station`, Section 12) given as a robot log.
 
 **11.5 Metrics.** The metrics of Section 7 with their bounds and intervals, one block per group present (real, simulated), never pooled (Section 8).
 
@@ -369,6 +371,46 @@ Both thresholds are in `rules.toml` `[report]` and are printed with the paramete
 - census: no counter missing (11.3); `not_checked` when some session id has another form;
 - tasks: in every session, tasks started = tasks closed + tasks not closed, and every task definition is in the task registry;
 - bounds: `unknown_as_human` ≤ point estimate ≤ `unknown_as_ai` for the time autonomy share, the task autonomy rate and the autonomous success rate;
-- witnesses: not available until trust level L3 is specified.
+- witnesses: `pass` when every robot session a station session witnesses meets conditions 4 and 5 of Section 12.6, `fail` when one does not, `not_available` when no robot session is witnessed.
 
-A report is `complete` when every group present is complete (Section 7) and `incomplete` otherwise, including when no group is present. A report is clean only when it is `verified` at L2, `complete`, has no census gap, leaves no session out and no invariant is `fail`; it then says so at the top, and otherwise lists why not.
+A report is `complete` when every group present is complete (Section 7) and `incomplete` otherwise, including when no group is present. A report is clean only when it is `verified` at L2 or L3, `complete`, has no census gap, leaves no session out and no invariant is `fail`; it then says so at the top, and otherwise lists why not.
+
+## 12. Witnesses (trust level L3)
+
+A sealed log (Section 10) shows that nobody changed the record after it was written; it cannot show that the record was true when it was written. Trust level L3 adds a second, independent witness: the teleoperation station keeps its own sealed log of when a remote operator held control and gave input, and a reconciler compares that log with the robot's. The design follows the trust review (research/methods/trust.md, sections 4 and 7) without its clock-offset estimate, since both sides report their own UTC error.
+
+**12.1 Station log.** A station log is an ordinary sealed session log (Sections 8 and 10), written by the recorder on the teleoperation station under its own key. Its `session_start` has `role` `station`, the station's `station_id`, and as `robot_id` the robot the station can command; a station that can command several robots keeps one log per robot. A robot log has `role` `robot`, the default when the field is absent. `role` and `station_id` appear only on `session_start`. Each robot scope the station witnesses has a station scope of the same name, in one of three states: `human_remote` while the station's operator holds control of the scope and their input is live (outside the input device's dead zone within the last `goal_release_s`, Section 6.11); `unknown` when the station loses its own input (Section 6.14); otherwise `idle`. A station log holds no tasks. The reconciler counts any other state of a station scope as `human_remote`, and such a log gives no L3 (`invalid_station_state`).
+
+**12.2 Pairing.** A station session witnesses the robot sessions of the same `robot_id` whose observed time (Section 2, rule 4) overlaps its own. Several station sessions may witness one robot session (a restarted station, or two stations). On each robot scope at each instant the witnesses together say: *human* when any station session observed then has that scope in `human_remote` (or another state 12.1 counts as `human_remote`); else *unwitnessed* when no station session observed then declares the scope, or one of them has it `unknown`; else *idle*. A station scope that the robot session does not declare is ignored.
+
+**12.3 Tolerance.** Each side's clock is wrong by at most its reported error. The tolerance at an instant t is
+
+    tau(t) = eps_robot(t) + eps_station(t) + react_s
+
+where eps_X(t) is the `clock_max_error_s` of side X's heartbeat nearest to t among those that report one (the earlier of two equally near; the heartbeats of all witnessing station sessions form the station side), and `react_s` (default 0.5 s, Section 9) is the longest delay from a change of control to its event on either side. A side with no heartbeat reporting an error uses `clock_tolerance_s`. An error below `l3_eps_min_without_ptp_s` (1 ms) on a heartbeat whose `clock_source` is not `ptp` is implausible: it counts as `l3_eps_substitute_s` (0.05 s) and the session is flagged `implausible_clock_error`. A session flagged `clock_unsynced` (Section 8) gives no L3.
+
+**12.4 Classification.** On each scope of a robot session, *robot human time* R is time in `human_remote` or `shared` (states after Section 6.10). `human_local` is not in R: remote control that the robot logged as local shows as station-only, which is how L3 exposes it (Section 6.10). *Station human time* H is the witnesses' human time (12.2). A *robot run* is a maximal interval of R and a *station episode* a maximal interval of H. A run or episode is *widened by tau* when each edge e moves outward by tau(e). A station episode *matches* a robot run on the same scope when it overlaps the run widened by tau.
+
+The *base* of the scope is its active time (Section 4) plus its `idle` time during H: live input at the station while the robot logs `idle` is a disagreement, not inactive time. Each instant of the base falls in exactly one cell:
+
+1. *unwitnessed*: the witnesses say unwitnessed (12.2);
+2. *station-only*: in H and outside every robot run widened by tau;
+3. *robot-only*: in R, not in H, outside every station episode widened by tau, in a robot run that no station episode matches;
+4. *both-human*: any other instant in R or H. It includes time in both, time within tau of the other side's human time (*tolerated*: a clock error of at most tau could move it), and robot human time in a matched run after the operator's input ended (*held*: the hold of a scope's last controller, Section 6.14);
+5. *neither*: the rest.
+
+disputed = robot-only + station-only. The times of every scope are added up (scope-seconds), and the shares of 12.6 divide by the summed base. Station human time while the robot logs `unknown` is reported too; it is not disputed, because unknown time already enters the bounds (Section 7).
+
+**12.5 Episodes.** A station episode that overlaps the robot session's base and matches no robot run adds to an upper-bound intervention count: the robot session's whole-robot interventions (Section 6.6) plus its unmatched station episodes, where unmatched episodes on several scopes that start within `simultaneity_window_s` of the first count once. Robot runs that no station episode matches are listed; they are already in the robot's count.
+
+**12.6 Verdict.** A robot session is trust level L3 when all of these hold:
+
+1. it is `verified` (Section 10.6), and at least one station session witnesses it and every one is `verified`;
+2. neither it nor any witnessing station session is flagged `clock_unsynced`;
+3. no witnessing station log gives `invalid_station_state`;
+4. (station-only + unwitnessed) / base ≤ `l3_station_only_max_share` (0.005);
+5. (disputed + unwitnessed) / base ≤ `l3_disputed_max_share` (0.02).
+
+Unwitnessed time counts in 4 and 5 as if it were disputed: a station that cannot see cannot vouch (fail closed). With no base time there is nothing to dispute, and 4 and 5 hold. A robot session that is not L3 keeps its level of Section 11.2, and the discrepancy is published: the five times with the tolerated and held parts, the shares, the range of tau, the unmatched episodes and runs, and every reason, by the codes of `rules.toml` `[trust]` `l3_reasons`.
+
+**12.7 What L3 cannot show.** L3 shows that a remote operator who used the witnessed station appears in the robot's log, to within tau. It says nothing about an operator using a client the station does not witness: another station, a laptop, a direct radio link, a maintenance interface. Only a witness of the control channel itself, the network witness of trust level L4 (research/methods/trust.md section 6), can expose that. Nor does L3 show that the station's logger is honest: the two keys must belong to separate software identities, and the station logger should be installable by the customer or auditor (trust.md 4.1). A report that claims L3 says so.

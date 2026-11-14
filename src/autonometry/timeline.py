@@ -327,12 +327,25 @@ class DwellShift:
 
 
 @dataclass(frozen=True, slots=True)
+class ClockSample:
+    """The clock status one heartbeat reports (definitions.md 8, Time): its time in nanoseconds,
+    ``clock_source`` and ``clock_max_error_s`` (seconds), each ``None`` when not reported."""
+
+    ts_ns: int
+    source: str | None
+    max_error_s: float | None
+
+
+@dataclass(frozen=True, slots=True)
 class Timeline:
     """Everything one session says, exactly (definitions.md 1 to 8). Times in nanoseconds.
 
     ``human_actors`` are the sorted pseudonymous ids of 6.5; ``support`` the sorted, disjoint
     union of support intervals (6.15); ``distance_samples`` every ``(time, distance_m)`` the
     session's events carry, in ``seq`` order (8), and ``distance_m`` the largest of them.
+    ``role`` and ``station_id`` say whose log it is (12.1; ``robot`` without a
+    ``session_start``); ``clock`` holds the clock status of every heartbeat inside the session
+    window, in ``seq`` order (8, 12.3).
     """
 
     robot_id: str
@@ -370,6 +383,9 @@ class Timeline:
     distance_m: float | None
     distance_samples: tuple[tuple[int, float], ...]
     flags: tuple[Flag, ...]
+    role: str = "robot"
+    station_id: str | None = None
+    clock: tuple[ClockSample, ...] = ()
 
     @property
     def observed_ns(self) -> int:
@@ -1081,6 +1097,7 @@ def build_timeline(
     builder.open_scopes(start, names)
     builder.odometry(start, builder.start_ns)
     last_ns, last_seq = builder.start_ns, start["seq"]
+    clock: list[ClockSample] = []
     for event in [*body, *([] if end is None else [end])]:
         now_ns = max(ts_to_ns(event["ts"]), last_ns)
         lost = event["seq"] > last_seq + 1
@@ -1088,10 +1105,20 @@ def build_timeline(
             builder.gap(last_ns, now_ns, event["seq"], lost)
         if event is not end:
             builder.handle(event, now_ns)
+        if event["type"] == "heartbeat":
+            clock.append(
+                ClockSample(now_ns, event.get("clock_source"), event.get("clock_max_error_s"))
+            )
         builder.odometry(event, now_ns)
         last_ns, last_seq = now_ns, event["seq"]
     builder.finish(last_ns, None if end is None else end["seq"])
-    return _assemble(session, start, end, builder, registries, rules, log_flags)
+    timeline = _assemble(session, start, end, builder, registries, rules, log_flags)
+    return replace(
+        timeline,
+        role=start.get("role", "robot"),
+        station_id=start.get("station_id"),
+        clock=tuple(clock),
+    )
 
 
 # -- assembling ---------------------------------------------------------------------------------
@@ -1672,6 +1699,8 @@ def _timeline_json(t: Timeline) -> dict[str, Any]:
     return {
         "robot_id": t.robot_id,
         "session_id": t.session_id,
+        "role": t.role,
+        "station_id": t.station_id,
         "start": _ts(t.start_ns),
         "end": _ts(t.end_ns),
         "session_start_seq": t.session_start_seq,

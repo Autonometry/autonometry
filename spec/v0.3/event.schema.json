@@ -81,6 +81,8 @@
     "plan_hash":   { "$ref": "#/$defs/sha256hex" },
     "device_registry_hash": { "$ref": "#/$defs/sha256hex", "description": "SHA-256 of the device registry in RFC 8785 canonical form (definitions.md 6.10)." },
     "simulated":   { "type": "boolean", "description": "True for a session run in a simulator (definitions.md 8)." },
+    "role":        { "type": "string", "enum": ["robot", "station"], "description": "Whose log this is: a robot's (default) or a teleoperation station's (definitions.md 12.1). session_start only." },
+    "station_id":  { "$ref": "#/$defs/id", "type": "string", "description": "The teleoperation station that writes a station log (definitions.md 12.1). session_start only." },
     "unobserved":  {
       "type": "array",
       "uniqueItems": true,
@@ -100,6 +102,15 @@
   "patternProperties": { "^x_[a-z0-9_]+$": {} },
   "additionalProperties": false,
   "allOf": [
+    {
+      "if": { "anyOf": [ { "required": ["role"] }, { "required": ["station_id"] } ] },
+      "then": { "properties": { "type": { "const": "session_start" } } }
+    },
+    {
+      "if": { "properties": { "role": { "const": "station" } }, "required": ["role"] },
+      "then": { "required": ["station_id"] },
+      "else": { "not": { "required": ["station_id"] } }
+    },
     {
       "if": { "properties": { "type": { "const": "session_start" } } },
       "then": { "required": ["scopes", "initial_states", "heartbeat_interval_s", "hint_policy", "task_registry_hash", "plan_hash", "simulated"] }
@@ -218,6 +229,15 @@
     {
       "robot_id": "g1_03", "session_id": "s014", "task_id": null, "seq": 2, "ts": "2026-11-12T08:00:01.500Z",
       "type": "support_start", "device_id": "gantry_hoist"
+    },
+    {
+      "robot_id": "r01", "session_id": "st001", "task_id": null, "seq": 0, "ts": "2026-10-30T08:59:50.000Z",
+      "type": "session_start", "role": "station", "station_id": "teleop_pc_1",
+      "scopes": ["whole_robot"], "initial_states": {"whole_robot": "idle"},
+      "heartbeat_interval_s": 1.0, "hint_policy": "hint_as_shared",
+      "task_registry_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "plan_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "simulated": false
     }
   ]
 }

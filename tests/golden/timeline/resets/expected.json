@@ -56,6 +56,7 @@
         "unplanned_s": 15.0
       },
       "robot_id": "r01",
+      "role": "robot",
       "safety_stops": {
         "automatic": 0,
         "human_triggered": 0,
@@ -75,6 +76,7 @@
       "session_start_seq": 0,
       "simulated": false,
       "start": "2026-11-12T08:00:00.000000000Z",
+      "station_id": null,
       "supervision": {
         "active_s_by_level": {
           "none": 45.0

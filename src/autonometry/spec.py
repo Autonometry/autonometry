@@ -29,7 +29,7 @@ from pydantic import (
     WrapSerializer,
 )
 
-from autonometry.events import EvidenceCode, FileCode, GapCode
+from autonometry.events import EvidenceCode, FileCode, GapCode, WitnessFlag, WitnessReason
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +119,8 @@ class GapRules(_Frozen):
 
 
 class Params(_Frozen):
-    """Parameter defaults, seconds except ``unknown_share_max`` (definitions.md 9, 6.11, 6.12)."""
+    """Parameter defaults, seconds except ``unknown_share_max`` (definitions.md 9, 6.11, 6.12,
+    12.3)."""
 
     idle_threshold_s: float
     gap_tolerance_s: float
@@ -135,6 +136,7 @@ class Params(_Frozen):
     goal_release_s: float
     contention_window_s: float
     unknown_share_max: float
+    react_s: float
 
 
 class FlagRules(_Frozen):
@@ -153,12 +155,18 @@ class ErrorRules(_Frozen):
 
 
 class TrustRules(_Frozen):
-    """Trust thresholds (definitions.md 8)."""
+    """Trust thresholds (definitions.md 8, 12): the shares of 12.6, the implausible clock error
+    of 12.3 and its substitute (seconds), and the codes of the witness reconciler."""
 
     reconstructed_events_max_level: int
     l3_station_only_max_share: float
     l3_disputed_max_share: float
-    default_tau_s: float
+    l3_eps_min_without_ptp_s: float
+    l3_eps_substitute_s: float
+    l3_reasons: tuple[WitnessReason, ...]
+    l3_flags: tuple[WitnessFlag, ...]
+    l3_robot_human_states: tuple[str, ...]
+    l3_station_states: tuple[str, ...]
 
 
 class ReportRules(_Frozen):
@@ -376,6 +384,8 @@ def _referenced_states(rules: Rules) -> dict[str, tuple[str, ...]]:
         "holds.idle_in_open_task_becomes": (rules.holds.idle_in_open_task_becomes,),
         "device_location.undeclared_device_state": (rules.device_location.undeclared_device_state,),
         "reasons.required_for_states": rules.reasons.required_for_states,
+        "trust.l3_robot_human_states": rules.trust.l3_robot_human_states,
+        "trust.l3_station_states": rules.trust.l3_station_states,
     }
 
 
@@ -416,6 +426,8 @@ def find_inconsistencies(version: str, schema: dict[str, Any], rules: Rules) -> 
         "evidence": rules.sealing.evidence_codes,
         "gap": rules.sealing.gap_codes,
         "file": rules.sealing.file_codes,
+        "witness reason": rules.trust.l3_reasons,
+        "witness flag": rules.trust.l3_flags,
     }
     for kind, codes in code_tables.items():
         problems += _duplicates(f"{kind} code", codes)
@@ -443,8 +455,8 @@ def check_consistency(version: str) -> None:
     """Check that rules.toml and the schema of a version agree (definitions.md sections 2, 3, 8).
 
     Rule states equal the schema state enum, rule reasons equal the schema reason enum, every state
-    named in the rules exists, and flag, error, evidence, gap and file codes are each unique and
-    never shared across those five tables.
+    named in the rules exists, and flag, error, evidence, gap, file, witness reason and witness
+    flag codes are each unique and never shared across those seven tables.
 
     Raises:
         SpecConsistencyError: all problems, on one line.
