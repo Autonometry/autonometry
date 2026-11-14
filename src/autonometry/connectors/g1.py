@@ -210,6 +210,8 @@ MAX_PARAMETER_CHARS: Final = 65536
 #: Most writers, goal spans and pending requests remembered; most writers on a note.
 MAX_WRITERS: Final = 1024
 MAX_PENDING: Final = 64
+#: Most goal spans kept, one per source (notes section 6).
+MAX_SPANS: Final = 1024
 MAX_NOTED_WRITERS: Final = 32
 _NEUTRAL: Final = 1e-6
 _NON_CONTROL: Final = frozenset({"unknown", "idle", "safety_stop"})
@@ -711,11 +713,13 @@ class _Preset:
 
 @dataclass(frozen=True, slots=True)
 class _Pending:
-    """A mode request waiting for its response: the mode version it made and the flags before."""
+    """A mode request waiting for its response: the mode version it made, and the flags and the
+    emergency stop before it."""
 
     version: int
     released: bool
     user_control: bool
+    stop: "_Stop | None" = None
 
 
 def host_pseudonym(host: str | None) -> str | None:
@@ -950,8 +954,13 @@ class G1Engine:
             return
         writer = self._writer(observation.key, topic)
         writer.last_t = t if writer.last_t is None else max(writer.last_t, t)
-        if observation.weight is not None:
-            weight = observation.weight
+        weight = observation.weight
+        if topic in (ARM_SDK, HAND_SDK):
+            # On a blend topic no weight means it could not be read: the open case counts it as
+            # 1, never as the writer's previous weight (a non-finite one would hide a person).
+            ok = weight is not None and math.isfinite(weight)
+            writer.weight = min(max(weight, 0.0), 1.0) if ok and weight is not None else None
+        elif weight is not None:
             writer.weight = min(max(weight, 0.0), 1.0) if math.isfinite(weight) else None
         if topic in (LOWCMD, USER_LOWCMD):
             self._touch((LEGS, UPPER_BODY), t)
@@ -1101,7 +1110,7 @@ class G1Engine:
         elif api == SET_ARM_TASK:
             task = _int(params.get("data"))
             name = "arm_task" if task is None else f"arm_task_{task}"
-            self._start_preset(name, origin, label, t, custom=False)
+            self._start_preset(_script_name(name), origin, label, t, custom=False)
         elif api in (USER_CONTROL, INTERNAL_CONTROL):
             self._mode_request(observation, self._released, api == USER_CONTROL)
 
@@ -1116,7 +1125,7 @@ class G1Engine:
                 self._preset = None
             else:
                 name = "arm_action" if action is None else f"arm_action_{action}"
-                self._start_preset(name, origin, label, t, custom=False)
+                self._start_preset(_script_name(name), origin, label, t, custom=False)
         elif api == ARM_CUSTOM:
             text = params.get("action_name")
             name = f"custom_{text}" if isinstance(text, str) else "custom"
@@ -1131,23 +1140,27 @@ class G1Engine:
         """A mode change by request (notes section 6, released and user control); its response
         is awaited (:meth:`_on_response`)."""
         prior = (self._released, self._user_control)
+        stop = self._stop
         self._mode_change()
         self._released, self._user_control = released, user_control
         key = (observation.service, observation.request_id)
         self._pending.pop(key, None)
         if len(self._pending) >= MAX_PENDING:
             del self._pending[next(iter(self._pending))]
-        self._pending[key] = _Pending(self._mode_version, *prior)
+        self._pending[key] = _Pending(self._mode_version, *prior, stop)
 
     def _on_response(self, observation: Response) -> None:
         """Open case: the notes define released and user control by requests alone. A response
         only ever keeps the robot in them (rule 3), never takes it out: a refused SelectMode or
         SwitchToInternalCtrl leaves it released or in user control, and a CheckMode answer with
-        no mode (S8) marks it released. A refused ReleaseMode is not undone."""
+        no mode (S8) marks it released. A refused ReleaseMode is not undone. A refused request
+        changed no mode, so an emergency stop it ended is back (rule 2): anyone on the network
+        can send a request the robot refuses."""
         pending = self._pending.pop((observation.service, observation.request_id), None)
         if pending is not None and observation.code != 0 and pending.version == self._mode_version:
             self._released = self._released or pending.released
             self._user_control = self._user_control or pending.user_control
+            self._stop = self._stop or pending.stop
         if (
             observation.service == "motion_switcher"
             and observation.api_id == CHECK_MODE
@@ -1188,6 +1201,9 @@ class G1Engine:
             until = max(span.until, release_end)
         else:
             until = release_end
+        if origin.key not in self._spans and len(self._spans) >= MAX_SPANS:
+            # Every source on the network can open a span; drop the one that ends first.
+            del self._spans[min(self._spans, key=lambda k: self._spans[k].end())]
         self._spans[origin.key] = _Span(origin, label, t, until)
 
     def _neutral(self, origin: _Origin, t: float) -> None:
