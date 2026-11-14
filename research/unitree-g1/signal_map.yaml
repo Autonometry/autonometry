@@ -1,0 +1,231 @@
+platform: Unitree G1 humanoid (EDU), 29-DoF body, optional Dex3-1 hands
+software_version: unitree_sdk2 aaf69cb56c9d (bundles Cyclone DDS 0.10.2); unitree_sdk2_python 814556d15970; xr_teleoperate 817fb00c63cd; unitree_IL_lerobot 41c2805742de; lerobot v0.6.1 (7e241bd630a3); Cyclone DDS 0.10.2 (9995905bce6c)
+hardware_repo_commit: none (Unitree publishes no hardware repository)
+access_date: '2026-11-14'
+source_tags:
+  CODE: read in the pinned repository at the line given
+  MIRROR: an official page of support.unitree.com (a JavaScript site the research tools could not render), read through the third-party markdown copy at unidocs.2vzdtw8.duckdns.org; the official URL is cited
+  TEST: checked by running code on 2026-11-14 (research/unitree-g1/dds_compat)
+meaning_vocabulary:
+- ai
+- human_local
+- human_remote
+- shared
+- scripted
+- safety_stop
+- idle
+- unknown
+signals:
+- id: S1
+  name: built-in controller state (rt/sportmodestate)
+  source: DDS topic rt/sportmodestate, published by Unitree's motion control program (ai_sport) on PC1; firmware 1.5.1 or later
+  message_type: unitree_hg::msg::dds_::SportModeState_ {fsm_id uint32, fsm_mode uint32, task_id uint32, task_time float32}
+  rate: not documented
+  meaning: |-
+    fsm_id 0: zero torque, no balance control
+    fsm_id 1: damping, no balance control; "can always be activated" (the safe fallback)
+    fsm_id 2: position-control squat, no balance control
+    fsm_id 3: position-control sit, no balance control
+    fsm_id 4: lock standing, no balance control
+    fsm_id 702: lie down / stand up
+    fsm_id 706: balance squat / squat-stand
+    fsm_id 500: walk (built-in AI locomotion)
+    fsm_id 501: walk with 3-DoF waist
+    fsm_id 801: run (802 for the 29-DoF ai_sport from version 8.6.x.x)
+    fsm_mode: 0 static (mode switches allowed), 1 dynamic, moving
+    task_id / task_time: the arm task running (wave, handshake) and its time in seconds
+  reliability: high for the controller's own state; whether it is still published in debug mode is not documented
+  observe_passively: subscribe (best-effort reader); never call GetFsmId, which is an RPC request to the robot
+  how_it_could_be_faked: any DDS participant can publish on rt/sportmodestate; accept it only from the declared built-in controller (host and process)
+  source_url:
+  - https://support.unitree.com/home/en/G1_developer/sport_services_interface (MIRROR)
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/include/unitree/idl/hg/SportModeState_.hpp#L23-L26
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/include/unitree/robot/g1/arm/g1_arm_action_error.hpp#L12-L15
+- id: S2
+  name: handheld remote (rt/lowstate wireless_remote)
+  source: field wireless_remote[40] of rt/lowstate, published by the robot; the remote's raw data
+  message_type: unitree_hg::msg::dds_::LowState_.wireless_remote uint8[40] = head[2], btn uint16 bits (byte 0 R1 L1 start select R2 L2 F1 F2, byte 1 A B X Y up right down left), float32 lx rx ry L2 ly in [-1, 1], idle[16]
+  rate: every rt/lowstate sample (LowState_.tick counts milliseconds)
+  meaning: |-
+    sticks outside the dead zone (Unitree's example uses 0.01): continuous goal input to the built-in controller (definitions.md 6.11)
+    L2 + B: damping; Unitree calls it the emergency stop, active in debug mode too
+    L2 + Y: zero torque
+    L2 + R2: debug mode (the built-in program stops commanding; the robot must hang on a rack)
+    L2 + UP / LEFT / X / A: lock stand / sit / lie-stand / squat (L2 + A also confirms debug mode at a diagnostic pose)
+    R1 + X, R1 + Y, R2 + A: walking, walking with 3-DoF waist, running
+    START double click: standing or keep stepping; L1 / L2 double click: speed modes; R1 + D-pad: offset compensation
+    SELECT + Y / A / X: wave hand / handshake / turn around and wave (arm presets)
+  reliability: medium; some combinations must be held about 2 s while standing; the page does not say what the bytes hold when the remote is off
+  observe_passively: subscribe to rt/lowstate with keep-last 1 and read it about 20 times a second
+  how_it_could_be_faked: a program publishing its own rt/lowstate; accept wireless_remote only from the robot's declared lowstate publisher
+  source_url:
+  - https://support.unitree.com/home/en/G1_developer/remote_control (MIRROR)
+  - https://support.unitree.com/home/en/G1_developer/remote_control_data (MIRROR)
+  - https://support.unitree.com/home/en/G1_developer/quick_start (MIRROR)
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/include/unitree/idl/hg/LowState_.hpp#L34
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/example/g1/low_level/gamepad.hpp#L10-L51
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/example/g1/low_level/gamepad.hpp#L109
+- id: S3
+  name: low-level joint commands (rt/lowcmd)
+  source: DDS topic rt/lowcmd; written by user programs, obeyed when the built-in program is released (debug mode)
+  message_type: unitree_hg::msg::dds_::LowCmd_ {mode_pr uint8, mode_machine uint8, motor_cmd MotorCmd_[35], reserve uint32[4], crc uint32}; MotorCmd_ {mode uint8, q, dq, tau, kp, kd float32, reserve uint32}
+  rate: set by the writer (xr_teleoperate 250 Hz)
+  meaning: |-
+    one active writer: the scope follows that writer's declared kind (teleoperation human, policy ai, replay script)
+    several writers within contention_window_s: shared / ai / scripted by definitions.md 6.12
+    no writer while released: hand-over gap (6.14)
+  reliability: high for who writes; the payload does not say whether a person or a policy produced it
+  observe_passively: subscribe with keep-last history and map each sample's publication handle to its writer (TEST)
+  how_it_could_be_faked: a relay (for example LeRobot's run_g1_server.py) writes for every client it serves; a policy can run under a script name the registry gives a person
+  source_url:
+  - https://support.unitree.com/home/en/G1_developer/basic_services_interface (MIRROR)
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/include/unitree/idl/hg/LowCmd_.hpp#L26-L30
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/example/g1/low_level/g1_ankle_swing_example.cpp#L183-L190
+  - https://github.com/unitreerobotics/xr_teleoperate/blob/817fb00c63cde15e5f24a0f8fa08e1e33ed89d3b/teleop/robot_control/robot_arm.py#L19-L21
+  - https://github.com/unitreerobotics/unitree_IL_lerobot/blob/41c2805742de879ddab2d8d6beaeaf215f876395/unitree_lerobot/eval_robot/robot_control/robot_arm.py#L19-L20
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/robots/unitree_g1/run_g1_server.py#L18-L22
+- id: S4
+  name: upper-body blend (rt/arm_sdk)
+  source: DDS topic rt/arm_sdk, blended into the built-in controller while it walks or stands
+  message_type: unitree_hg::msg::dds_::LowCmd_; the weight is motor_cmd[29].q (kNotUsedJoint) in [0, 1]
+  rate: set by the writer
+  meaning: |-
+    joints: 14 arm joints and the 3 waist joints
+    weight 0: the built-in controller moves the upper body
+    weight 1: the writer holds the upper body
+    weight between: both are blended (definitions.md 6.12)
+    writers: xr_teleoperate --motion (a person), unitree_IL_lerobot eval with motion_mode (a policy), Unitree's arm action service (presets are built on rt/arm_sdk; error 7400 "rt/armsdk is occupied")
+  reliability: high for writer and weight (TEST read weights 0.25, 0.5 and 1.0 from two writers)
+  observe_passively: subscribe with keep-last history; read the weight of each writer's latest sample
+  how_it_could_be_faked: as S3
+  source_url:
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/example/g1/high_level/g1_arm7_sdk_dds_example.cpp#L11
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/example/g1/high_level/g1_arm7_sdk_dds_example.cpp#L92-L102
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/example/g1/high_level/g1_arm7_sdk_dds_example.cpp#L148-L150
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/include/unitree/robot/g1/arm/g1_arm_action_client.hpp#L10-L24
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/include/unitree/robot/g1/arm/g1_arm_action_error.hpp#L9
+  - https://github.com/unitreerobotics/xr_teleoperate/blob/817fb00c63cde15e5f24a0f8fa08e1e33ed89d3b/teleop/robot_control/robot_arm.py#L97-L100
+- id: S5
+  name: user control (rt/user_lowcmd)
+  source: DDS topic rt/user_lowcmd, obeyed between the loco requests SwitchToUserCtrl (api 7110) and SwitchToInternalCtrl (api 7111)
+  message_type: unitree_hg::msg::dds_::LowCmd_
+  rate: set by the writer
+  meaning: as S3, for the joints the writer commands (legs and arms in Unitree's example)
+  reliability: medium; documented only by Unitree's example
+  observe_passively: subscribe; watch rt/api/sport/request for 7110 and 7111
+  how_it_could_be_faked: as S3
+  source_url:
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/example/g1/high_level/g1_userctrl_dds_example.cpp#L13
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/example/g1/high_level/g1_userctrl_dds_example.cpp#L138
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/example/g1/high_level/g1_userctrl_dds_example.cpp#L243
+- id: S6
+  name: hand commands (rt/dex3/*/cmd and other hands)
+  source: DDS topics rt/dex3/left/cmd and rt/dex3/right/cmd (Dex3-1, unitree_hg HandCmd_); rt/inspire/cmd and rt/inspire_hand/ctrl/l|r (Inspire); rt/brainco/left|right/cmd (BrainCo); rt/dex1/left|right/cmd (grippers); rt/hand_sdk (a weighted blend into ai_sport, "Motor_real = weight * Hand_SDK + (1 - weight) * G1_Cmd")
+  message_type: per hand; only the writer and, for rt/hand_sdk, the weight are needed
+  rate: set by the writer
+  meaning: the hands scope follows its active writers, as S3
+  reliability: high for who writes
+  observe_passively: subscribe; confirm the type names with discovery (S10) before decoding
+  how_it_could_be_faked: as S3
+  source_url:
+  - https://github.com/unitreerobotics/xr_teleoperate/blob/817fb00c63cde15e5f24a0f8fa08e1e33ed89d3b/teleop/robot_control/robot_hand_unitree.py#L28-L31
+  - https://github.com/unitreerobotics/xr_teleoperate/blob/817fb00c63cde15e5f24a0f8fa08e1e33ed89d3b/teleop/robot_control/robot_hand_inspire.py#L15-L16
+  - https://github.com/unitreerobotics/xr_teleoperate/blob/817fb00c63cde15e5f24a0f8fa08e1e33ed89d3b/teleop/robot_control/robot_hand_inspire.py#L161-L164
+  - https://github.com/unitreerobotics/xr_teleoperate/blob/817fb00c63cde15e5f24a0f8fa08e1e33ed89d3b/teleop/robot_control/robot_hand_brainco.py#L16-L19
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/example/g1/high_level/g1_hand_sdk_example.cpp#L1-L8
+- id: S7
+  name: locomotion requests (rt/api/sport/request)
+  source: Unitree RPC; a client publishes unitree_api Request_ on rt/api/<service>/request and the service answers on rt/api/<service>/response; the G1 loco service is named "sport"
+  message_type: unitree_api::msg::dds_::Request_ {header {identity {id int64, api_id int64}, lease {id int64}, policy {priority int32, noreply bool}}, parameter string (JSON), binary uint8[]}
+  rate: on demand (xr_teleoperate sends Move about 30 times a second)
+  meaning: |-
+    7101 SetFsmId {"data": id}: Damp = 1, ZeroTorque = 0, Start = 500, Sit = 3, squat-stand = 706, lie-stand = 702
+    7105 SetVelocity {"velocity": [vx, vy, omega], "duration": s}: Move lasts 1 s, or 864000 s when continuous; StopMove sends zeros
+    7106 SetArmTask {"data": n}: wave hand 0 or 1, handshake 2 or 3
+    7102 / 7104 / 7107: balance mode, stand height, speed mode
+    7110 / 7111: switch to user control (S5) / back to internal control
+    7001-7006: queries (no effect)
+    xr_teleoperate in controller mode: Move from the thumbsticks times 0.3 (a person); Damp when both thumbsticks are pressed ("soft emergency stop")
+  reliability: high for what was asked and by whom; a request may be refused, its response carries the status code
+  observe_passively: subscribe to rt/api/sport/request and rt/api/sport/response; never send a request
+  how_it_could_be_faked: requests from the robot's own WebRTC module (the app) or voice service come from participants the registry must declare; undeclared ones count as remote humans
+  source_url:
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/include/unitree/robot/g1/loco/g1_loco_api.hpp#L11-L33
+  - https://github.com/unitreerobotics/unitree_sdk2_python/blob/814556d15970dd2ecf1c9984e845ca02ab07e206/unitree_sdk2py/core/channel_name.py#L14-L19
+  - https://github.com/unitreerobotics/unitree_sdk2_python/blob/814556d15970dd2ecf1c9984e845ca02ab07e206/unitree_sdk2py/g1/loco/g1_loco_client.py#L47-L78
+  - https://github.com/unitreerobotics/unitree_sdk2_python/blob/814556d15970dd2ecf1c9984e845ca02ab07e206/unitree_sdk2py/g1/loco/g1_loco_client.py#L119-L170
+  - https://github.com/unitreerobotics/xr_teleoperate/blob/817fb00c63cde15e5f24a0f8fa08e1e33ed89d3b/teleop/teleop_hand_and_arm.py#L348-L359
+  - https://github.com/unitreerobotics/xr_teleoperate/blob/817fb00c63cde15e5f24a0f8fa08e1e33ed89d3b/teleop/utils/motion_switcher.py#L42-L43
+- id: S8
+  name: built-in program on or off (rt/api/motion_switcher/request)
+  source: Unitree RPC service "motion_switcher"
+  message_type: unitree_api Request_ (as S7)
+  rate: on demand
+  meaning: |-
+    1003 ReleaseMode: the built-in program stops commanding (debug mode); user programs then own rt/lowcmd
+    1002 SelectMode {"name": "ai"}: the built-in program takes over again
+    1001 CheckMode: query; its response carries {"form", "name"}, the current mode, empty name when released
+    1004 / 1005: silent mode
+  reliability: high for requests seen; the remote's L2 + R2 does the same without a request
+  observe_passively: subscribe to request and response; never send
+  how_it_could_be_faked: as S7
+  source_url:
+  - https://github.com/unitreerobotics/unitree_sdk2_python/blob/814556d15970dd2ecf1c9984e845ca02ab07e206/unitree_sdk2py/comm/motion_switcher/motion_switcher_api.py#L4-L20
+  - https://github.com/unitreerobotics/xr_teleoperate/blob/817fb00c63cde15e5f24a0f8fa08e1e33ed89d3b/teleop/utils/motion_switcher.py#L15-L30
+  - https://github.com/unitreerobotics/xr_teleoperate/blob/817fb00c63cde15e5f24a0f8fa08e1e33ed89d3b/teleop/teleop_hand_and_arm.py#L141-L148
+  - https://support.unitree.com/home/en/G1_developer/quick_start (MIRROR)
+- id: S9
+  name: arm presets (rt/api/arm/request and rt/arm/action/state)
+  source: Unitree RPC service "arm" and its state topic rt/arm/action/state
+  message_type: 'requests as S7; the state is JSON text {"holding": bool, "id": n, "name": s} (type not stated in the sources; confirm with discovery)'
+  rate: on demand
+  meaning: |-
+    7106 ExecuteAction {"action_id": n}: a preset gesture; 99 releases; some presets hold the last pose up to 20 s
+    7108 ExecuteCustomAction {"action_name": s}: a taught motion (teach and repeat); state id 100
+    7113 StopCustomAction; 7107 GetActionList (query)
+    presets run only in fsm_id 500, 501 or 801
+  reliability: medium (state topic type unconfirmed)
+  observe_passively: subscribe; never send
+  how_it_could_be_faked: as S7
+  source_url:
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/include/unitree/robot/g1/arm/g1_arm_action_api.hpp#L10-L19
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/include/unitree/robot/g1/arm/g1_arm_action_client.hpp#L38-L76
+- id: S10
+  name: who is on the network (DDS discovery)
+  source: built-in topics DCPSParticipant and DCPSPublication; every Cyclone DDS participant announces properties __Hostname, __Pid and __ProcessName (the program's argv[0] base name, so "python" or "python3" for any Python script)
+  message_type: DcpsParticipant {key, qos.Property}; DcpsPublication {key, participant_key, topic_name, type_name}
+  rate: on change
+  meaning: |-
+    a writer's identity is its participant's host and process; for a Python program on the observer's own computer the script name can be read from the process id
+    each data sample's SampleInfo.publication_handle equals the instance handle of its writer's DCPSPublication sample (TEST)
+  reliability: high for Cyclone participants (Unitree's SDKs and ROS 2 with rmw_cyclonedds); participants of other DDS vendors carry no such properties
+  observe_passively: built-in readers only
+  how_it_could_be_faked: a program can rename itself (argv[0]); host and script names are declared in the registry, not proof of identity
+  source_url:
+  - https://github.com/eclipse-cyclonedds/cyclonedds/blob/9995905bce6c4cf9f740d6438bbf7fcfd1c83dfd/src/core/ddsi/src/q_init.c#L1486-L1503
+  - https://github.com/eclipse-cyclonedds/cyclonedds/blob/9995905bce6c4cf9f740d6438bbf7fcfd1c83dfd/src/ddsrt/src/process/posix/process.c#L43-L50
+  - https://github.com/unitreerobotics/unitree_sdk2_python/blob/814556d15970dd2ecf1c9984e845ca02ab07e206/unitree_sdk2py/core/channel.py#L202-L225
+- id: S11
+  name: Cyclone DDS version on the robot
+  source: unitree_sdk2 bundles Cyclone DDS 0.10.2; unitree_sdk2_python requires cyclonedds==0.10.2
+  message_type: n/a
+  rate: n/a
+  meaning: an observer built on Cyclone DDS 11.1 made a 0.10.2 and a 0.10.5 publisher crash (segmentation fault after "ddsi_xt_type_init_impl with invalid type object") as soon as it subscribed; an observer on 0.10.5 read the same publishers without harm (TEST)
+  reliability: high (repeated twice)
+  observe_passively: the observer must use the Cyclone DDS 0.10 line
+  how_it_could_be_faked: n/a
+  source_url:
+  - https://github.com/unitreerobotics/unitree_sdk2/blob/aaf69cb56c9d5ed63d8b284008ec3a8ab999bec1/thirdparty/include/dds/version.h#L15
+  - https://github.com/unitreerobotics/unitree_sdk2_python/blob/814556d15970dd2ecf1c9984e845ca02ab07e206/setup.py#L17
+- id: S12
+  name: unobservable control paths
+  source: the Unitree app talks to the robot over WebRTC, which "carries the main data flow ... including ... control commands"; the voice service; LeRobot's DDS-to-ZMQ bridge
+  message_type: n/a
+  rate: n/a
+  meaning: commands that never appear on DDS, or appear only as the bridge's writes; motion with no observed source is unknown
+  reliability: n/a
+  observe_passively: none
+  how_it_could_be_faked: this is the gap itself
+  source_url:
+  - https://support.unitree.com/home/en/G1_developer/architecture_description (MIRROR)
+  - https://github.com/huggingface/lerobot/blob/7e241bd630a3719a56157a497ce5d08f244784f1/src/lerobot/robots/unitree_g1/run_g1_server.py#L46-L47

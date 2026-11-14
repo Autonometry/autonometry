@@ -1,0 +1,6 @@
+{
+  "items": [
+    {"plan_item_id": "reset", "kind": "reset", "description": "Put the box back on the table between tasks."},
+    {"plan_item_id": "calibration", "kind": "calibration", "description": "Hang the robot on its rack and run the joint calibration before the session."}
+  ]
+}

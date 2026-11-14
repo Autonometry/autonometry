@@ -1,0 +1,19 @@
+# Recorder config for a Unitree G1 (README, "Unitree G1"). Relative paths are relative to this file.
+# Start the recorder, then the watcher, then the robot's programs:
+#   autonometry record --config recorder.toml &
+#   autonometry g1 watch --config recorder.toml --interface eth0 &
+robot_id = "g1_01"
+data_dir = "run/data"
+socket_path = "run/recorder.sock"
+scopes = ["legs", "upper_body"]       # add "hands" when the robot has hands (notes section 5)
+scope_weights = { legs = 12, upper_body = 17 }   # degrees of freedom (definitions.md 6.6)
+hint_policy = "hint_as_shared"
+simulated = false
+# Unitree's app (WebRTC) and voice service command the robot without anything on DDS, and the
+# robot's own protective stops show only as a passive state with no cause (notes section 9).
+unobserved = ["safety_stops", "human_inputs"]
+clock_source = "ntp"
+key_path = "run/g1_01.key"
+device_registry = "devices.json"
+task_registry = "tasks.json"
+plan = "plan.json"

@@ -1,0 +1,7 @@
+{
+  "tasks": [
+    {"task_definition_id": "g1_pick_place_box", "description": "Pick up the box from the table and place it on the shelf."},
+    {"task_definition_id": "g1_walk_to_station", "description": "Walk to the charging station and stand."}
+  ],
+  "x_note": "The robot program sends task_start and task_end to the recorder through the client library; the G1 watcher only reads them (notes section 8)."
+}

@@ -22,6 +22,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from autonometry import __version__, keys, sealfile, sealing, signednote, tsa
 from autonometry import verify as verify_
+from autonometry.cli_g1 import g1_app
 from autonometry.cli_lerobot import lerobot_app
 from autonometry.events import LogCheck, Session, TrustLevel, TrustStatus, VerifyResult
 from autonometry.fileio import PUBLIC_FILE_MODE, append_durably, atomic_write
@@ -69,6 +70,7 @@ registry_app = typer.Typer(
 )
 app.add_typer(registry_app, name="registry")
 app.add_typer(lerobot_app, name="lerobot")
+app.add_typer(g1_app, name="g1")
 
 _SHOWN_PER_CODE = 20
 _VERBOSE_FORMAT = "%(levelname)s %(name)s: %(message)s"

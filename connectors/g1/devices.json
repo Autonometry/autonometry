@@ -1,0 +1,52 @@
+{
+  "devices": [
+    {
+      "device_id": "g1_builtin",
+      "kind": "ai",
+      "match": {"host": "g1-pc1", "participant": "ai_sport", "topic": "rt/sportmodestate"},
+      "x_note": "Unitree's built-in controller (balance, walking, postures): the writer of rt/sportmodestate. Copy host and participant from autonometry g1 discover; these are placeholders."
+    },
+    {
+      "device_id": "g1_remote",
+      "kind": "human",
+      "location": "local",
+      "actor_id": "op_01",
+      "match": {"host": "g1-pc1", "participant": "hg_lowstate", "topic": "wireless_remote"},
+      "x_note": "The handheld remote: its bytes are read only from the rt/lowstate writer with this host and participant (notes section 4)."
+    },
+    {
+      "device_id": "unitree_presets",
+      "kind": "script",
+      "match": {"topic": "preset"},
+      "x_note": "Unitree's own fixed motions: arm presets, taught motions and postures (definitions.md 6.9, 6.13). Without this device they are counted as human_remote."
+    },
+    {
+      "device_id": "arm_action_service",
+      "kind": "script",
+      "match": {"host": "g1-pc1", "participant": "g1_arm_action", "topic": "rt/arm_sdk"},
+      "x_note": "Unitree's arm action service writing rt/arm_sdk while a preset runs."
+    },
+    {
+      "device_id": "xr_teleop",
+      "kind": "human",
+      "location": "remote",
+      "actor_id": "op_02",
+      "match": {"host": "teleop-pc", "participant": "teleop_hand_and_arm.py"},
+      "x_note": "xr_teleoperate on the operator's computer; declare it local when the operator stands next to the robot."
+    },
+    {
+      "device_id": "g1_policy",
+      "kind": "ai",
+      "match": {"host": "g1-pc2", "participant": "eval_g1.py"},
+      "x_note": "A learned policy (unitree_IL_lerobot's eval_g1.py) on PC2."
+    },
+    {
+      "device_id": "g1_replay",
+      "kind": "script",
+      "match": {"host": "g1-pc2", "participant": "replay_robot.py"},
+      "x_note": "Replay of a recorded episode: scripted (definitions.md 6.9)."
+    }
+  ],
+  "x_robot_model": "Unitree G1 EDU, 29 DoF",
+  "x_note": "Unitree G1 template (README, Unitree G1). Run autonometry g1 discover and copy each match from what it prints: host, participant and topic must equal what the watcher observes."
+}
