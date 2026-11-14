@@ -2141,40 +2141,52 @@
     },
     "sessions": [
       {
+        "end_anchored": true,
         "evidence": [],
         "gaps": [],
+        "last_anchored_ts": "2026-11-10T08:02:30.000000000Z",
         "level": "L2",
         "robot_id": "r01",
         "sealed_through_seq": 15,
         "session_id": "s1",
-        "status": "verified"
+        "status": "verified",
+        "warning": null
       },
       {
+        "end_anchored": true,
         "evidence": [],
         "gaps": [],
+        "last_anchored_ts": "2026-11-11T08:02:10.000000000Z",
         "level": "L2",
         "robot_id": "r01",
         "sealed_through_seq": 10,
         "session_id": "s2",
-        "status": "verified"
+        "status": "verified",
+        "warning": null
       },
       {
+        "end_anchored": true,
         "evidence": [],
         "gaps": [],
+        "last_anchored_ts": "2026-11-12T08:00:50.000000000Z",
         "level": "L2",
         "robot_id": "r01",
         "sealed_through_seq": 5,
         "session_id": "s4",
-        "status": "verified"
+        "status": "verified",
+        "warning": null
       },
       {
+        "end_anchored": true,
         "evidence": [],
         "gaps": [],
+        "last_anchored_ts": "2026-11-12T08:01:30.000000000Z",
         "level": "L2",
         "robot_id": "r02",
         "sealed_through_seq": 13,
         "session_id": "s3",
-        "status": "verified"
+        "status": "verified",
+        "warning": null
       }
     ],
     "stations": null,

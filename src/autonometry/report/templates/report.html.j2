@@ -113,7 +113,7 @@ Trusted verifier keys: {{ r.trust.trusted_keys }}; trusted TSA roots: {{ r.trust
 <tbody>
 {% for s in r.trust.sessions %}
 <tr><td class="id">{{ s.robot_id }}</td><td class="id">{{ s.session_id }}</td><td>{{ s.status }}</td><td>{{ s.level }}</td><td class="n">{{ s.sealed_through_seq if s.sealed_through_seq is not none else "" }}</td>
-<td>{% for i in s.evidence %}<div><span class="fail">evidence {{ i.code }}</span>: {{ i.detail }}</div>{% endfor %}{% for i in s.gaps %}<div>gap {{ i.code }}: {{ i.detail }}</div>{% endfor %}</td></tr>
+<td>{% for i in s.evidence %}<div><span class="fail">evidence {{ i.code }}</span>: {{ i.detail }}</div>{% endfor %}{% for i in s.gaps %}<div>gap {{ i.code }}: {{ i.detail }}</div>{% endfor %}{% if s.warning %}<div><strong>warning</strong>: {{ s.warning }}</div>{% endif %}</td></tr>
 {% endfor %}
 </tbody></table></div>
 {% if r.trust.stations %}
@@ -124,7 +124,7 @@ Trusted verifier keys: {{ r.trust.trusted_keys }}; trusted TSA roots: {{ r.trust
 <tbody>
 {% for s in r.trust.stations.sessions %}
 <tr><td class="id">{{ s.robot_id }}</td><td class="id">{{ s.session_id }}</td><td>{{ s.status }}</td><td class="n">{{ s.sealed_through_seq if s.sealed_through_seq is not none else "" }}</td>
-<td>{% for i in s.evidence %}<div><span class="fail">evidence {{ i.code }}</span>: {{ i.detail }}</div>{% endfor %}{% for i in s.gaps %}<div>gap {{ i.code }}: {{ i.detail }}</div>{% endfor %}</td></tr>
+<td>{% for i in s.evidence %}<div><span class="fail">evidence {{ i.code }}</span>: {{ i.detail }}</div>{% endfor %}{% for i in s.gaps %}<div>gap {{ i.code }}: {{ i.detail }}</div>{% endfor %}{% if s.warning %}<div><strong>warning</strong>: {{ s.warning }}</div>{% endif %}</td></tr>
 {% endfor %}
 </tbody></table></div>
 {% endif %}

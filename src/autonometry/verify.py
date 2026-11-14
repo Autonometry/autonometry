@@ -356,10 +356,31 @@ def _verify_session(
             "no_checkpoint", f"events from seq {events[best_valid]['seq']} on have no checkpoint"
         )
     usable = fully_sealed and not reconstructed
-    status, sealed_through = _status(work, events, usable, max(anchored_sizes, default=0))
+    best_anchored = max(anchored_sizes, default=0)
+    status, sealed_through = _status(work, events, usable, best_anchored)
+    last_anchored_ts, end_anchored = _anchored_end(work, events, fully_sealed, best_anchored)
     return SessionVerdict(
-        robot_id, session_id, status, sealed_through, _issues(work.evidence), _issues(work.gaps)
+        robot_id,
+        session_id,
+        status,
+        sealed_through,
+        _issues(work.evidence),
+        _issues(work.gaps),
+        last_anchored_ts,
+        end_anchored,
     )
+
+
+def _anchored_end(
+    work: _SessionWork, events: tuple[Event, ...], fully_sealed: bool, best_anchored: int
+) -> tuple[str | None, bool]:
+    """The ``ts`` of the last event an anchored checkpoint covers, and whether one covers the
+    session's first ``session_end`` (security review M10, S-14). Nothing counts as anchored in a
+    session that contradicts its seals or is not sealed throughout."""
+    if work.evidence or not fully_sealed or best_anchored == 0:
+        return None, False
+    end = next((i for i, e in enumerate(events) if e["type"] == "session_end"), None)
+    return events[best_anchored - 1]["ts"], end is not None and best_anchored > end
 
 
 def _bounded(
