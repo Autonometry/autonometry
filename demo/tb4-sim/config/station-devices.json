@@ -1,0 +1,23 @@
+{
+  "x_comment": "Device registry of the teleoperation station on the operator's PC (definitions.md 6.10, 12.1): only the inputs this station witnesses. Matched by the node that publishes the command.",
+  "devices": [
+    {
+      "device_id": "teleop_kbd_pc_1",
+      "kind": "human",
+      "location": "remote",
+      "match": { "node": "/teleop_twist_keyboard" }
+    },
+    {
+      "device_id": "joystick_pc_1",
+      "kind": "human",
+      "location": "remote",
+      "match": { "node": "/joy_node" }
+    },
+    {
+      "device_id": "teleop_joy_pc_1",
+      "kind": "human",
+      "location": "remote",
+      "match": { "node": "/teleop_twist_joy_pc_1" }
+    }
+  ]
+}

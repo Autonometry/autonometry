@@ -104,6 +104,8 @@ __all__ = [
     "Tb4Engine",
     "WheelStatus",
     "devices_from_registry",
+    "neutral",
+    "relays",
     "wire_event",
 ]
 
@@ -591,16 +593,17 @@ def _duplicated(sources: Iterable[Source]) -> frozenset[Source]:
     return frozenset(twice)
 
 
-def _neutral(*values: float) -> bool:
+def neutral(*values: float) -> bool:
+    """True when every velocity is zero to within 1e-6 (a neutral command, 6.11)."""
     return all(abs(v) < _NEUTRAL for v in values)
 
 
-def _relays(command: Sequence[float], smoothed: Sequence[float]) -> bool:
+def relays(command: Sequence[float], smoothed: Sequence[float]) -> bool:
     """True when ``command`` is ``smoothed`` scaled by a factor in [0, 1], as the collision
     monitor's slowdown and stop produce (the notes' topic-level rule, section A)."""
     norm = math.fsum(s * s for s in smoothed)
     if norm < _NEUTRAL * _NEUTRAL:
-        return _neutral(*command)
+        return neutral(*command)
     factor = math.fsum(c * s for c, s in zip(command, smoothed, strict=True)) / norm
     if not -_SCALE_SLACK <= factor <= 1 + _SCALE_SLACK:
         return False
@@ -807,7 +810,7 @@ class Tb4Engine:
         return (
             smoothed is not None
             and abs(observation.t - smoothed[0]) <= self._s.smoothed_match_s
-            and _relays(command, smoothed[1])
+            and relays(command, smoothed[1])
         )
 
     def _other(self, observation: CmdVel) -> Source | None:
@@ -864,7 +867,7 @@ class Tb4Engine:
             if self._person_routine(observation.t):
                 # A behaviour a person started drives through the chain: its commands are the
                 # routine's, already counted as the person's (6.13).
-                if not _neutral(observation.linear_x, observation.linear_y, observation.angular_z):
+                if not neutral(observation.linear_x, observation.linear_y, observation.angular_z):
                     self._touch(observation.t)
                     self._moved(observation.t)
                 return
@@ -879,7 +882,7 @@ class Tb4Engine:
             commander = self._commanders[key] = _Commander(device, source, inferred)
         commander.device, commander.source, commander.inferred = device, source, inferred
         commander.via_chain = via_chain
-        if _neutral(observation.linear_x, observation.linear_y, observation.angular_z):
+        if neutral(observation.linear_x, observation.linear_y, observation.angular_z):
             commander.ended = True
             return
         commander.ended = False

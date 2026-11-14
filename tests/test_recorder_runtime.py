@@ -146,6 +146,30 @@ def test_a_fresh_session_is_sealed_and_verifies__defs_8_10_6(
     assert_all_verified(setup, data_dir)
 
 
+def test_a_station_recorder_writes_a_station_log__defs_12_1(tmp_path: Path) -> None:
+    station = with_data_dir(
+        make_prepared(tmp_path / "etc", role="station", station_id="pc_1"), tmp_path / "data"
+    )
+    clock = FakeClock()
+    recorder = make_recorder(station, clock)
+    recorder.start()
+    operator = Client("station")
+    live = {"reason": "human_initiated", "actor_id": "op_17", "device_id": "station_remote"}
+    for state in ("idle", "human_remote", "idle"):
+        datagram = operator.state("base", state, **(live if state == "human_remote" else {}))
+        drive(recorder, clock, iter([("datagram", datagram), ("advance", 1.0)]))
+    recorder.stop()
+    (folder,) = session_folders(tmp_path / "data")
+    events = events_of(folder)
+    assert (events[0]["role"], events[0]["station_id"], events[0]["robot_id"]) == (
+        "station",
+        "pc_1",
+        "r1",
+    )
+    assert [t["state"] for t in transitions(events, "base")] == ["idle", "human_remote", "idle"]
+    assert_all_verified(station, tmp_path / "data")
+
+
 def test_validate_flags_nothing_on_a_clean_session__defs_8(setup: Prepared, data_dir: Path) -> None:
     clock = FakeClock()
     recorder = make_recorder(setup, clock)

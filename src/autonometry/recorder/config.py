@@ -72,6 +72,8 @@ class RecorderConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     robot_id: Identifier
+    role: Literal["robot", "station"] = "robot"
+    station_id: Identifier | None = None
     data_dir: Path
     socket_path: Path
     socket_group: GroupName | None = None
@@ -97,6 +99,8 @@ class RecorderConfig(BaseModel):
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
+        if (self.role == "station") != (self.station_id is not None):
+            raise ValueError('station_id must be given with role = "station" and only then')
         if self.scope_weights is not None:
             undeclared = sorted(set(self.scope_weights) - set(self.scopes))
             if undeclared:
@@ -210,7 +214,9 @@ class Prepared:
 
     def declaration(self) -> Mapping[str, Any]:
         """The ``session_start`` fields that the config decides (definitions.md 8), except
-        ``initial_states``, which is the recorder's state when the session opens."""
+        ``initial_states``, which is the recorder's state when the session opens. A station's
+        recorder adds ``role`` and ``station_id`` (12.1); a robot's leaves ``role`` out, since
+        ``robot`` is the default."""
         config = self.config
         fields: dict[str, Any] = {
             "scopes": list(config.scopes),
@@ -225,6 +231,9 @@ class Prepared:
             fields["scope_weights"] = dict(config.scope_weights)
         if config.unobserved:
             fields["unobserved"] = list(config.unobserved)
+        if config.role == "station":
+            fields["role"] = config.role
+            fields["station_id"] = config.station_id
         return fields
 
 
