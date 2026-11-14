@@ -32,7 +32,7 @@ dependencies = [
 
 [project.optional-dependencies]
 report = ["numpy>=1.26.0", "pandas>=2.1.1", "scipy>=1.11.2", "statsmodels>=0.14.1", "jinja2>=3.1.6", "markupsafe>=2.1.5", "matplotlib>=3.10.7"]
-lerobot = ["pyarrow>=17.0.0", "watchfiles>=0.21.0"]
+lerobot = ["psutil>=6.0.0", "pyarrow>=17.0.0", "watchfiles>=0.21.0"]
 
 [project.urls]
 Homepage = "https://github.com/Autonometry/autonometry"
@@ -95,9 +95,9 @@ files = ["src"]
 exclude = ["^research/"]
 plugins = ["pydantic.mypy"]
 
-# SciPy, statsmodels and pyarrow ship no type information; numpy does.
+# SciPy, statsmodels, pyarrow and psutil ship no type information; numpy does.
 [[tool.mypy.overrides]]
-module = ["scipy.*", "statsmodels.*", "pyarrow.*"]
+module = ["scipy.*", "statsmodels.*", "pyarrow.*", "psutil", "psutil.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

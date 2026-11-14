@@ -1,6 +1,6 @@
 """``autonometry lerobot``: follow a LeRobot rollout's log live, or import a LeRobotDataset after
-the fact (README, "LeRobot"). The ``lerobot`` extra (pyarrow, watchfiles) is imported only when a
-command runs."""
+the fact (README, "LeRobot"). The ``lerobot`` extra (pyarrow, watchfiles, psutil) is imported
+only when a command runs."""
 
 import logging
 import re
@@ -15,6 +15,7 @@ import typer
 from autonometry.connectors.lerobot import LeRobotEngine, Settings, task_definition
 from autonometry.connectors.lerobot_io import (
     LeRobotError,
+    Liveness,
     Registries,
     import_dataset,
     load_registries,
@@ -242,16 +243,27 @@ def watch_cmd(  # noqa: PLR0913, PLR0917 -- matches the watch CLI's documented o
         bool,
         typer.Option("--from-start", help="Read a log that already exists from its first line."),
     ] = False,
+    pid: Annotated[
+        int | None,
+        typer.Option(
+            "--pid",
+            min=1,
+            help="The rollout's process id (default: find the lerobot-rollout process).",
+        ),
+    ] = None,
 ) -> None:
     """Follow a lerobot-rollout log and send the robot's control state and tasks to the recorder
     (Linux and macOS; README, "LeRobot"). Read-only: it never touches the robot or its process.
 
     A log that exists when the watcher starts is followed from its end unless --from-start.
+    The rollout's process is watched, read-only, about once a second: a rollout that ends without
+    logging "Rollout finished" becomes unknown.
     Exit status: 0 after SIGINT or SIGTERM, 2 when it cannot start.
     """
     if sys.platform == "win32":
         _fail("the recorder and its socket run on Linux and macOS only", 2)
     _need("watchfiles", 2)
+    _need("psutil", 2)
     from autonometry.connectors.autonometry_client import Recorder  # noqa: PLC0415 -- POSIX use
 
     try:
@@ -277,7 +289,12 @@ def watch_cmd(  # noqa: PLR0913, PLR0917 -- matches the watch CLI's documented o
         signal.signal(number, lambda *_: stop.set())
     with Recorder(str(recorder_config.socket_path), client_name) as recorder:
         watch_log(
-            log, LeRobotEngine(settings), recorder_sender(recorder), stop, from_start=from_start
+            log,
+            LeRobotEngine(settings),
+            recorder_sender(recorder),
+            stop,
+            from_start=from_start,
+            liveness=Liveness(pid),
         )
 
 

@@ -16,3 +16,6 @@
 
 # Golden input logs are byte-exact fixtures (CRLF, BOM and invalid UTF-8 cases): never converted.
 tests/golden/**/*.jsonl -text
+
+# Logs captured from Windows shells (UTF-16, code-page bytes, CRLF): never converted.
+tests/fixtures/lerobot_windows/*.log -text

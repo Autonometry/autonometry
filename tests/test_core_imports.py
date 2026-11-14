@@ -48,7 +48,7 @@ def test_running_the_core_loads_no_heavy_package() -> None:
     assert result.stdout.strip() == "[]"
 
 
-LEROBOT_EXTRA = ("pyarrow", "watchfiles")
+LEROBOT_EXTRA = ("pyarrow", "watchfiles", "psutil")
 
 
 def _module_level(path: Path) -> set[str]:

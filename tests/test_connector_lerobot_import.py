@@ -23,6 +23,7 @@ from autonometry.timestamps import ns_to_ts, ts_to_ns
 from lerobot_helpers import CONFIG, DEVICES, POLICY, ROOT, engine, info, line, write_dataset
 
 pytest.importorskip("pyarrow")
+pytest.importorskip("psutil")  # imported before tests pretend to run on Linux
 
 HASH = "0" * 64
 START = "2026-11-14T10:00:00Z"
@@ -518,7 +519,7 @@ def test_follower_keeps_lines_written_before_its_first_read(tmp_path: Path) -> N
 def test_follower_drops_lines_longer_than_the_limit__claude_md_limits(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(lerobot_io, "MAX_LINE_BYTES", 8)
+    monkeypatch.setattr(lerobot_io, "MAX_LINE_CHARS", 8)
     log = tmp_path / "rollout.log"
     tail = lerobot_io.LogFollower(log)
     log.write_bytes(b"0123456789")
@@ -613,8 +614,8 @@ def watch_calls(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     """Pretend to run on Linux, record what the CLI would follow instead of following it."""
     calls: list[dict[str, Any]] = []
 
-    def fake_watch(path: Path, eng: Any, send: Any, stop: Any, *, from_start: bool) -> None:
-        calls.append({"path": path, "engine": eng, "from_start": from_start})
+    def fake_watch(path: Path, eng: Any, send: Any, stop: Any, **options: Any) -> None:
+        calls.append({"path": path, "engine": eng, **options})
 
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(cli_lerobot, "watch_log", fake_watch)
@@ -717,3 +718,27 @@ def test_example_config_is_a_valid_recorder_config__readme_lerobot() -> None:
     config = load_config(CONFIG / "recorder.toml")
     assert config.unobserved == ("safety_stops", "human_inputs")
     assert re.fullmatch(r"so101_\d+", config.robot_id)
+
+
+def test_watch_watches_the_named_process__defs_6_14(
+    tmp_path: Path, watch_calls: list[dict[str, Any]]
+) -> None:
+    config = _recorder_toml(tmp_path)
+    task = "Pick up the cube and place it in the bin."
+    log = str(tmp_path / "rollout.log")
+    assert (
+        _watch("--log", log, "--config", str(config), "--task", task, "--pid", "77").exit_code == 0
+    )
+    assert _watch("--log", log, "--config", str(config), "--task", task).exit_code == 0
+    named, found = (call["liveness"] for call in watch_calls)
+    assert (named._pid, found._pid) == (77, None)
+    assert _watch("--log", log, "--config", str(config), "--pid", "0").exit_code == 2
+
+
+def test_watch_without_psutil_says_how_to_install_it(
+    tmp_path: Path, watch_calls: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(sys.modules, "psutil", None)
+    result = _watch("--log", str(tmp_path / "r.log"), "--config", str(_recorder_toml(tmp_path)))
+    assert result.exit_code == 2
+    assert "psutil is not installed" in result.output

@@ -2,12 +2,13 @@
 log per episode; follow a rollout's log for the live engine.
 
 The edge of :mod:`autonometry.connectors.lerobot`, which makes every decision: this module reads
-files and the clock and hands over what it read. pyarrow and watchfiles, the ``lerobot`` extra,
-are imported inside the functions that need them, so the CLI starts without them. Dataset paths
-and column names are LeRobot v0.6.1's (commit ``7e241bd630a3719a56157a497ce5d08f244784f1``);
-the comments cite its files.
+files, the clock and the process table and hands over what it read. pyarrow, watchfiles and
+psutil, the ``lerobot`` extra, are imported inside the functions that need them, so the CLI
+starts without them. Dataset paths and column names are LeRobot v0.6.1's (commit
+``7e241bd630a3719a56157a497ce5d08f244784f1``); the comments cite its files.
 """
 
+import codecs
 import logging
 import math
 import os
@@ -17,8 +18,8 @@ import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
-from pathlib import Path
-from typing import IO, Any, Final
+from pathlib import Path, PureWindowsPath
+from typing import IO, Any, Final, Protocol
 
 import rfc8785
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -29,6 +30,7 @@ from autonometry.connectors.lerobot import (
     ImportSettings,
     LeRobotEngine,
     Message,
+    Note,
     controller_id,
     episode_events,
     frame_ns,
@@ -91,8 +93,8 @@ DATA_COLUMNS: Final = ("episode_index", "frame_index", "intervention")
 #: lerobot/datasets/utils.py:89).
 MAX_META_BYTES: Final = 64 << 20
 MAX_DATA_BYTES: Final = 1 << 30
-#: Longest log line kept, in bytes; longer lines are dropped (rules.toml ``max_line_bytes``).
-MAX_LINE_BYTES: Final = 65536
+#: Longest log line kept, in characters; longer lines are dropped (rules.toml ``max_line_bytes``).
+MAX_LINE_CHARS: Final = 65536
 #: Most bytes read from the log per call, so one pass stays short.
 MAX_READ_BYTES: Final = 8 << 20
 #: How often the watcher re-asserts the state, seconds; the recorder needs it every second.
@@ -451,18 +453,31 @@ def import_dataset(  # noqa: PLR0913 -- the import CLI's documented options
 # -- live ---------------------------------------------------------------------------------------
 
 
+#: Byte-order marks a log may start with, and the encodings they name. Windows PowerShell 5.1
+#: writes ``Tee-Object`` and ``>`` files as UTF-16 LE with a mark.
+_BOMS: Final = (
+    (codecs.BOM_UTF8, "utf-8"),
+    (codecs.BOM_UTF16_LE, "utf-16-le"),
+    (codecs.BOM_UTF16_BE, "utf-16-be"),
+)
+_BOM_MAX: Final = max(len(bom) for bom, _ in _BOMS)
+
+
 class LogFollower:
     """Reads the complete lines appended to a text file, like ``tail -F``: a file that exists
-    when following starts is read from its end unless ``from_start``; a file created later, cut
-    short or replaced is read from its start. Lines longer than :data:`MAX_LINE_BYTES` are
-    dropped; bytes that are not UTF-8 become U+FFFD."""
+    when following starts is read from where it ended then unless ``from_start``; a file created
+    later, cut short or replaced is read from its start. A byte-order mark at the start of the
+    file chooses UTF-8, UTF-16 LE or UTF-16 BE; without one the file is read as UTF-8, and bytes
+    that are not UTF-8 (a dash in a Windows code page) become U+FFFD. Lines longer than
+    :data:`MAX_LINE_CHARS` are dropped."""
 
     def __init__(self, path: Path, from_start: bool = False) -> None:
         self._path = path
         self._handle: IO[bytes] | None = None
         self._identity: tuple[int, int] | None = None
         self._position = 0
-        self._buffer = b""
+        self._decoder: codecs.IncrementalDecoder | None = None
+        self._buffer = ""
         self._skipping = False
         #: The file and its size when following started: what is skipped unless ``from_start``.
         self._skip: tuple[tuple[int, int], int] | None = None
@@ -478,7 +493,8 @@ class LogFollower:
         if self._handle is not None:
             self._handle.close()
         self._handle = None
-        self._buffer, self._skipping = b"", False
+        self._decoder = None
+        self._buffer, self._skipping = "", False
 
     def read(self) -> list[str]:
         """The complete lines written since the last call, without line endings."""
@@ -499,21 +515,39 @@ class LogFollower:
             same = skip is not None and skip[0] == identity and skip[1] <= status.st_size
             self._identity = identity
             self._position = skip[1] if same and skip is not None else 0
-            self._handle.seek(self._position)
-        data = self._handle.read(MAX_READ_BYTES)
+        handle = self._handle
+        if self._decoder is None and not self._choose_decoder(handle):
+            return []
+        handle.seek(self._position)
+        data = handle.read(MAX_READ_BYTES)
         self._position += len(data)
-        return self._split(data)
+        assert self._decoder is not None  # noqa: S101 -- chosen above
+        return self._split(self._decoder.decode(data))
 
-    def _split(self, data: bytes) -> list[str]:
+    def _choose_decoder(self, handle: IO[bytes]) -> bool:
+        """Pick the decoder from the file's first bytes; False while they could still become a
+        byte-order mark."""
+        handle.seek(0)
+        head = handle.read(_BOM_MAX)
+        if any(len(head) < len(bom) and bom.startswith(head) for bom, _ in _BOMS):
+            return False
+        encoding, mark = next(
+            ((name, len(bom)) for bom, name in _BOMS if head.startswith(bom)), ("utf-8", 0)
+        )
+        self._decoder = codecs.getincrementaldecoder(encoding)(errors="replace")
+        self._position = max(self._position, mark)
+        return True
+
+    def _split(self, text: str) -> list[str]:
         lines: list[str] = []
-        *complete, rest = (self._buffer + data).split(b"\n")
+        *complete, rest = (self._buffer + text).split("\n")
         for raw in complete:
             if self._skipping:
                 self._skipping = False
-            elif len(raw) <= MAX_LINE_BYTES:
-                lines.append(raw.decode("utf-8", errors="replace").rstrip("\r"))
-        if len(rest) > MAX_LINE_BYTES:
-            rest, self._skipping = b"", True
+            elif len(raw) <= MAX_LINE_CHARS:
+                lines.append(raw.rstrip("\r"))
+        if len(rest) > MAX_LINE_CHARS:
+            rest, self._skipping = "", True
         self._buffer = rest
         return lines
 
@@ -533,12 +567,221 @@ def recorder_sender(recorder: Any) -> Sender:
     return send
 
 
-def pump(follower: LogFollower, engine: LeRobotEngine, send: Sender, now: float) -> None:
-    """One pass: every new line to the engine, then the current state (seconds, ``now``)."""
-    for line in follower.read():
+# -- the rollout's process ----------------------------------------------------------------------
+
+#: The program ``lerobot-rollout`` (console script, Windows launcher) and its module.
+ROLLOUT_NAMES: Final = frozenset({"lerobot-rollout", "lerobot_rollout"})
+ROLLOUT_MODULE: Final = "lerobot.scripts.lerobot_rollout"
+_PROGRAM_SUFFIXES: Final = frozenset({"", ".exe", ".py", ".pyw"})
+_INTERPRETER = re.compile(r"(?:python[0-9.]*w?|pyw?)(?:\.exe)?", re.ASCII | re.IGNORECASE)
+#: Python options followed by a separate value.
+_OPTION_VALUES: Final = frozenset({"-W", "-X", "--check-hash-based-pycs"})
+#: How often the rollout's process is checked, seconds.
+PROCESS_CHECK_S: Final = 1.0
+_MAX_DEPTH = 64
+
+
+@dataclass(frozen=True, slots=True)
+class ProcessInfo:
+    """One process of this computer: its id, its parent's, its name and its command line."""
+
+    pid: int
+    ppid: int | None
+    name: str
+    cmdline: tuple[str, ...]
+
+
+def _is_rollout_file(path: str) -> bool:
+    """True for ``lerobot-rollout`` itself, its ``.exe`` or a ``.py`` script of that name; a file
+    such as ``lerobot-rollout.log`` is not one."""
+    name = PureWindowsPath(path).name.lower()
+    stem, dot, suffix = name.rpartition(".")
+    if not dot:
+        stem, suffix = name, ""
+    return stem in ROLLOUT_NAMES and (f".{suffix}" if suffix else "") in _PROGRAM_SUFFIXES
+
+
+def is_rollout(info: ProcessInfo) -> bool:
+    """True when the process runs ``lerobot-rollout``: its program has that name, or it is a
+    Python interpreter whose script is that file or whose module (``-m``) is
+    ``lerobot.scripts.lerobot_rollout``. Only the program and the script or module are looked at,
+    never other arguments, so ``tail -F lerobot-rollout.log`` does not match."""
+    argv = info.cmdline or (info.name,)
+    if _is_rollout_file(argv[0]) or _is_rollout_file(info.name):
+        return True
+    return bool(_INTERPRETER.fullmatch(PureWindowsPath(argv[0]).name)) and _runs_rollout(argv[1:])
+
+
+def _runs_rollout(python_args: Sequence[str]) -> bool:
+    """True when a Python interpreter's arguments run the rollout as script or module."""
+    args = iter(python_args)
+    for arg in args:
+        if arg == "-m":
+            return next(args, "") == ROLLOUT_MODULE
+        if arg.startswith("-m") and not arg.startswith("--"):
+            return arg[2:] == ROLLOUT_MODULE
+        if arg.startswith("-c") and not arg.startswith("--"):
+            return False
+        if arg in _OPTION_VALUES:
+            next(args, None)
+        elif not arg.startswith("-") or arg == "-":
+            return _is_rollout_file(arg)
+    return False
+
+
+def rollout_pids(processes: Iterable[ProcessInfo], own_pid: int) -> list[int]:
+    """The ``lerobot-rollout`` processes, one per rollout: a launcher and the Python it starts
+    (the Windows ``.exe`` launcher, a virtual environment's ``python.exe``) are one rollout, of
+    which the deepest is kept. Never this process."""
+    table = list(processes)
+    parents = {p.pid: p.ppid for p in table}
+    matched = {p.pid for p in table if p.pid != own_pid and is_rollout(p)}
+    ancestors: set[int] = set()
+    for pid in matched:
+        current, seen = parents.get(pid), {pid}
+        while current is not None and current not in seen and len(seen) < _MAX_DEPTH:
+            ancestors.add(current)
+            seen.add(current)
+            current = parents.get(current)
+    return sorted(matched - ancestors)
+
+
+class Watched(Protocol):
+    """A process being watched, read-only."""
+
+    def alive(self) -> bool:
+        """False once it has ended or is a zombie."""
+        ...
+
+
+def list_processes() -> list[ProcessInfo]:
+    """Every process psutil can read on this computer; a field it may not read is empty."""
+    import psutil  # noqa: PLC0415 -- the lerobot extra
+
+    found = []
+    for process in psutil.process_iter(["pid", "ppid", "name", "cmdline"]):
+        info = process.info
+        cmdline = tuple(str(arg) for arg in info.get("cmdline") or ())
+        found.append(ProcessInfo(info["pid"], info.get("ppid"), info.get("name") or "", cmdline))
+    return found
+
+
+@dataclass(slots=True)
+class _PsutilProcess:
+    process: Any
+
+    def alive(self) -> bool:
+        import psutil  # noqa: PLC0415 -- the lerobot extra
+
+        try:
+            running = bool(self.process.is_running())
+            return running and self.process.status() != psutil.STATUS_ZOMBIE
+        except psutil.NoSuchProcess:
+            return False
+        except psutil.AccessDenied:
+            return bool(self.process.is_running())
+
+
+def open_process(pid: int) -> Watched | None:
+    """A read-only handle on process ``pid``, ``None`` when there is none. psutil's
+    ``is_running`` also compares the creation time, so a reused pid is not mistaken for it.
+    Nothing is ever sent to the process."""
+    import psutil  # noqa: PLC0415 -- the lerobot extra
+
+    try:
+        return _PsutilProcess(psutil.Process(pid))
+    except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
+        return None
+
+
+class Liveness:
+    """Watches the rollout's process, read-only, so that a rollout that dies without a word
+    does not leave its last state in place (definitions.md 2, 6.14). The process is ``pid`` when
+    given, else the one :func:`rollout_pids` finds when the engine starts following a rollout.
+    With none or several the rollout is unwatched: one warning, ``x_lerobot_liveness:
+    unwatched`` on a heartbeat, and the log alone decides, as without this class."""
+
+    def __init__(
+        self,
+        pid: int | None = None,
+        *,
+        lister: Callable[[], list[ProcessInfo]] = list_processes,
+        opener: Callable[[int], Watched | None] = open_process,
+        own_pid: int | None = None,
+    ) -> None:
+        self._pid = pid
+        self._lister = lister
+        self._opener = opener
+        self._own_pid = os.getpid() if own_pid is None else own_pid
+        self._generation = 0
+        self._process: Watched | None = None
+        self._checked: float | None = None
+
+    def check(self, now: float, follower: LogFollower, engine: LeRobotEngine, send: Sender) -> None:
+        """Find the process of a newly followed rollout; then, at most every
+        :data:`PROCESS_CHECK_S` seconds, see whether it is still there. When it is gone, the
+        lines left in the log are read first, then the engine is told, unless those lines ended
+        the rollout."""
+        if engine.following and engine.generation != self._generation:
+            self._generation = engine.generation
+            self._process = self._find(send)
+            self._checked = now
+        if self._process is None or not engine.following:
+            return
+        if self._checked is not None and now - self._checked < PROCESS_CHECK_S:
+            return
+        self._checked = now
+        if self._process.alive():
+            return
+        self._process = None
+        while lines := follower.read():
+            _observe(lines, engine, send, now)
+        if engine.following:
+            logger.warning(
+                "the rollout's process ended without logging 'Rollout finished'; "
+                "its state is unknown from now on"
+            )
+            send(engine.process_gone(now))
+
+    def _find(self, send: Sender) -> Watched | None:
+        if self._pid is not None:
+            process = self._opener(self._pid)
+            if process is not None and process.alive():
+                return process
+            reason = f"no running process has --pid {self._pid}"
+        else:
+            pids = rollout_pids(self._lister(), self._own_pid)
+            process = self._opener(pids[0]) if len(pids) == 1 else None
+            if process is not None:
+                return process
+            if len(pids) > 1:
+                reason = f"{len(pids)} lerobot-rollout processes here; name one with --pid"
+            else:
+                reason = "no lerobot-rollout process on this computer"
+        logger.warning("%s: the rollout's process is not watched", reason)
+        send([Note((("x_lerobot_liveness", "unwatched"),))])
+        return None
+
+
+def _observe(lines: Iterable[str], engine: LeRobotEngine, send: Sender, now: float) -> None:
+    for line in lines:
         parsed = parse_line(line)
         if parsed is not None:
             send(engine.observe(now, parsed))
+
+
+def pump(
+    follower: LogFollower,
+    engine: LeRobotEngine,
+    send: Sender,
+    now: float,
+    liveness: Liveness | None = None,
+) -> None:
+    """One pass: every new line to the engine, the rollout's process checked, then the current
+    state (seconds, ``now``)."""
+    _observe(follower.read(), engine, send, now)
+    if liveness is not None:
+        liveness.check(now, follower, engine, send)
     send(engine.tick(now))
 
 
@@ -549,6 +792,7 @@ def watch_log(  # noqa: PLR0913 -- the watch loop's collaborators
     stop: threading.Event,
     *,
     from_start: bool = False,
+    liveness: Liveness | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> None:
     """Follow ``path`` until ``stop`` is set: wake on each write to its folder and at least every
@@ -571,7 +815,7 @@ def watch_log(  # noqa: PLR0913 -- the watch loop's collaborators
             recursive=False,
         ):
             try:
-                pump(follower, engine, send, clock())
+                pump(follower, engine, send, clock(), liveness)
             except Exception:  # process boundary: keep following
                 logger.warning("a pass over the rollout log failed; continuing", exc_info=True)
     finally:

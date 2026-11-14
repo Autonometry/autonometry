@@ -15,7 +15,8 @@ robot, dossier 14.7) are in one state, the first rule that applies (dossier 14.1
 
 1. Before a line that tells the state (the rollout's start, its control loop, a phase
    transition): no assertion, so the recorder logs ``unknown`` (section 2).
-2. After ``Rollout finished``: ``unknown``; the watcher sees nothing of the robot any more.
+2. After ``Rollout finished``, or once the rollout's process is gone without logging it
+   (:meth:`LeRobotEngine.process_gone`): ``unknown``; nothing is observed any more.
 3. The rollout started, its control loop not yet: ``idle``; it connects and loads, no task
    is open and nothing commands the arm.
 4. A controller that stopped (control loop ended, robot disconnected, an episodic reset with no
@@ -131,15 +132,21 @@ _MAX_COUNTER = 10**16
 
 # -- log lines ----------------------------------------------------------------------------------
 
+#: Windows PowerShell 5.1 puts ``<program> : `` before the first line a native program writes
+#: to stderr under ``2>&1``; it is skipped.
 #: ``init_logging``'s format: ``"%(levelname)s %(lerobot_pid)s%(asctime)s %(lerobot_location)15s
 #: %(message)s"`` with ``datefmt="%Y-%m-%d %H:%M:%S"``; the location is the last 15 characters of
 #: ``path:line`` (lerobot/utils/utils.py:62-73). The PID part is ``[PID: <pid>] `` when enabled.
 _PREFIX = re.compile(
-    r"(?P<level>[A-Z]+) (?:\[PID: [0-9]+\] )?"
+    r"(?:[^:]{1,128} : )?(?P<level>[A-Z]+) (?:\[PID: [0-9]+\] )?"
     r"(?P<time>[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}) "
     r"(?P<location>.{15}) (?P<message>.*)"
 )
 _COUNT = r"[0-9]{1,15}"
+#: LeRobot's em dash as it reaches a log file: U+2014, or one to three other characters when a
+#: shell decoded it in another code page (Windows: 0x97 in cp1252, ``ΓÇö`` for UTF-8
+#: read as cp437, U+FFFD for a byte that is not UTF-8).
+_DASH = r"\S{1,3}"
 _PHASES = ("autonomous", "paused", "correcting")
 _PHASE = "|".join(_PHASES)
 
@@ -319,9 +326,9 @@ _MESSAGES: Final[tuple[tuple[re.Pattern[str], _Factory], ...]] = (
     (
         re.compile(
             r"(?:DAgger continuous control loop ended|DAgger corrections-only loop ended)"
-            r" — pausing engine"
-            r"|Episodic control loop ended — saving any in-progress episode"
-            r"|Sentry control loop ended — saving final episode"
+            r" " + _DASH + r" pausing engine"
+            r"|Episodic control loop ended " + _DASH + r" saving any in-progress episode"
+            r"|Sentry control loop ended " + _DASH + r" saving final episode"
             r"|Highlight control loop ended"
             r"|Stopping inference engine\.\.\."
         ),
@@ -528,6 +535,7 @@ class LeRobotEngine:
         self._control: _Control | None = None
         self._released: float | None = None
         self._rerecord = False
+        self._generation = 0
 
     # -- public -----------------------------------------------------------------------------
 
@@ -547,6 +555,32 @@ class LeRobotEngine:
         self._sent = self._decide()
         return list(self._sent)
 
+    @property
+    def generation(self) -> int:
+        """How many rollouts this engine has followed: a new one starts at each rollout start,
+        or when a line shows a rollout the engine joined mid-run."""
+        return self._generation
+
+    @property
+    def following(self) -> bool:
+        """True while a rollout is followed and has not ended."""
+        return self._attached and self._ended is None
+
+    def process_gone(self, t: float) -> list[Message]:
+        """The rollout's process ended at or before ``t`` without logging ``Rollout finished``
+        (killed, crashed, its window closed): what that line does (the open task closed with
+        outcome ``unknown``, every scope ``unknown``, section 2 and 6.14), then a heartbeat note
+        ``x_lerobot_process_exit: unlogged``. Nothing when no rollout is followed."""
+        self._now = max(self._now, t)
+        if not self.following:
+            return []
+        out: list[Message] = []
+        self._close("unknown", None, out)
+        self._ended, self._end_src = "gone", None
+        self._flush(out)
+        out.append(Note((("x_lerobot_process_exit", "unlogged"),)))
+        return out
+
     def stop(self) -> list[Message]:
         """The watcher stops: every scope ``unknown``, since nothing is observed any more."""
         self._sent = tuple(_assertion(scope, _Control("unknown")) for scope in self._s.scopes)
@@ -555,6 +589,7 @@ class LeRobotEngine:
     # -- state ------------------------------------------------------------------------------
 
     def _new_process(self, src_ts: str | None) -> None:
+        self._generation += 1
         self._attached = True
         self._ended = None
         self._end_src = None
