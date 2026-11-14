@@ -49,6 +49,13 @@ def test_running_the_core_loads_no_heavy_package() -> None:
 
 
 LEROBOT_EXTRA = ("pyarrow", "watchfiles", "psutil")
+#: The optional packages each edge module may import, only inside functions: the lerobot extra,
+#: and for the Unitree G1 the g1 extra (psutil) and Cyclone DDS, which is never declared.
+EDGES = {
+    "connectors/lerobot_io.py": set(LEROBOT_EXTRA),
+    "connectors/g1_dds.py": {"psutil", "cyclonedds"},
+}
+OPTIONAL = set().union(*EDGES.values())
 
 
 def _module_level(path: Path) -> set[str]:
@@ -62,14 +69,15 @@ def _module_level(path: Path) -> set[str]:
     return names
 
 
-def test_only_the_lerobot_edge_imports_the_lerobot_extra_and_lazily() -> None:
+def test_only_the_edges_import_their_extras_and_lazily() -> None:
     users = {
-        str(p.relative_to(PACKAGE).as_posix())
+        str(p.relative_to(PACKAGE).as_posix()): _imported(p) & OPTIONAL
         for p in PACKAGE.rglob("*.py")
-        if _imported(p) & set(LEROBOT_EXTRA)
+        if _imported(p) & OPTIONAL
     }
-    assert users == {"connectors/lerobot_io.py"}
-    assert not _module_level(PACKAGE / "connectors" / "lerobot_io.py") & set(LEROBOT_EXTRA)
+    assert users == EDGES
+    for path in EDGES:
+        assert not _module_level(PACKAGE / path) & OPTIONAL, path
 
 
 def test_the_lerobot_commands_load_without_their_extra() -> None:
@@ -79,6 +87,20 @@ def test_the_lerobot_commands_load_without_their_extra() -> None:
         "from typer.testing import CliRunner\n"
         "CliRunner().invoke(autonometry.cli.app, ['lerobot', 'import', '--help'])\n"
         f"print(sorted(m for m in {LEROBOT_EXTRA!r} if m in sys.modules))\n"
+    )
+    result = subprocess.run(  # noqa: S603 -- fixed arguments, no input
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == "[]"
+
+
+def test_the_g1_commands_load_without_cyclone_dds_or_psutil() -> None:
+    code = (
+        "import sys\n"
+        "import autonometry.cli\n"
+        "from typer.testing import CliRunner\n"
+        "CliRunner().invoke(autonometry.cli.app, ['g1', 'watch', '--help'])\n"
+        "print(sorted(m for m in ('cyclonedds', 'psutil') if m in sys.modules))\n"
     )
     result = subprocess.run(  # noqa: S603 -- fixed arguments, no input
         [sys.executable, "-c", code], capture_output=True, text=True, check=True
