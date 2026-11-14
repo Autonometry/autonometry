@@ -22,7 +22,9 @@ robot, dossier 14.7) are in one state, the first rule that applies (dossier 14.1
 4. A controller that stopped (control loop ended, robot disconnected, an episodic reset with no
    teleoperator) keeps its state for ``idle_threshold_s``, then ``idle`` (6.14).
 5. DAgger ``AUTONOMOUS`` and the policy loops of the other strategies: ``ai``, actor
-   ``ai:<policy path>``, the policy's device. DAgger ``PAUSED``: ``shared`` with reason
+   ``ai:<device_id>`` with the policy's device when the registry declares it, else
+   ``ai:<pseudonym>``, the first 12 hex digits of the SHA-256 of the policy path, never the path
+   (product rule 5). DAgger ``PAUSED``: ``shared`` with reason
    ``human_initiated``, a human pause (6.8). DAgger ``CORRECTING``: ``human_local``, or
    ``human_remote`` when the teleoperator's device is declared remote (6.10); reason
    ``human_initiated``. Human states carry the teleoperator's device and actor.
@@ -61,6 +63,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any, Final, Literal, cast
 
+from autonometry.connectors.names import pseudonym
 from autonometry.connectors.tb4 import (
     Device,
     Fields,
@@ -375,9 +378,9 @@ def parse_line(text: str) -> Parsed | None:
 
 
 def controller_id(path: str) -> str:
-    """The ``<controller_id>`` of the actor ``ai:<controller_id>`` for a policy path (definitions.md
-    1, Actor; 8, Identifiers): characters outside an identifier's set become ``_``; a path longer
-    than 125 characters keeps a 12-hex SHA-256 of the whole, ``_`` and its last characters."""
+    """An identifier (definitions.md 8, Identifiers) made from free text such as a robot type:
+    characters outside an identifier's set become ``_``; a text longer than 125 characters keeps
+    a 12-hex SHA-256 of the whole, ``_`` and its last characters."""
     text = _ID_BAD.sub("_", path.strip()) or _NO_POLICY
     if len(text) <= _CONTROLLER_MAX:
         return text
@@ -425,8 +428,14 @@ def _device_id(device: Device | None) -> str | None:
 
 
 def _ai(devices: Sequence[Device], policy: str | None, src_ts: str | None = None) -> _Control:
+    """The policy's state: actor ``ai:<device_id>`` when the registry declares the policy, else
+    ``ai:<pseudonym>``, the first 12 hex digits of the SHA-256 of its path: a path such as
+    ``/home/<user>/...`` holds a person's name (product rule 5)."""
     device = None if policy is None else _match(devices, f"policy:{policy}")
-    actor = f"ai:{controller_id(policy) if policy is not None else _NO_POLICY}"
+    if device is not None:
+        actor = f"ai:{device.device_id}"
+    else:
+        actor = f"ai:{pseudonym(policy) if policy is not None else _NO_POLICY}"
     return _Control("ai", None, actor, _device_id(device), None, src_ts)
 
 

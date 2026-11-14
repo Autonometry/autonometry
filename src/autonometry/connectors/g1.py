@@ -96,6 +96,7 @@ from typing import Any, Final, Literal
 from autonometry import strictjson
 from autonometry.connectors.lerobot import Note
 from autonometry.connectors.lerobot import wire_event as _wire_event
+from autonometry.connectors.names import pseudonym
 from autonometry.connectors.tb4 import Device, Fields, Source, StateAssertion
 
 __all__ = [
@@ -731,17 +732,6 @@ class _Pending:
     version: int
     released: bool
     user_control: bool
-
-
-def pseudonym(name: str | None) -> str | None:
-    """A host or program name as it may appear in a log: the first 12 hex digits of the SHA-256
-    of its UTF-8 bytes, never the name itself, which often holds a person's name (CLAUDE.md
-    product rule 5). ``autonometry g1 discover`` prints it beside each host and participant, and
-    ``python3 -c "import hashlib; print(hashlib.sha256(b'NAME').hexdigest()[:12])"`` computes it,
-    so a log entry can be traced to a machine or program."""
-    if name is None:
-        return None
-    return hashlib.sha256(name.encode("utf-8", "replace")).hexdigest()[:_DIGEST_CHARS]
 
 
 def host_pseudonym(host: str | None) -> str | None:
