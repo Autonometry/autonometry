@@ -24,6 +24,7 @@ session log adds. Its rules:
 """
 
 import logging
+import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -136,7 +137,8 @@ class _Counters:
             "x_foreign_assertions": self.foreign,
             "x_resumed_clients": self.resumed,
         }
-        out = {name: value for name, value in found.items() if value}
+        # A client's counter can jump by up to 2**53 at once; a count stays a safe integer.
+        out = {name: min(value, MAX_SAFE_INTEGER) for name, value in found.items() if value}
         if self.stepped_back_ns:
             out["x_clock_stepped_back_s"] = ns_to_seconds(self.stepped_back_ns)
         return out
@@ -154,12 +156,18 @@ class _Distance:
     total: float | None = None
     readings: dict[str, float] = field(default_factory=dict)
 
-    def add(self, client: str, reading: float) -> None:
+    def add(self, client: str, reading: float) -> bool:
+        """Take one reading; False, changing nothing, when the total would no longer be a
+        finite number (readings near the largest float)."""
         last = self.readings.get(client)
-        self.readings[client] = reading
-        self.total = self.total or 0.0
+        total = self.total or 0.0
         if last is not None and reading > last:
-            self.total += reading - last
+            total += reading - last
+        if not math.isfinite(total):
+            return False
+        self.readings[client] = reading
+        self.total = total
+        return True
 
 
 class Engine:
@@ -333,6 +341,11 @@ class Engine:
             return events + self._disturbed("rate_limited")
         return events + self._handle(message)
 
+    def reject(self, reason: str) -> list[dict[str, Any]]:
+        """Count a datagram the recorder could not handle as rejected: every scope ``unknown``
+        (fail visible), as for any other rejected datagram."""
+        return self._reject(reason)
+
     def _reject(self, reason: str) -> list[dict[str, Any]]:
         self._counters.rejected += 1
         if self._counters.first_rejection is None:
@@ -382,7 +395,8 @@ class Engine:
 
     def _handle(self, message: Message) -> list[dict[str, Any]]:
         if message.distance_m is not None:
-            self._distance.add(message.client, message.distance_m)
+            if not self._distance.add(message.client, message.distance_m):
+                return self._reject("distance_m makes the distance travelled overflow")
             return []
         assert message.event is not None  # noqa: S101 -- parse_datagram returns one of the two
         try:

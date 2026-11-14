@@ -21,6 +21,8 @@ from autonometry.signednote import SignedNoteError, format_vkey, parse_vkey
 logger = logging.getLogger(__name__)
 
 _WINDOWS = sys.platform == "win32"
+#: Largest private key file read; an Ed25519 PKCS8 PEM is 119 bytes.
+_MAX_KEY_BYTES = 64 << 10
 
 
 class SigningKeyError(Exception):
@@ -65,11 +67,16 @@ def load(path: Path) -> Ed25519PrivateKey:
             (POSIX only) it is accessible to its group or others, or owned by another user.
     """
     try:
-        pem = path.read_bytes()
+        with open(path, "rb") as stream:
+            # The checks below look at the file just opened, never at the path again, so the
+            # file cannot be swapped between the check and the read.
+            info = os.fstat(stream.fileno())
+            pem = stream.read(_MAX_KEY_BYTES + 1)
     except OSError as exc:
         raise SigningKeyError(f"cannot read key {path}: {exc.strerror or exc}") from None
+    if len(pem) > _MAX_KEY_BYTES:
+        raise SigningKeyError(f"{path} is too large to be a private key")
     if not _WINDOWS:
-        info = path.stat()
         if info.st_uid != os.getuid():
             raise SigningKeyError(f"refusing to load {path}: it is owned by another user")
         if info.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
