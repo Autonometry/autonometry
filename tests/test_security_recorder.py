@@ -4,9 +4,12 @@ keeps running, makes the time ``unknown`` (fail visible) and its log still verif
 
 import json
 import os
+import shutil
 import socket
 import stat
 import sys
+import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -156,6 +159,15 @@ def test_extreme_values_in_any_order_never_stop_the_recorder__s04(
 # -- files and the socket (POSIX) ---------------------------------------------------------------
 
 
+@pytest.fixture
+def short_dir() -> Iterator[Path]:
+    """A 0700 folder with a short path: Unix socket paths are limited to about 100 bytes, and
+    macOS's temporary folders are longer."""
+    folder = tempfile.mkdtemp(prefix="am", dir="/tmp")
+    yield Path(folder)
+    shutil.rmtree(folder, ignore_errors=True)
+
+
 @posix_only
 def test_a_log_file_replaced_by_a_link_is_refused__s07(tmp_path: Path) -> None:
     """S-07: the recorder opened its logs through symbolic links; one planted in place of
@@ -226,34 +238,29 @@ def test_a_socket_swapped_for_a_link_while_set_up_is_refused__s06(tmp_path: Path
 
 
 @posix_only
-def test_the_socket_is_created_with_its_final_mode__s06(tmp_path: Path) -> None:
+def test_the_socket_is_created_with_its_final_mode__s06(short_dir: Path) -> None:
     from autonometry.recorder.service import bind_socket  # noqa: PLC0415
 
-    folder = tmp_path / "s"
-    folder.mkdir(mode=0o700)
     old = os.umask(0)
     try:
-        sock = bind_socket(folder / "r.sock", None)
+        sock = bind_socket(short_dir / "r.sock", None)
     finally:
         os.umask(old)
     try:
-        assert stat.S_IMODE(os.lstat(folder / "r.sock").st_mode) == 0o600
+        assert stat.S_IMODE(os.lstat(short_dir / "r.sock").st_mode) == 0o600
     finally:
         sock.close()
 
 
 @posix_only
 def test_a_stale_socket_that_cannot_be_removed_is_a_start_error__s06(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    short_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from autonometry.recorder import service  # noqa: PLC0415
 
-    folder = tmp_path / "s"
-    folder.mkdir(mode=0o700)
-    path = folder / "r.sock"
-    stale = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-    stale.bind(str(path))
-    stale.close()
+    path = short_dir / "r.sock"
+    with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as stale:
+        stale.bind(str(path))
 
     def refuse(target: object) -> None:
         raise PermissionError(13, "Permission denied")
