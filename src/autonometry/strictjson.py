@@ -3,8 +3,10 @@
 Rejected: syntax errors, duplicate keys, ``NaN`` and ``Infinity``, numbers that overflow a 64-bit
 float, integers outside +/-(2**53 - 1), and, in keys or values, lone UTF-16 surrogates (written as
 ``\\u`` escapes; they cannot be encoded as UTF-8, so the event could not be hashed) and Unicode
-noncharacters (definitions.md section 8, JSON). Error messages describe where the problem is, never
-the text itself.
+noncharacters (definitions.md section 8, JSON), and arrays and objects nested more than
+:data:`MAX_DEPTH` deep (an implementation limit, RFC 8259 section 9: every line is accepted or
+rejected the same way whatever the caller's stack depth, and hashing, which recurses, never runs out
+of stack). Error messages describe where the problem is, never the text itself.
 """
 
 import json
@@ -13,6 +15,8 @@ import re
 from typing import Any
 
 MAX_SAFE_INTEGER = 2**53 - 1
+#: Deepest nesting of arrays and objects accepted; an event's own fields nest 2 deep.
+MAX_DEPTH = 128
 _MAX_SAFE_DIGITS = len(str(MAX_SAFE_INTEGER))
 _SURROGATES = ("\ud800", "\udfff")
 # Noncharacters: U+FDD0 to U+FDEF and the last two code points of each of the 17 planes
@@ -74,6 +78,21 @@ def _bad_code_point(value: Any) -> str | None:
     return None
 
 
+def _depth(value: Any) -> int:
+    """How deep arrays and objects nest in ``value`` (a scalar is 0), without recursion."""
+    deepest = 0
+    pending: list[tuple[Any, int]] = [(value, 1)]
+    while pending:
+        item, level = pending.pop()
+        if isinstance(item, dict):
+            item = list(item.values())
+        if isinstance(item, list):
+            deepest = max(deepest, level)
+            pending.extend((child, level + 1) for child in item)
+    return deepest
+
+
+_TOO_DEEP = f"values are nested more than {MAX_DEPTH} deep"
 _DECODER = json.JSONDecoder(
     object_pairs_hook=_object, parse_int=_integer, parse_float=_float, parse_constant=_constant
 )
@@ -83,7 +102,8 @@ def parse(text: str) -> Any:
     """Parse one JSON text under the I-JSON rules (RFC 7493 sections 2.1 to 2.3).
 
     Raises:
-        StrictJsonError: with code ``invalid_json``, ``duplicate_key``, ``non_finite_number``,
+        StrictJsonError: with code ``invalid_json`` (also for nesting deeper than
+            :data:`MAX_DEPTH`), ``duplicate_key``, ``non_finite_number``,
             ``integer_out_of_range`` or ``invalid_unicode``.
     """
     try:
@@ -91,7 +111,10 @@ def parse(text: str) -> Any:
     except json.JSONDecodeError as exc:
         raise StrictJsonError("invalid_json", f"{exc.msg} at column {exc.colno}") from None
     except RecursionError:
-        raise StrictJsonError("invalid_json", "values are nested too deeply") from None
+        raise StrictJsonError("invalid_json", _TOO_DEEP) from None
+    # Fewer opening brackets than the limit cannot nest deeper, so most lines skip the walk.
+    if text.count("[") + text.count("{") > MAX_DEPTH and _depth(value) > MAX_DEPTH:
+        raise StrictJsonError("invalid_json", _TOO_DEEP)
     # Only a \u escape or non-ASCII text can hold a bad code point, so ASCII logs skip the scan.
     if "\\u" in text or not text.isascii():
         found = _bad_code_point(value)

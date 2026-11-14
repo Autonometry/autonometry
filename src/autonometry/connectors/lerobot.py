@@ -128,7 +128,8 @@ _ID_BAD = re.compile(r"[^A-Za-z0-9._:-]")
 _CONTROLLER_MAX = 125
 _DIGEST_CHARS = 12
 _NS_PER_S = 1_000_000_000
-_MAX_COUNTER = 10**16
+#: Episode indexes stay below 2^53: ``x_episode_index`` is an I-JSON integer (definitions.md 8).
+_MAX_COUNTER = 2**53
 
 # -- log lines ----------------------------------------------------------------------------------
 
@@ -522,7 +523,7 @@ class LeRobotEngine:
         self._now = 0.0
         self._sent: tuple[StateAssertion, ...] = ()
         self._task: str | None = None
-        self._task_ids: set[str] = set()
+        self._attempts: dict[str, int] = {}
         self._closed_unknown: str | None = None
         self._attached = False
         self._ended: str | None = None
@@ -579,6 +580,22 @@ class LeRobotEngine:
         self._ended, self._end_src = "gone", None
         self._flush(out)
         out.append(Note((("x_lerobot_process_exit", "unlogged"),)))
+        return out
+
+    def log_lost(self, t: float) -> list[Message]:
+        """The followed log vanished, was replaced or was cut at or before ``t``: lines may be
+        written where the watcher cannot read them, so what the log said last no longer holds
+        (product rule 2). As for ``Rollout finished``: the open task closed with outcome
+        ``unknown`` and every scope ``unknown``, then a heartbeat note ``x_lerobot_log: lost``,
+        until a line read later tells the state again. Nothing when no rollout is followed."""
+        self._now = max(self._now, t)
+        if not self.following:
+            return []
+        out: list[Message] = []
+        self._close("unknown", None, out)
+        self._ended, self._end_src = "lost", None
+        self._flush(out)
+        out.append(Note((("x_lerobot_log", "lost"),)))
         return out
 
     def stop(self) -> list[Message]:
@@ -642,11 +659,10 @@ class LeRobotEngine:
         self._close("unknown", src_ts, out)
         self._flush(out)
         base = f"episode_{index:06d}"
-        task_id, attempt = base, 1
-        while task_id in self._task_ids:
-            attempt += 1
-            task_id = f"{base}_{attempt}"
-        self._task_ids.add(task_id)
+        # One counter per episode: a log repeating an episode's start costs O(1) per line.
+        attempt = self._attempts.get(base, 0) + 1
+        self._attempts[base] = attempt
+        task_id = base if attempt == 1 else f"{base}_{attempt}"
         self._task = task_id
         self._closed_unknown = None
         fields = (("x_episode_index", index), *_src_fields(src_ts))
@@ -671,6 +687,8 @@ class LeRobotEngine:
         return _human(self._s.devices, self._teleop, shared, "human_initiated", None, src_ts)
 
     def _dispatch(self, signal: Signal, src: str | None, out: list[Message]) -> None:  # noqa: PLR0912 -- one branch per signal
+        if self._ended == "gone" and not isinstance(signal, ProcessStart):
+            return  # a late line of a process known dead (a buffer flushed after a kill)
         match signal:
             case ProcessStart() | PolicyPath() | TeleopType() | ExistingEpisodes():
                 self._on_setup(signal, src, out)
@@ -782,7 +800,7 @@ class Episode:
         if len(self.frame_index) != len(self.intervention):
             raise ValueError("frame_index and intervention must have the same length")
         if not 0 <= self.index < _MAX_COUNTER or self.length < 0:
-            raise ValueError("index must be 0 to 10**16 - 1 and length not negative")
+            raise ValueError("index must be 0 to 2**53 - 1 and length not negative")
 
     @property
     def span(self) -> int:

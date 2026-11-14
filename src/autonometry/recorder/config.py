@@ -137,6 +137,8 @@ def parse_config(text: str, base: Path) -> RecorderConfig:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"not valid TOML: {exc}") from None
+    except RecursionError:  # tomllib recurses into nested arrays and inline tables
+        raise ConfigError("not valid TOML: values are nested too deeply") from None
     for name in _PATH_FIELDS:
         value = data.get(name)
         if isinstance(value, str):

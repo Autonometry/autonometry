@@ -46,13 +46,35 @@ class StartError(Exception):
     message is one line."""
 
 
-def lock_robot_dir(robot: Path) -> int:
-    """Take an exclusive lock on ``<robot>/.lock``; return its descriptor, held until closed.
+def check_robot_dir(robot: Path) -> None:
+    """Refuse a robot folder that another user could change: it must belong to this user and be
+    writable by nobody else, and its parent (``data_dir``) must not be writable by every user
+    unless it has the sticky bit. Otherwise another local user could plant links where the
+    recorder writes, or swap the folder.
 
     Raises:
-        StartError: another recorder holds the lock.
+        StartError: the folder or its parent is not private enough.
     """
-    fd = os.open(robot / _LOCK_FILE, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+    info = robot.stat()
+    if info.st_uid != os.geteuid():
+        raise StartError(f"{robot} belongs to another user; refusing to write logs there")
+    if info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        raise StartError(f"{robot} is writable by its group or others; make it 0700")
+    parent = robot.parent.stat()
+    if parent.st_mode & stat.S_IWOTH and not parent.st_mode & stat.S_ISVTX:
+        raise StartError(f"{robot.parent} is writable by every user; refusing to write logs there")
+
+
+def lock_robot_dir(robot: Path) -> int:
+    """Check the robot folder (:func:`check_robot_dir`), then take an exclusive lock on
+    ``<robot>/.lock``; return its descriptor, held until closed.
+
+    Raises:
+        StartError: the folder is not private enough, or another recorder holds the lock.
+    """
+    check_robot_dir(robot)
+    flags = os.O_RDWR | os.O_CREAT | os.O_CLOEXEC | os.O_NOFOLLOW
+    fd = os.open(robot / _LOCK_FILE, flags, 0o600)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
@@ -61,12 +83,23 @@ def lock_robot_dir(robot: Path) -> int:
     return fd
 
 
+def _check_socket_folder(folder: Path) -> None:
+    if not folder.is_dir():
+        raise StartError(f"the folder of socket_path does not exist: {folder}")
+    if folder.stat().st_mode & stat.S_IWOTH:
+        # Any user could put their own socket at the path first and receive the connectors'
+        # datagrams, or swap the socket file for a link while the recorder sets its mode.
+        raise StartError(f"the folder of socket_path is writable by every user: {folder}")
+
+
 def clear_stale_socket(path: Path) -> None:
     """Remove a socket left behind by a recorder that died; refuse a live one or another file.
 
     Raises:
-        StartError: something listens on ``path``, or ``path`` is not a socket.
+        StartError: the folder is missing or writable by every user, something listens on
+            ``path``, ``path`` is not a socket, or it cannot be removed.
     """
+    _check_socket_folder(path.parent)
     try:
         info = os.lstat(path)
     except FileNotFoundError:
@@ -77,7 +110,10 @@ def clear_stale_socket(path: Path) -> None:
     try:
         probe.connect(str(path))
     except ConnectionRefusedError:
-        os.unlink(path)
+        try:
+            os.unlink(path)
+        except OSError as exc:
+            raise StartError(f"cannot remove the stale socket {path}: {exc.strerror}") from None
         return
     except OSError as exc:
         raise StartError(f"cannot check {path}: {exc.strerror or exc}") from None
@@ -86,28 +122,39 @@ def clear_stale_socket(path: Path) -> None:
     raise StartError(f"another process is receiving on {path}")
 
 
+def _set_socket_mode(path: Path, gid: int | None, mode: int) -> None:
+    """Give the socket just bound its group and mode without following a link put in its place:
+    the umask already created it with ``mode``; check it is still this user's socket."""
+    if gid is not None:
+        os.chown(path, -1, gid, follow_symlinks=False)
+    info = os.lstat(path)
+    if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.geteuid():
+        raise OSError(f"{path} was replaced while it was being set up")
+    if stat.S_IMODE(info.st_mode) != mode:
+        os.chmod(path, mode)  # a system whose bind ignores the umask; checked just above
+
+
 def bind_socket(path: Path, group: str | None) -> socket.socket:
     """Bind a non-blocking Unix datagram socket at ``path``: mode 0600, or 0660 owned by
-    ``group`` when one is given. The folder must exist.
+    ``group`` when one is given. The folder must exist and must not be writable by every user.
 
     Raises:
-        StartError: the folder is missing, the group is unknown, or binding fails.
+        StartError: the folder is missing or writable by every user, the group is unknown, or
+            binding fails.
     """
-    if not path.parent.is_dir():
-        raise StartError(f"the folder of socket_path does not exist: {path.parent}")
+    _check_socket_folder(path.parent)
     gid = None
     if group is not None:
         try:
             gid = grp.getgrnam(group).gr_gid
         except KeyError:
             raise StartError(f"socket_group {group!r} is not a group on this system") from None
+    mode = 0o660 if gid is not None else 0o600
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-    old_umask = os.umask(0o177)  # no window in which the socket is open to others
+    old_umask = os.umask(0o777 & ~mode)  # created with exactly ``mode``: never open to others
     try:
         sock.bind(str(path))
-        if gid is not None:
-            os.chown(path, -1, gid)
-        os.chmod(path, 0o660 if gid is not None else 0o600)
+        _set_socket_mode(path, gid, mode)
     except OSError as exc:
         sock.close()
         with contextlib.suppress(OSError):

@@ -600,16 +600,23 @@ def neutral(*values: float) -> bool:
 
 def relays(command: Sequence[float], smoothed: Sequence[float]) -> bool:
     """True when ``command`` is ``smoothed`` scaled by a factor in [0, 1], as the collision
-    monitor's slowdown and stop produce (the notes' topic-level rule, section A)."""
-    norm = math.fsum(s * s for s in smoothed)
-    if norm < _NEUTRAL * _NEUTRAL:
-        return neutral(*command)
-    factor = math.fsum(c * s for c, s in zip(command, smoothed, strict=True)) / norm
-    if not -_SCALE_SLACK <= factor <= 1 + _SCALE_SLACK:
+    monitor's slowdown and stop produce (the notes' topic-level rule, section A). Never raises:
+    values whose arithmetic overflows are no relay, so a person's command they arrive with is
+    never taken for the AI's."""
+    if not all(math.isfinite(v) for v in (*command, *smoothed)):
         return False
-    error = math.sqrt(
-        math.fsum((c - factor * s) ** 2 for c, s in zip(command, smoothed, strict=True))
-    )
+    try:
+        norm = math.fsum(s * s for s in smoothed)
+        if norm < _NEUTRAL * _NEUTRAL:
+            return neutral(*command)
+        factor = math.fsum(c * s for c, s in zip(command, smoothed, strict=True)) / norm
+        if not -_SCALE_SLACK <= factor <= 1 + _SCALE_SLACK:
+            return False
+        error = math.sqrt(
+            math.fsum((c - factor * s) ** 2 for c, s in zip(command, smoothed, strict=True))
+        )
+    except (OverflowError, ValueError):  # a sum that overflows, or inf - inf
+        return False
     return error <= 1e-3 + 1e-3 * math.sqrt(norm)
 
 

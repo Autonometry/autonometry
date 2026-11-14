@@ -357,6 +357,14 @@ current states, followed by one transition per scope that is not `unknown` repea
 continues the same session), 2 when it cannot start (config, key, registry, socket or folder in
 use). Operational messages go to stderr and never contain event contents.
 
+**Folders it trusts.** The recorder refuses to start (exit 2) when `<data_dir>/<robot_id>` belongs
+to another user or its group or others can write it, when `data_dir` can be written by every user
+without the sticky bit, or when the folder of `socket_path` can be written by every user (another
+user could bind the path first and receive the connectors' datagrams). It creates the socket with
+its final mode, never follows a symbolic link in place of a log file, and keeps running whatever a
+datagram holds: one it cannot handle is counted in `x_rejected_client_events` and makes every
+scope `unknown`. The threat model is in [`docs/threat-model.md`](docs/threat-model.md).
+
 ### Install
 
 On the robot (Python 3.12 or newer):
@@ -467,7 +475,11 @@ sent to `socket_path`, at most 65536 bytes:
   recorder does not write itself (for example a connector's `x_publishers`): the recorder writes a
   heartbeat of its own at once, with its clock status and distance, and those fields added.
 - `distance_m`: instead of `event`, an odometer reading in metres that never decreases while the
-  connector runs; heartbeats carry the distance travelled since the session started.
+  connector runs; heartbeats carry the distance travelled since the session started. A reading
+  that would make that distance overflow a 64-bit float is rejected.
+
+Arrays and objects may nest at most 128 deep, in a datagram as in a log line: anything deeper is
+rejected as `invalid_json`, the same way whatever reads it.
 
 Send without blocking and never wait for an answer: there is none. For Python 3.8 or newer, copy
 [`clients/python/autonometry_client.py`](clients/python/autonometry_client.py) (standard library
@@ -635,7 +647,11 @@ Python running that script or `-m lerobot.scripts.lerobot_rollout`. A launcher a
 starts (`uv run`, the Windows `.exe` launcher) count as one rollout, and the deepest is watched.
 With none or several, the watcher warns once, notes `x_lerobot_liveness: unwatched` on a
 heartbeat, and the log alone decides. A log written on another computer cannot be watched this
-way.
+way. A log that vanishes, is replaced by another file or is cut shorter while a rollout is followed
+(log rotation, a new `> rollout.log`) is treated the same way: the open task closes with outcome
+`unknown`, every scope is `unknown` and a heartbeat notes `x_lerobot_log: lost`, until a line read
+afterwards tells the state again. A line read after the rollout's process is known gone (a buffer
+flushed after a kill) is ignored unless a new rollout starts.
 
 **Logs written on Windows.** These commands, tested with Windows PowerShell 5.1 and cmd on
 Windows 11, give a log the watcher reads in full:
@@ -703,7 +719,12 @@ carries `x_ts_reconstructed: true`, so the logs are trust level L1 at most (8, 1
 sessions declare `unobserved: ["safety_stops", "human_inputs"]`: the SO-101 has no safety
 function, and pauses and resets are never recorded. Episodes listed in the metadata whose data
 file is missing are named and skipped. A task text not in the task registry gets an id
-`lerobot_task_<hash>`, and its tasks are flagged `unknown_task_definition`.
+`lerobot_task_<hash>`, and its tasks are flagged `unknown_task_definition`. A dataset is untrusted
+input: an episode longer than 24 hours (its declared length or last frame over the frame rate), a
+parquet file of more than 10 million rows, or an index above 2^53 − 1 stops the import with one
+line, checked from the metadata before anything is written; an import never replaces a session log
+already in `--out`, and a robot id that is no folder name on the system (`C:` or `NUL` on Windows)
+is refused.
 
 **Demo.** [`demo/lerobot/run_demo.py`](demo/lerobot/README.md) downloads the metadata and first
 data files of a public DAgger dataset from the Hugging Face Hub, using the standard library only.
@@ -951,6 +972,13 @@ needs a Rust toolchain to build it from source.
 - [`spec/`](spec/): the normative definitions, the event JSON Schema and the machine-readable rules (current draft: v0.3). The wheel ships this folder as `autonometry/spec/`.
 - [`research/`](research/): design-phase material, for reference only. It is not part of the package.
 - [`CHANGELOG.md`](CHANGELOG.md), [`SECURITY.md`](SECURITY.md), [`RELEASING.md`](RELEASING.md)
+
+## Security
+
+Report vulnerabilities as [`SECURITY.md`](SECURITY.md) says. The threat model, with what trust
+levels L1, L2 and L3 prove against whom, is [`docs/threat-model.md`](docs/threat-model.md); the
+pre-release review and its findings are in
+[`docs/security-review-2026-11.md`](docs/security-review-2026-11.md).
 
 ## Development
 

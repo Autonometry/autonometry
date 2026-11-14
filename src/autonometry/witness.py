@@ -22,7 +22,7 @@ How each rule is applied:
   and station input while the robot logs ``unknown`` counted as disputed.
 """
 
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
@@ -97,8 +97,13 @@ def _length(intervals: Iterable[Interval]) -> int:
 
 
 def _overlaps(interval: Interval, others: Sequence[Interval]) -> bool:
-    """True when ``interval`` shares a stretch of positive length with sorted ``others``."""
-    return bool(_intersect([interval], others))
+    """True when ``interval`` shares a stretch of positive length with sorted, disjoint
+    ``others``. A binary search, so matching every run against every episode stays
+    O(n log n): a station log of many short episodes cannot stall the reconciler."""
+    start, end = interval
+    # The first of ``others`` that ends after ``start`` is the only one that can overlap first.
+    i = bisect_right(others, start, key=lambda other: other[1])
+    return i < len(others) and max(start, others[i][0]) < min(end, others[i][1])
 
 
 # -- parameters ---------------------------------------------------------------------------------

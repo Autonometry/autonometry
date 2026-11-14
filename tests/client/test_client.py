@@ -179,6 +179,49 @@ class ClientTest(unittest.TestCase):
         rec.state("base", "ai")
         self.assertEqual(rec.dropped, 1)
 
+    def test_a_send_from_a_signal_handler_mid_send_never_blocks(self) -> None:
+        """Security review M10 (S-11): a signal handler runs on the thread it interrupts, so a
+        send it makes while that thread is inside a send must not wait for the client's lock."""
+        sock = self.receiver()
+        rec = self.client("nav")
+
+        class Reentering:
+            """Stands in for the socket: the first send is interrupted by a handler that sends."""
+
+            def __init__(self, real: Any) -> None:
+                self.real = real
+                self.interrupted = False
+
+            def sendto(self, data: bytes, path: str) -> int:
+                if not self.interrupted:
+                    self.interrupted = True
+                    rec.state("base", "safety_stop", "safety", "op_1")
+                return self.real.sendto(data, path)
+
+            def close(self) -> None:
+                self.real.close()
+
+        rec._sock = Reentering(rec._sock)  # type: ignore[assignment]
+        worker = threading.Thread(target=rec.state, args=("base", "ai"), daemon=True)
+        worker.start()
+        worker.join(2.0)
+        self.assertFalse(worker.is_alive(), "the client blocked on its own lock")
+        numbers = sorted(self.receive(sock)["n"] for _ in range(2))
+        self.assertEqual(numbers, [0, 1])
+        self.assertEqual(rec.dropped, 0)
+
+    def test_arguments_that_cannot_be_read_never_raise(self) -> None:
+        """Security review M10 (S-11): even a path or name whose str() raises."""
+
+        class Unprintable:
+            def __str__(self) -> str:
+                raise RuntimeError("no text")
+
+        rec = autonometry_client.Recorder(Unprintable(), Unprintable())  # type: ignore[arg-type]
+        self.addCleanup(rec.close)
+        rec.state("base", "ai")
+        self.assertEqual(rec.dropped, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

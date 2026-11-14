@@ -48,6 +48,8 @@ SESSION_ID_RE = re.compile(r"(?P<counter>[0-9]{6,16})-[0-9]{8}T[0-9]{6}Z-[0-9a-f
 COUNTER_DIGITS = 6
 _BINARY = getattr(os, "O_BINARY", 0)
 _CLOEXEC = getattr(os, "O_CLOEXEC", 0)
+#: A log file is never a symbolic link; opening one through a link fails (POSIX).
+_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 _TAIL_CHUNK = 65536
 #: Fields of ``session_start`` that the config decides; a recovered session continues only when
 #: they are unchanged.
@@ -94,7 +96,7 @@ class AppendFile:
 
     def __init__(self, path: Path, ops: FileOps) -> None:
         created = not path.exists()
-        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | _BINARY | _CLOEXEC
+        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | _BINARY | _CLOEXEC | _NOFOLLOW
         self.path = path
         self._ops = ops
         self._fd = os.open(path, flags, PRIVATE_FILE_MODE)

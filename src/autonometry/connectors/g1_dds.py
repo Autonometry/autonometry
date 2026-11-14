@@ -524,11 +524,15 @@ class _Participant:
     name: str | None
 
 
+_PID_RE = re.compile(r"[0-9]{1,10}", re.ASCII)
+
+
 def _participant(properties: Mapping[str, str], local_host: str, resolve: Resolver) -> _Participant:
     host = _text(properties.get("__Hostname"))
     program = _text(properties.get("__ProcessName"))
     pid_text = properties.get("__Pid", "")
-    pid = int(pid_text) if pid_text.isdigit() and len(pid_text) <= 10 else None  # noqa: PLR2004
+    # ASCII digits only: str.isdigit() also accepts digits such as "²" that int() refuses.
+    pid = int(pid_text) if _PID_RE.fullmatch(pid_text) else None
     return _Participant(
         host, program, pid, participant_name(host, program, pid, local_host, resolve)
     )
@@ -583,7 +587,10 @@ def convert(record: SampleRecord, key: str, t: float) -> g1.Observation | None: 
         if topic in g1.COMMAND_TOPICS:
             return g1.Command(t, key, topic, _weight(topic, value))
         if topic == g1.ARM_STATE:
-            return g1.ArmState(t, key, _text(value.data, MAX_TEXT) or "")
+            # Parsed as JSON by the engine, never printed: bounded, not rewritten (a newline in
+            # pretty-printed JSON must stay a newline).
+            data = value.data if isinstance(value.data, str) else ""
+            return g1.ArmState(t, key, data[:MAX_TEXT])
         for service in g1.SERVICES:
             if topic == g1.request_topic(service):
                 identity = value.header.identity
@@ -892,15 +899,14 @@ class Discovery:
         """Participants with host, program, pid and the topics they write, each with the exact
         ``match`` for the device registry (notes section 4); sorted, so the same network gives
         the same text."""
-        keys = set(self.participants) | {w.participant_key for w in self.writers.values()}
+        by_participant: dict[str, list[PublicationRecord]] = {}
+        for writer in self.writers.values():  # grouped once: linear in the endpoints seen
+            by_participant.setdefault(writer.participant_key, []).append(writer)
         participants = []
-        for key in sorted(keys):
+        for key in sorted(set(self.participants) | set(by_participant)):
             info = self.participants.get(key, _Participant(None, None, None, None))
             writers = []
-            for writer in sorted(
-                (w for w in self.writers.values() if w.participant_key == key),
-                key=lambda w: (w.topic, w.key),
-            ):
+            for writer in sorted(by_participant.get(key, ()), key=lambda w: (w.topic, w.key)):
                 topic = _text(writer.topic) or ""
                 entry: dict[str, Any] = {
                     "topic": topic,
@@ -1090,7 +1096,11 @@ def pump(  # noqa: PLR0913 -- the pass's collaborators
 ) -> None:
     """One pass: the tasks, then everything read from DDS, to the engine; then, when due, the
     state of every scope (seconds, ``now``)."""
-    for observation in [*tasks.poll(now), *observer.poll(now)]:
+    # The tasks go first and on their own: a failure reading DDS cannot drop a task's start
+    # or end the follower has already consumed.
+    for observation in tasks.poll(now):
+        send(_warned(engine.observe(observation)))
+    for observation in observer.poll(now):
         send(_warned(engine.observe(observation)))
     if tick:
         send(_warned(engine.tick(now)))

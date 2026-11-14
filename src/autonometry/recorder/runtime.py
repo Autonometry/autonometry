@@ -208,8 +208,17 @@ class Recorder:
     # -- running ------------------------------------------------------------------------------
 
     def receive(self, data: bytes) -> None:
-        """Handle one datagram."""
-        self._emit(self._engine.receive(data))
+        """Handle one datagram. Whatever a datagram holds, the recorder keeps running: one the
+        engine fails on is counted as rejected and makes every scope ``unknown``."""
+        try:
+            events = self._engine.receive(data)
+        except Exception as exc:  # process boundary: one datagram never stops the recorder
+            logger.warning(
+                "could not handle a datagram (%s); counted as rejected", type(exc).__name__
+            )
+            logger.debug("datagram failure", exc_info=True)
+            events = self._engine.reject(f"internal error ({type(exc).__name__})")
+        self._emit(events)
 
     def tick(self) -> None:
         """Do what is due: append fetched tokens, write due events, fsync if due."""
