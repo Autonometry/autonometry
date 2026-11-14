@@ -1,0 +1,223 @@
+{
+  "all_l3": false,
+  "counts": {
+    "ignored": 0,
+    "l3": 1,
+    "robot_sessions": 2,
+    "station_sessions": 2
+  },
+  "ignored": [],
+  "parameters": {
+    "clock_tolerance_s": 1.0,
+    "l3_disputed_max_share": 0.02,
+    "l3_eps_min_without_ptp_s": 0.001,
+    "l3_eps_substitute_s": 0.05,
+    "l3_station_only_max_share": 0.005,
+    "react_s": 0.5,
+    "simultaneity_window_s": 0.5
+  },
+  "registry_errors": [],
+  "sessions": [
+    {
+      "by_scope": {
+        "whole_robot": {
+          "base_s": 300.0,
+          "both_human_s": 30.05,
+          "disputed_s": 0.0,
+          "held_s": 0.0,
+          "neither_s": 269.95,
+          "robot_only_s": 0.0,
+          "station_only_s": 0.0,
+          "tolerated_s": 0.15,
+          "unwitnessed_s": 0.0
+        }
+      },
+      "episodes": {
+        "matched_station": 1,
+        "unmatched_robot_runs": [],
+        "unmatched_station": []
+      },
+      "flags": [],
+      "interventions": {
+        "robot": 1,
+        "upper_bound": 1
+      },
+      "l3": true,
+      "level": "L3",
+      "maxima": {
+        "disputed_with_unwitnessed": 0.02,
+        "station_only_with_unwitnessed": 0.005
+      },
+      "reasons": [],
+      "robot_id": "r01",
+      "session_id": "s01",
+      "shares": {
+        "disputed": 0.0,
+        "disputed_with_unwitnessed": 0.0,
+        "station_only": 0.0,
+        "station_only_with_unwitnessed": 0.0,
+        "unwitnessed": 0.0
+      },
+      "station_human_robot_unknown_s": 0.0,
+      "stations": [
+        {
+          "session_id": "st01",
+          "station_id": "pc_1",
+          "status": "verified"
+        }
+      ],
+      "status": "verified",
+      "tau_s": {
+        "max": 0.52,
+        "min": 0.52
+      },
+      "times": {
+        "base_s": 300.0,
+        "both_human_s": 30.05,
+        "disputed_s": 0.0,
+        "held_s": 0.0,
+        "neither_s": 269.95,
+        "robot_only_s": 0.0,
+        "station_only_s": 0.0,
+        "tolerated_s": 0.15,
+        "unwitnessed_s": 0.0
+      }
+    },
+    {
+      "by_scope": {
+        "whole_robot": {
+          "base_s": 300.0,
+          "both_human_s": 0.0,
+          "disputed_s": 30.0,
+          "held_s": 0.0,
+          "neither_s": 270.0,
+          "robot_only_s": 0.0,
+          "station_only_s": 30.0,
+          "tolerated_s": 0.0,
+          "unwitnessed_s": 0.0
+        }
+      },
+      "episodes": {
+        "matched_station": 0,
+        "unmatched_robot_runs": [],
+        "unmatched_station": [
+          {
+            "duration_s": 30.0,
+            "end": "2026-11-12T08:03:50.000000000Z",
+            "scope": "whole_robot",
+            "start": "2026-11-12T08:03:20.000000000Z"
+          }
+        ]
+      },
+      "flags": [
+        {
+          "code": "implausible_clock_error",
+          "detail": "305 heartbeat(s) report clock_max_error_s below 0.001 s without PTP; each counts as 0.05 s",
+          "role": "station",
+          "session_id": "st01",
+          "station_id": "pc_2"
+        }
+      ],
+      "interventions": {
+        "robot": 0,
+        "upper_bound": 1
+      },
+      "l3": false,
+      "level": "L2",
+      "maxima": {
+        "disputed_with_unwitnessed": 0.02,
+        "station_only_with_unwitnessed": 0.005
+      },
+      "reasons": [
+        {
+          "code": "station_only_above_max",
+          "detail": "(station-only + unwitnessed) / base = 0.1000 > 0.005"
+        },
+        {
+          "code": "disputed_above_max",
+          "detail": "(disputed + unwitnessed) / base = 0.1000 > 0.02"
+        }
+      ],
+      "robot_id": "r02",
+      "session_id": "s01",
+      "shares": {
+        "disputed": 0.1,
+        "disputed_with_unwitnessed": 0.1,
+        "station_only": 0.1,
+        "station_only_with_unwitnessed": 0.1,
+        "unwitnessed": 0.0
+      },
+      "station_human_robot_unknown_s": 0.0,
+      "stations": [
+        {
+          "session_id": "st01",
+          "station_id": "pc_2",
+          "status": "verified"
+        }
+      ],
+      "status": "verified",
+      "tau_s": {
+        "max": 0.56,
+        "min": 0.56
+      },
+      "times": {
+        "base_s": 300.0,
+        "both_human_s": 0.0,
+        "disputed_s": 30.0,
+        "held_s": 0.0,
+        "neither_s": 270.0,
+        "robot_only_s": 0.0,
+        "station_only_s": 30.0,
+        "tolerated_s": 0.0,
+        "unwitnessed_s": 0.0
+      }
+    }
+  ],
+  "spec_version": "0.3",
+  "stations": [
+    {
+      "flags": [],
+      "human_outside_robot_sessions_s": 0.0,
+      "human_s": 29.95,
+      "invalid_states": [],
+      "robot_id": "r01",
+      "session_id": "st01",
+      "station_id": "pc_1",
+      "status": "verified",
+      "witnesses": [
+        "s01"
+      ]
+    },
+    {
+      "flags": [
+        {
+          "code": "implausible_clock_error",
+          "detail": "305 heartbeat(s) report clock_max_error_s below 0.001 s without PTP; each counts as 0.05 s",
+          "role": "station",
+          "session_id": "st01",
+          "station_id": "pc_2"
+        }
+      ],
+      "human_outside_robot_sessions_s": 0.0,
+      "human_s": 30.0,
+      "invalid_states": [],
+      "robot_id": "r02",
+      "session_id": "st01",
+      "station_id": "pc_2",
+      "status": "verified",
+      "witnesses": [
+        "s01"
+      ]
+    }
+  ],
+  "verification": {
+    "robot": {
+      "reasons": [],
+      "verified": true
+    },
+    "station": {
+      "reasons": [],
+      "verified": true
+    }
+  }
+}

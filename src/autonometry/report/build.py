@@ -2,10 +2,10 @@
 command line read: the checked logs, their verification, the timelines and the hashes of the
 input files. Nothing here reads a file, the clock or the network: ``generated_at`` is an input.
 
-Order of the sections: verdict, provenance, trust, census, exclusions, metrics, statements,
-invariants, sessions, figures. ``figures`` holds the numbers the rendered figures draw that the
-metrics do not carry (Kaplan-Meier steps, drift intervals), so the HTML is a function of the JSON
-alone.
+Order of the sections: verdict, provenance, trust, witness, census, exclusions, metrics,
+statements, invariants, sessions, figures. ``figures`` holds the numbers the rendered figures
+draw that the metrics do not carry (Kaplan-Meier steps, drift intervals), so the HTML is a
+function of the JSON alone.
 """
 
 from collections.abc import Mapping, Sequence
@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Final
 
 from autonometry import __version__
-from autonometry.events import LogCheck, VerifyResult
+from autonometry.events import LogCheck, Session, VerifyResult
 from autonometry.report import census as census_
 from autonometry.report import invariants as invariants_
 from autonometry.report import statements as statements_
@@ -25,6 +25,7 @@ from autonometry.stats.metrics import DEPENDS_ON, Json, Options, gap_table, para
 from autonometry.stats.report import GROUPS, clean, metrics_report
 from autonometry.timeline import Timeline
 from autonometry.timestamps import ns_to_ts
+from autonometry.witness import Reconciliation
 
 SOFTWARE: Final = "autonometry"
 #: The four numbers of the verdict box, per group.
@@ -67,7 +68,9 @@ class ReportInputs:
     """Everything a report is built from. ``registry_problems`` names, per session left without
     a timeline, why its registries could not be used; ``spec_files`` maps each file of the spec
     version to its SHA-256; ``trusted_keys``, ``trusted_tsa_roots`` and ``anchor_files`` count
-    what the verifier was given."""
+    what the verifier was given. ``witness`` is the reconciliation with the station logs given
+    and ``station_verification`` their verification (definitions.md 12); both ``None``
+    without station logs."""
 
     log_check: LogCheck
     verification: VerifyResult
@@ -81,6 +84,8 @@ class ReportInputs:
     anchor_files: int = 0
     title: str | None = None
     about: str | None = None
+    witness: Reconciliation | None = None
+    station_verification: VerifyResult | None = None
 
 
 def _key(item: Timeline | SessionFacts) -> Key:
@@ -91,6 +96,44 @@ def _all_keys(inputs: ReportInputs) -> list[Key]:
     keys = {(v.robot_id, v.session_id) for v in inputs.verification.sessions}
     keys |= {(s.robot_id, s.session_id) for s in inputs.log_check.sessions}
     return sorted(keys)
+
+
+def _station_keys(inputs: ReportInputs) -> set[Key]:
+    """Sessions of the robot logs whose ``session_start`` says ``role`` ``station`` (12.1)."""
+    return {(s.robot_id, s.session_id) for s in inputs.log_check.sessions if _is_station(s)}
+
+
+def _is_station(session: Session) -> bool:
+    start = next((e for e in session.events if e["type"] == "session_start"), None)
+    return start is not None and start.get("role") == "station"
+
+
+def _l3_keys(inputs: ReportInputs) -> set[Key]:
+    if inputs.witness is None:
+        return set()
+    return {(s.robot_id, s.session_id) for s in inputs.witness.sessions if s.l3}
+
+
+def witness_section(witness: Reconciliation | None) -> Json:
+    """The Witness section (11.2, 12): per robot session the five times with the tolerated and
+    held parts, the shares, tau, unmatched episodes, the upper-bound intervention count and the
+    reasons it is not L3; the station sessions; and what L3 cannot show (12.7)."""
+    if witness is None:
+        return {
+            "available": False,
+            "detail": trust_.L3_UNAVAILABLE,
+            "statement": trust_.WITNESS_STATEMENT,
+        }
+    body = witness.to_json()
+    return {
+        "available": True,
+        "statement": trust_.WITNESS_STATEMENT,
+        "parameters": body["parameters"],
+        "counts": body["counts"],
+        "sessions": body["sessions"],
+        "stations": body["stations"],
+        "ignored": body["ignored"],
+    }
 
 
 def _utc_days(timelines: Sequence[Timeline]) -> int:
@@ -160,7 +203,10 @@ def _ratio(num: float, den: float) -> float | None:
 
 
 def sessions_table(
-    inputs: ReportInputs, facts: Mapping[Key, SessionFacts], in_metrics: set[Key]
+    inputs: ReportInputs,
+    facts: Mapping[Key, SessionFacts],
+    in_metrics: set[Key],
+    l3: set[Key] | None = None,
 ) -> list[Json]:
     """One row per session: robot, session, simulated, status, level, observed and active
     seconds, AI share (as metric (a)), whole-robot interventions, unknown share, flag counts."""
@@ -175,7 +221,9 @@ def sessions_table(
                 "session_id": key[1],
                 "simulated": None if f is None else f.simulated,
                 "status": None if verdict is None else verdict.status,
-                "level": "L1" if verdict is None else trust_.session_level(verdict.status),
+                "level": "L1"
+                if verdict is None
+                else trust_.session_level(verdict.status, key in (l3 or set())),
                 "in_metrics": key in in_metrics,
                 "observed_s": None if f is None else f.observed_s,
                 "active_s": None if f is None else f.active_s,
@@ -253,7 +301,7 @@ def verdict(
     invariants: Mapping[str, Json],
 ) -> Json:
     """The verdict box: status and level, completeness, census, exclusions and the headline
-    numbers. ``clean`` is true only when the report is verified at L2, complete, has no
+    numbers. ``clean`` is true only when the report is verified at L2 or L3, complete, has no
     census gap, leaves nothing out and no invariant fails (11.7); ``reasons`` says why not."""
     complete = bool(groups) and all(
         g["unmeasured"]["conformance"] == "complete" for g in groups.values()
@@ -261,7 +309,7 @@ def verdict(
     reasons = []
     if trust["status"] != "verified":
         reasons.append(f"trust status {trust['status']}")
-    if trust["level"] != "L2":
+    if trust["level"] not in ("L2", "L3"):
         reasons.append(f"trust level {trust['level']}")
     if not complete:
         reasons.append("incomplete" if groups else "incomplete: no group has metrics")
@@ -288,8 +336,10 @@ def verdict(
 def build_report(inputs: ReportInputs, rules: Rules, options: Options) -> Json:
     """The report of definitions.md 11 as a JSON-ready dict (NumPy numbers already converted,
     non-finite floats as ``None``). Deterministic: the same inputs give the same dict."""
-    facts = {_key(t): session_facts(t, rules) for t in inputs.timelines}
-    metrics = metrics_report(list(inputs.timelines), rules, options)
+    stations = _station_keys(inputs)
+    robots = [t for t in inputs.timelines if t.role != "station"]
+    facts = {_key(t): session_facts(t, rules) for t in robots}
+    metrics = metrics_report(robots, rules, options)
     groups: Mapping[str, Json] = metrics["groups"]
     grouped: dict[str, list[SessionFacts]] = {}
     for key in sorted(facts):
@@ -298,18 +348,35 @@ def build_report(inputs: ReportInputs, rules: Rules, options: Options) -> Json:
             grouped.setdefault(GROUPS[f.simulated], []).append(f)
     in_metrics = {_key(f) for members in grouped.values() for f in members}
 
+    l3 = _l3_keys(inputs)
     trust = trust_.trust_section(
-        inputs.verification, inputs.trusted_keys, inputs.trusted_tsa_roots, inputs.anchor_files
+        inputs.verification,
+        inputs.trusted_keys,
+        inputs.trusted_tsa_roots,
+        inputs.anchor_files,
+        inputs.station_verification,
+        l3,
+        stations,
     )
-    census = census_.census((s.robot_id, s.session_id) for s in inputs.log_check.sessions)
+    census = census_.census(
+        (s.robot_id, s.session_id)
+        for s in inputs.log_check.sessions
+        if (s.robot_id, s.session_id) not in stations
+    )
     exclusions = trust_.exclusions(
         _all_keys(inputs),
         ((s.robot_id, s.session_id) for s in inputs.log_check.sessions),
         in_metrics,
         inputs.registry_problems,
+        stations,
     )
     checks = invariants_.invariants(
-        inputs.log_check, inputs.verification, inputs.timelines, census["status"], groups
+        inputs.log_check,
+        inputs.verification,
+        inputs.timelines,
+        census["status"],
+        groups,
+        inputs.witness,
     )
     report: Json = {
         "title": inputs.title,
@@ -317,12 +384,13 @@ def build_report(inputs: ReportInputs, rules: Rules, options: Options) -> Json:
         "verdict": verdict(trust, groups, census, exclusions, checks),
         "provenance": provenance(inputs, rules, options),
         "trust": trust,
+        "witness": witness_section(inputs.witness),
         "census": census,
         "exclusions": exclusions,
         "metrics": metrics,
         "statements": statements_.statements(groups, DEPENDS_ON, rules.report),
         "invariants": checks,
-        "sessions": sessions_table(inputs, facts, in_metrics),
+        "sessions": sessions_table(inputs, facts, in_metrics, l3),
         "figures": figure_data(grouped, groups, options.alpha),
     }
     cleaned: Json = clean(report)

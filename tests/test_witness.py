@@ -7,9 +7,13 @@ from typing import Any
 
 import pytest
 
+from autonometry.checks import check_session
+from autonometry.events import Session
 from autonometry.reader import RejectedEventError, check_event
+from autonometry.timeline import build_timeline
 from autonometry.witness import SessionWitness, _Clock, _intersect, _subtract, _union
-from witness_helpers import RULES, run, secs, session, station
+from timeline_helpers import FULL
+from witness_helpers import RULES, events, run, secs, session, station
 
 S = 1_000_000_000
 
@@ -117,6 +121,18 @@ def test_station_of_same_robot_overlapping_witnesses__defs_12_2() -> None:
     assert codes(result) == ["no_station"]
     assert result.stations == ()
     assert times(result)["unwitnessed_s"] == 60.0
+
+
+def test_sessions_without_session_start_witness_nothing__defs_12_2() -> None:
+    raw = events([(0, "ai")], 60)[1:]
+    headless = Session("r01", "s01", tuple(raw))
+    robot = build_timeline(headless, FULL, RULES, check_session(headless, RULES))
+    result = one(robot, station([], 60))
+    assert (codes(result), result.cells.base_ns) == (["no_station"], 0)
+    raw_station = events([], 60, role="station", session_id="st01")[1:]
+    headless_station = Session("r01", "st01", tuple(raw_station))
+    st = build_timeline(headless_station, FULL, RULES, check_session(headless_station, RULES))
+    assert codes(one(session([(0, "ai")], 60), st)) == ["no_station"]
 
 
 def test_restarted_station_sessions_witness_together__defs_12_2() -> None:

@@ -179,7 +179,8 @@ def test_report_status__defs_11_2() -> None:
 def test_trust_notes_missing_key_and_tsa_root_and_l3__defs_11_2() -> None:
     section = trust.trust_section(_result(_verdict("a", "unverified")), 0, 0, 0)
     assert section["notes"] == [trust.NO_KEY_NOTE, trust.NO_TSA_ROOT_NOTE]
-    assert section["levels"]["L3"] == "not available yet"
+    assert section["levels"]["L3"] == "not available: no station log was given"
+    assert section["stations"] is None
     assert trust.trust_section(_result(), 1, 1, 0)["notes"] == []
 
 
@@ -444,13 +445,21 @@ def test_bounds_invariant__defs_11_7() -> None:
     assert invariants.bounds({"real": empty})["status"] == "not_checked"
 
 
-def test_witnesses_not_available__defs_11_7() -> None:
-    assert invariants.witnesses() == {
+def test_witnesses_not_available_without_a_witnessed_session__defs_11_7() -> None:
+    assert invariants.witnesses(None) == {
         "status": "not_available",
-        "detail": "not available (L3)",
+        "detail": "no robot session is witnessed by a station log",
         "failure_count": 0,
         "failures": [],
     }
+
+
+def test_report_level_is_the_lowest_robot_session_level__defs_11_2_12_6() -> None:
+    result = _result(_verdict("a", "verified"), _verdict("b", "verified"))
+    assert trust.report_level(result, l3={("r01", "a"), ("r01", "b")}) == "L3"
+    assert trust.report_level(result, l3={("r01", "a")}) == "L2"
+    assert trust.report_level(result, l3={("r01", "a")}, skip={("r01", "b")}) == "L3"
+    assert trust.session_level("unverified", l3=True) == "L1"
 
 
 def test_invariants_listed_in_order__defs_11_7() -> None:

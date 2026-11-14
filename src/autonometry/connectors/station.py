@@ -157,9 +157,8 @@ class StationEngine:
 
     # -- inputs -----------------------------------------------------------------------------
 
-    def _device(self, source: Source | None) -> Device | None:
-        if source is None:
-            return None
+    def _device(self, source: Source) -> Device | None:
+        """The station device ``source`` is: a ``human`` device of the registry, else None."""
         found = next((d for d in self._s.devices if d.matches(source)), None)
         return found if found is not None and found.kind == _HUMAN else None
 

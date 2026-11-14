@@ -12,7 +12,7 @@ from autonometry.checks import check_session
 from autonometry.events import Event, Session, TrustStatus
 from autonometry.timeline import Timeline, build_timeline
 from autonometry.witness import Reconciliation, WitnessParams, reconcile
-from timeline_helpers import FULL, RULES, Log
+from timeline_helpers import FULL, RULES, Log, ts
 
 PARAMS = WitnessParams.from_rules(RULES)
 #: Seconds after 08:00 that time 0 of a scenario stands for, so sessions may start before it.
@@ -35,7 +35,7 @@ def _transition(log: Log, t: float, state: str, scope: str) -> None:
     log.tr(ORIGIN + t, state, reason, actor, device, scope)
 
 
-def session(  # noqa: PLR0913 -- the knobs of one scenario
+def events(  # noqa: PLR0913 -- the knobs of one scenario
     changes: Sequence[Change],
     end: float,
     *,
@@ -47,15 +47,15 @@ def session(  # noqa: PLR0913 -- the knobs of one scenario
     clock_error: float | None = 0.01,
     clock_source: str = "ntp",
     robot_id: str = "r01",
-) -> Timeline:
-    """One session from ``start`` to ``end`` (seconds), every scope ``idle`` at the start, the
-    given changes, and a heartbeat each second reporting ``clock_source`` and ``clock_error``
-    (left out when ``None``)."""
+) -> list[Event]:
+    """The events of one session from ``start`` to ``end`` (seconds), every scope ``idle`` at
+    the start, the given changes, and a heartbeat each second reporting ``clock_source`` and
+    ``clock_error`` (left out when ``None``)."""
     extra: dict[str, Any] = (
         {"role": "station", "station_id": station_id} if role == "station" else {}
     )
     log = Log(scopes, "idle", 1.0, **extra)
-    log.events[0]["ts"] = _ts(start)
+    log.events[0]["ts"] = ts(ORIGIN + start)
     beats = [float(s) for s in range(math.ceil(start), math.floor(end) + 1) if s > start]
     items: list[tuple[float, int, str, str]] = [(t, 1, "heartbeat", "") for t in beats if t < end]
     for change in changes:
@@ -70,17 +70,14 @@ def session(  # noqa: PLR0913 -- the knobs of one scenario
         else:
             _transition(log, t, state, scope)
     log.end(ORIGIN + end)
-    events = tuple(
-        cast(Event, e | {"robot_id": robot_id, "session_id": session_id}) for e in log.events
-    )
-    built = Session(robot_id, session_id, events)
+    return [cast(Event, e | {"robot_id": robot_id, "session_id": session_id}) for e in log.events]
+
+
+def session(changes: Sequence[Change], end: float, **options: Any) -> Timeline:
+    """The timeline of :func:`events`, built with the reader's flags."""
+    found = events(changes, end, **options)
+    built = Session(found[0]["robot_id"], found[0]["session_id"], tuple(found))
     return build_timeline(built, FULL, RULES, check_session(built, RULES))
-
-
-def _ts(seconds: float) -> str:
-    from timeline_helpers import ts  # noqa: PLC0415 -- the same clock as Log
-
-    return ts(ORIGIN + seconds)
 
 
 def station(changes: Sequence[Change], end: float, **options: Any) -> Timeline:

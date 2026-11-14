@@ -149,9 +149,11 @@ def test_iter_lines_matches_reference_splitter__defs_8(data: bytes, limit: int) 
 
 # --- golden fixtures ---------------------------------------------------------------------------
 
-# tests/golden/sealed/ is a raw input for M2 sealing tests and tests/golden/tb4/ holds TurtleBot 4
-# observations, not events: neither is a validate fixture.
-FIXTURES = sorted(p for p in GOLDEN.glob("*/*.jsonl") if p.parent.name not in ("sealed", "tb4"))
+# tests/golden/sealed/ is a raw input for M2 sealing tests, tests/golden/tb4/ holds TurtleBot 4
+# observations, not events, and tests/golden/witness/ sealed logs with checkpoint and anchor files
+# for the reconcile tests: none is a validate fixture.
+NOT_FIXTURES = ("sealed", "tb4", "witness")
+FIXTURES = sorted(p for p in GOLDEN.glob("*/*.jsonl") if p.parent.name not in NOT_FIXTURES)
 
 
 @pytest.mark.parametrize("path", FIXTURES, ids=lambda p: f"{p.parent.name}/{p.stem}")

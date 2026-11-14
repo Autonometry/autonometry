@@ -194,7 +194,7 @@
       "status": "pass"
     },
     "witnesses": {
-      "detail": "not available (L3)",
+      "detail": "no robot session is witnessed by a station log",
       "failure_count": 0,
       "failures": [],
       "status": "not_available"
@@ -2128,7 +2128,7 @@
     "levels": {
       "L1": "self-reported",
       "L2": "sealed log",
-      "L3": "not available yet"
+      "L3": "not available: no station log was given"
     },
     "notes": [
       "No trusted TSA root was given: a timestamp token cannot anchor a checkpoint; only an anchor file can."
@@ -2177,6 +2177,7 @@
         "status": "verified"
       }
     ],
+    "stations": null,
     "status": "verified",
     "trusted_keys": 1,
     "trusted_tsa_roots": 0
@@ -2287,5 +2288,10 @@
       "incomplete"
     ],
     "status": "verified"
+  },
+  "witness": {
+    "available": false,
+    "detail": "not available: no station log was given",
+    "statement": "L3 shows that a remote operator who used the witnessed station appears in the robot's log, to within tau. It says nothing about an operator using a client the station does not witness (another station, a laptop, a direct radio link, a maintenance interface): only a witness of the control channel itself, the network witness of trust level L4, can expose that. Nor does it show that the station's logger is honest: the two keys must belong to separate software identities."
   }
 }
