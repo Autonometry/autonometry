@@ -56,6 +56,7 @@ class StationObserver(Node):
             "deadman_buttons": [4, 5],
             "unidentified_actor_id": "person:unidentified",
             "tick_period_s": 0.25,
+            "graph_period_s": 1.0,
             "topics.cmd_vel": "cmd_vel",
             "topics.cmd_vel_unstamped": "cmd_vel_unstamped",
             "topics.cmd_vel_smoothed": "cmd_vel_smoothed",
@@ -79,6 +80,8 @@ class StationObserver(Node):
         self._sub(TwistStamped, topics["cmd_vel_smoothed"], self._on_smoothed)
         self._sub(Joy, topics["joy"], self._on_joy)
         self.create_timer(float(self._param("tick_period_s")), self._guard(self._tick))
+        self.create_timer(float(self._param("graph_period_s")), self._guard(self._refresh_graph))
+        self._refresh_graph()
         self.get_logger().info(
             f"witnessing for the station recorder at {self._param('recorder_socket')}"
         )
@@ -131,18 +134,27 @@ class StationObserver(Node):
     def _tick(self) -> None:
         self._send(self._engine.tick(time.monotonic()))
 
+    def _refresh_graph(self) -> None:
+        """Map the publishers of the command topics again: a publisher replaced by another
+        keeps the count, so the count alone cannot tell (as the robot's observer does)."""
+        for key in ("cmd_vel", "cmd_vel_unstamped"):
+            self._refresh_topic(self._topics[key])
+
+    def _refresh_topic(self, topic: str) -> None:
+        infos = self.get_publishers_info_by_topic(topic)[:MAX_ENDPOINTS]
+        self._publishers[topic] = tuple(
+            sorted(
+                (self._node(f"{i.node_namespace.rstrip('/')}/{i.node_name}") for i in infos),
+                key=lambda s: s.node or "",
+            )
+        )
+        self._counts[topic] = len(infos)
+
     def _attribution(self, key: str) -> tuple[tb4.Source | None, tuple[tb4.Source, ...]]:
         """The publisher when it is the topic's only one, and the topic's publishers."""
         topic = self._topics[key]
         if self.count_publishers(topic) != self._counts.get(topic):
-            infos = self.get_publishers_info_by_topic(topic)[:MAX_ENDPOINTS]
-            self._publishers[topic] = tuple(
-                sorted(
-                    (self._node(f"{i.node_namespace.rstrip('/')}/{i.node_name}") for i in infos),
-                    key=lambda s: s.node or "",
-                )
-            )
-            self._counts[topic] = len(infos)
+            self._refresh_topic(topic)
         found = self._publishers.get(topic, ())
         return (found[0] if len(found) == 1 else None), found
 

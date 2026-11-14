@@ -14,6 +14,7 @@
     deadman_buttons: [4, 5]
     unidentified_actor_id: person:unidentified
     tick_period_s: 0.25                  # state re-sent at least this often (recorder: 1 s)
+    graph_period_s: 1.0                  # ROS graph refresh for publisher identities
     topics:
       cmd_vel: cmd_vel
       cmd_vel_unstamped: cmd_vel_unstamped
