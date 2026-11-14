@@ -11,6 +11,7 @@ JOYSTICK = Device("joy_pc_1", "human", (("node", "/joy_node"),), "remote", "op_0
 SECOND = Device("kbd_pc_2", "human", (("node", "/teleop_2"),), "remote")
 NAV2 = Device("nav2", "ai", (("node", "/collision_monitor"),))
 KBD, RELAY = Source(node="/teleop_twist_keyboard"), Source(node="/collision_monitor")
+JOY = (Source(node="/joy_node"),)  # the declared joystick, /joy's only publisher
 RULES = spec.load_rules("0.3")
 
 
@@ -71,23 +72,23 @@ def test_two_station_publishers_leave_the_device_open__defs_12_1() -> None:
 
 def test_joystick_needs_deadman_and_a_stick__defs_12_1_6_11() -> None:
     station = engine()
-    assert states(station.observe(StationJoy(1.0, (0.5, 0.0), (0, 0, 0, 0, 0, 0)))) == [
+    assert states(station.observe(StationJoy(1.0, (0.5, 0.0), (0, 0, 0, 0, 0, 0), JOY))) == [
         ("base", "idle")
     ]
-    (value,) = station.observe(StationJoy(1.1, (0.5, 0.0), (0, 0, 0, 0, 1, 0)))
+    (value,) = station.observe(StationJoy(1.1, (0.5, 0.0), (0, 0, 0, 0, 1, 0), JOY))
     assert (value.state, value.device_id, value.actor_id) == ("human_remote", "joy_pc_1", "op_02")
-    assert states(station.observe(StationJoy(1.2, (0.01, 0.0), (0, 0, 0, 0, 1, 0)))) == [
+    assert states(station.observe(StationJoy(1.2, (0.01, 0.0), (0, 0, 0, 0, 1, 0), JOY))) == [
         ("base", "idle")
     ]
 
 
 def test_joystick_silence_is_lost_input__defs_12_1_6_14() -> None:
     station = engine()
-    station.observe(StationJoy(1.0, (0.0,), (0,)))
+    station.observe(StationJoy(1.0, (0.0,), (0,), JOY))
     assert states(station.tick(3.0)) == [("base", "idle")]
     (lost,) = station.tick(3.1)
     assert (lost.state, lost.fields) == ("unknown", (("x_input_lost", "joy"),))
-    assert states(station.observe(StationJoy(4.0, (0.0,), (0,)))) == [("base", "idle")]
+    assert states(station.observe(StationJoy(4.0, (0.0,), (0,), JOY))) == [("base", "idle")]
 
 
 def test_every_witnessed_scope_gets_the_state__defs_12_1() -> None:
@@ -110,3 +111,38 @@ def test_every_witnessed_scope_gets_the_state__defs_12_1() -> None:
 def test_settings_are_checked(options: dict[str, object], message: str) -> None:
     with pytest.raises(ValueError, match=message):
         engine(**options)
+
+
+# -- security review M10, decision 8 ------------------------------------------------------------
+
+STRANGER = Source(node="/someone_else")
+LIVE = ((0.9,), (0, 0, 0, 0, 1, 0))
+
+
+@pytest.mark.parametrize(
+    "publishers",
+    [(), (STRANGER,), (JOY[0], STRANGER), (JOY[0], JOY[0]), (RELAY,)],
+    ids=["unknown", "stranger", "joystick_and_a_stranger", "shared_name", "an_ai_device"],
+)
+def test_joy_counts_only_from_declared_station_devices__defs_12_1(
+    publishers: tuple[Source, ...],
+) -> None:
+    """Decision 8: /joy from anyone but the station's declared human devices is ignored: it
+    neither makes the station human_remote nor keeps its lost-input rule from firing."""
+    station = engine()
+    station.observe(StationJoy(1.0, (0.0,), (0,), JOY))
+    station.observe(StationJoy(1.5, *LIVE, publishers))
+    assert states(station.tick(1.6)) == [("base", "idle")]
+    for t in (2.0, 2.5, 3.0):
+        station.observe(StationJoy(t, *LIVE, publishers))
+    (lost,) = station.tick(3.1)
+    assert (lost.state, lost.fields) == ("unknown", (("x_input_lost", "joy"),))
+
+
+def test_two_declared_joysticks_count_without_a_device__defs_12_1_6_12() -> None:
+    other = Device("joy_pc_2", "human", (("node", "/joy_2"),), "remote")
+    settings = StationSettings.from_params(RULES.params, (KEYBOARD, JOYSTICK, other))
+    station = StationEngine(settings)
+    (value,) = station.observe(StationJoy(1.0, *LIVE, (JOY[0], Source(node="/joy_2"))))
+    assert (value.state, value.device_id) == ("human_remote", None)
+    assert dict(value.fields).get("x_attribution_inferred") is True

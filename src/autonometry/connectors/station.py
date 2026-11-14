@@ -42,12 +42,10 @@ from autonometry.connectors.tb4 import (
     relays,
 )
 
-__all__ = ["JOY_NODE", "StationEngine", "StationJoy", "StationObservation", "StationSettings"]
+__all__ = ["StationEngine", "StationJoy", "StationObservation", "StationSettings"]
 
 _HUMAN: Final = "human"
 _REASON: Final = "human_initiated"
-#: The node that publishes ``/joy`` from a joystick on the station (ROS 2 ``joy`` package).
-JOY_NODE: Final = Source(node="/joy_node")
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,8 +61,6 @@ class StationSettings:
     #: Sticks within this distance of centre are neutral (unit of the joystick's axes).
     dead_zone: float = 0.05
     deadman_buttons: tuple[int, ...] = (4, 5)
-    #: The node that publishes the station's ``/joy``.
-    joy_source: Source = JOY_NODE
     #: Longest time between a ``/cmd_vel_smoothed`` message and the ``/cmd_vel`` relaying it.
     smoothed_match_s: float = 0.25
     unidentified_actor_id: str = "person:unidentified"
@@ -98,11 +94,13 @@ class StationSettings:
 
 @dataclass(frozen=True, slots=True)
 class StationJoy:
-    """``/joy`` on the station: its axes and buttons (1 pressed, 0 not)."""
+    """``/joy`` on the station: its axes and buttons (1 pressed, 0 not), and the topic's
+    publishers in the ROS graph, one entry per publisher."""
 
     t: float
     axes: tuple[float, ...]
     buttons: tuple[int, ...]
+    publishers: tuple[Source, ...] = ()
 
 
 StationObservation = CmdVel | CmdVelSmoothed | StationJoy
@@ -187,12 +185,22 @@ class StationEngine:
         )
 
     def _on_joy(self, observation: StationJoy) -> None:
+        """``/joy`` counts only when every publisher of the topic is a declared station device
+        and no name is shared (security review M10, decision 8): a witness that guesses cannot
+        vouch. Anyone else's ``/joy`` is ignored, so it neither drives the station's state nor
+        keeps the "input lost" rule from firing."""
+        publishers = observation.publishers
+        shared = len(set(publishers)) != len(publishers)
+        devices = [self._device(p) for p in publishers]
+        if not publishers or shared or any(d is None or d.kind != _HUMAN for d in devices):
+            return
         self._joy_seen = observation.t
         buttons = observation.buttons
         held = any(0 <= i < len(buttons) and buttons[i] == 1 for i in self._s.deadman_buttons)
         moved = any(abs(a) > self._s.dead_zone for a in observation.axes if math.isfinite(a))
-        device = self._device(self._s.joy_source)
-        self._inputs["joy"] = _Input(observation.t, held and moved, device, inferred=False)
+        device = devices[0] if len(devices) == 1 else None
+        inferred = len(devices) != 1
+        self._inputs["joy"] = _Input(observation.t, held and moved, device, inferred=inferred)
 
     # -- state ------------------------------------------------------------------------------
 

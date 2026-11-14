@@ -12,7 +12,8 @@ Which publisher sent a ``/cmd_vel`` comes from the ROS graph: a topic with one p
 attributed to it; with several, the command counts as the station's only when a station device
 is among them and it does not relay Nav2's latest ``/cmd_vel_smoothed``, and the state is marked
 ``x_attribution_inferred``. A station device is a ``human`` device of the station's own registry,
-matched by node name.
+matched by node name. ``/joy`` counts only when every publisher of the topic is a station device
+(security review M10, decision 8): anyone else's joystick message is ignored.
 """
 
 import math
@@ -51,7 +52,6 @@ class StationObserver(Node):
             "device_registry": "/etc/autonometry/station-devices.json",
             "spec_version": "0.3",
             "scopes": ["base"],
-            "joy_node": "joy_node",
             "dead_zone": 0.05,
             "deadman_buttons": [4, 5],
             "unidentified_actor_id": "person:unidentified",
@@ -108,7 +108,6 @@ class StationObserver(Node):
             scopes=tuple(str(s) for s in self._param("scopes")),
             dead_zone=float(self._param("dead_zone")),
             deadman_buttons=tuple(int(i) for i in self._param("deadman_buttons")),
-            joy_source=self._node(str(self._param("joy_node"))),
             unidentified_actor_id=str(self._param("unidentified_actor_id")),
         )
 
@@ -137,7 +136,7 @@ class StationObserver(Node):
     def _refresh_graph(self) -> None:
         """Map the publishers of the command topics again: a publisher replaced by another
         keeps the count, so the count alone cannot tell (as the robot's observer does)."""
-        for key in ("cmd_vel", "cmd_vel_unstamped"):
+        for key in ("cmd_vel", "cmd_vel_unstamped", "joy"):
             self._refresh_topic(self._topics[key])
 
     def _refresh_topic(self, topic: str) -> None:
@@ -177,7 +176,9 @@ class StationObserver(Node):
     def _on_joy(self, msg: Joy) -> None:
         axes = tuple(float(a) for a in list(msg.axes)[:MAX_AXES])
         buttons = tuple(int(b) for b in list(msg.buttons)[:MAX_BUTTONS])
-        self._send(self._engine.observe(station.StationJoy(time.monotonic(), axes, buttons)))
+        _, publishers = self._attribution("joy")
+        now = time.monotonic()
+        self._send(self._engine.observe(station.StationJoy(now, axes, buttons, publishers)))
 
 
 def main(args: list[str] | None = None) -> int:
