@@ -89,8 +89,10 @@ such change is detected even without the original log. What it does not prove: a
 can still log false events as they happen, and a key held in software can sign a second, fabricated
 log from scratch -- only an anchor made *before* the fabrication catches that (an anchor the
 fabricator can also redo does not). Sealing an old, unanchored log late is indistinguishable from a
-log that was sealed on time but anchored late, and shows up as `late_anchor`. Trust levels L3 (a
-second, independent witness) and L4 (hardware-rooted keys) follow in later spec versions.
+log that was sealed on time but anchored late, and shows up as `late_anchor`. Trust level L3 adds
+a second, independent witness against the first class of problem (see [Station
+witness](#station-witness-trust-level-l3)); L4 (hardware-rooted keys) follows in a later spec
+version.
 
 ## Read a timeline
 
@@ -226,9 +228,11 @@ self-contained: inline CSS and inline SVG figures, no scripts, no web fonts and 
 sites, so it opens offline and prints cleanly to PDF from a browser. It takes the options of
 `verify` (`--vkey`, `--tsa-root`, `--anchor`; checkpoint files are found beside each log) and of
 `metrics` (`--devices`, `--tasks`, `--plan`, `--alpha`, `--n-boot`, `--seed`, `--cluster`,
-`--drift-bin`, `--spec`), plus `--title` (plain text, at most 200 characters) and `--about` (a
-plain-text UTF-8 file of at most 64 KiB describing the deployment). Both are shown escaped, never as
-markup. It makes no network call.
+`--drift-bin`, `--spec`), plus `--title` (plain text, at most 200 characters), `--about` (a
+plain-text UTF-8 file of at most 64 KiB describing the deployment) and `--station LOG`
+(repeatable: teleoperation station logs that witness the robots, see [Station
+witness](#station-witness-trust-level-l3)). Title and about are shown escaped, never as markup. It
+makes no network call.
 
 What the report holds, in the order of the page:
 
@@ -236,16 +240,23 @@ What the report holds, in the order of the page:
   `complete` or `incomplete`, the census result, how many sessions were left out, and per group the
   four headline numbers (time autonomy share, task autonomy rate, interventions per active hour,
   human minutes per task) with their confidence interval and outer interval.
-- **Trust**: each session's status and level (L2 only for a `verified` session) with its evidence
-  and gap codes; rejected lines and file problems. The report's level is the lowest of its
-  sessions'; it is verified only when every session is and nothing was rejected. When a session
-  is `failed`, the top says so and the session **stays in the metrics**: leaving it out would reward
-  corrupting a bad session. The report says when no trusted key or TSA root was given; L3 is shown
-  as not available yet.
+- **Trust**: each session's status and level with its evidence and gap codes: L3 when its station
+  witnesses agree (`--station`), else L2 for a `verified` session, else L1; the station sessions
+  with their status; rejected lines and file problems of every file read. The report's level is
+  the lowest of its robot sessions'; it is verified only when every session, the stations'
+  included, is verified and nothing was rejected. When a session is `failed`, the top says so and
+  the session **stays in the metrics**: leaving it out would reward corrupting a bad session. The
+  report says when no trusted key or TSA root was given.
+- **Witness** (with `--station`): per robot session the five times of the reconciliation
+  (both-human with its tolerated and held parts, robot-only, station-only, neither, unwitnessed),
+  the share that decides L3, the range of tau, the unmatched station episodes, the upper-bound
+  intervention count and why the session is not L3; and what L3 cannot show. Without station
+  logs, L3 is shown as not available.
 - **Census**: for session ids of the recorder's form (`000042-20261112T083000Z-7f3a`), the counters
   missing between each robot's lowest and highest; other id forms are listed as not checked.
 - **Exclusions**: every session left out of the metrics and why (a registry that does not match
-  its hash, no `session_start`, or a session named only by a checkpoint or anchor).
+  its hash, no `session_start`, a session named only by a checkpoint or anchor, or a station log
+  given as a robot log).
 - **Metrics**: the `autonometry metrics` JSON per group (real, simulated), never pooled, with
   tables and up to four figures in colour-blind-safe colours, each state always in the same colour:
   whole-robot state shares, the time autonomy share with its interval, bounds, outer interval and
@@ -261,7 +272,8 @@ What the report holds, in the order of the page:
   window, per scope and whole robot), chain (no session contradicts its seals; not checked for
   unsealed sessions), time (no `ts_regression`, `clock_skew` or `late_anchor`), census, tasks
   (started = closed + not closed, every definition in the registry), bounds (`unknown_as_human` ≤
-  estimate ≤ `unknown_as_ai`), witnesses (not available until L3).
+  estimate ≤ `unknown_as_ai`), witnesses (every witnessed robot session within the L3 maxima;
+  `not available` when no station log witnesses a robot session).
 - **Sessions**: one row per session (robot, session, simulated, status, level, observed and
   active time, AI share, interventions, unknown share, flags).
 - **Parameters** (every parameter of definitions.md 9 and the statistics options) and
@@ -273,8 +285,8 @@ The report contains no actor ids, only counts. The same inputs and options give 
 JSON and HTML apart from `generated_at`. The page shows times to the second (the JSON keeps full
 precision), and the state table notes how much AI time approval and hint dwell moved to human
 time. The verdict box is green only for a clean report, amber for one that is not clean and red
-when a session failed. Exit status: 0 only when the report is clean: verified at L2, complete, no
-census gap, no session left out and no invariant failed; 1 when it was written but is not clean
+when a session failed. Exit status: 0 only when the report is clean: verified at L2 or L3, complete,
+no census gap, no session left out and no invariant failed; 1 when it was written but is not clean
 (the last output line says why); 2 on bad usage, unreadable input or without the `report` extra.
 
 ## Recorder
@@ -382,6 +394,8 @@ task_registry = "tasks.json"          # required: the tasks declared before the 
 plan = "plan.json"                    # required: pre-registered human actions, may be empty (3)
 # tsa_url = "https://freetsa.org/tsr" # optional RFC 3161 anchoring, together with tsa_roots
 # tsa_roots = "freetsa.pem"
+# role = "station"                    # a teleoperation station's recorder, with station_id (12.1)
+# station_id = "operator_pc_1"
 # Defaults: fsync_interval_s = 1.0, max_events_per_s = 1000, max_log_bytes = 268435456
 ```
 
@@ -569,6 +583,65 @@ ring; battery and power-off shutdown (`session_end` causes); the Create 3's own 
 (`drive_distance`, `rotate_angle`, `navigate_to_position`, `drive_arc`); speed limits and the
 collision monitor's slowdown; behaviour-tree recovery counts; authenticated publisher identity
 (SROS2).
+
+## Station witness (trust level L3)
+
+A sealed log proves nothing was changed afterwards; it cannot prove the recorder told the truth
+when it wrote. Trust level L3 (definitions.md 12) adds a second, independent witness: the
+teleoperation station keeps its own sealed log of when its operator really held control and gave
+input, and `autonometry reconcile` compares it with the robot's.
+
+**The station's log.** The station runs its own `autonometry record` under its own key, with
+`role = "station"`, a `station_id` and, as `robot_id`, the robot it can command (one recorder per
+robot). Its scopes are the robot scopes it witnesses, each `human_remote` while the operator's
+input is live (outside the dead zone within the last `goal_release_s`, 1 s; a neutral command
+ends it at once), `unknown` when the station loses its input device, `idle` otherwise. Its device
+registry declares only the station's own inputs. Two ways to feed it:
+
+- `clients/python/station_example.py`: a few lines around the recorder client for any teleop
+  stack (joystick axes, a VR controller); copy it beside `autonometry_client.py`.
+- For the TurtleBot 4, the ROS 2 node `station_observer` (`ros2 launch autonometry_ros
+  station.launch.py recorder_socket:=... device_registry:=...`) on the operator's PC: it watches
+  `/cmd_vel` from `teleop_twist_keyboard` (or `teleop_twist_joy`) on that PC and `/joy` from its
+  joystick, and only subscribes, like the robot's observer. Configs:
+  `demo/tb4-sim/config/station-recorder.toml` and `station-devices.json`.
+
+**Reconcile.**
+
+```
+autonometry reconcile --robot robot/events.jsonl --station station/events.jsonl \
+    --vkey robot.vkey --vkey station.vkey --anchor customer-anchors.jsonl --out witness.json
+```
+
+Both sides are verified with the same trust roots, in one pass (one anchor file may hold both).
+A station session witnesses the robot sessions of its robot that it overlaps in time. Per robot
+scope, every instant of the base (the robot's active time, plus its idle time while the station
+shows input) is one of: *both-human*; *robot-only* (robot `human_remote` or `shared`, station
+not); *station-only* (station input, robot not: this is the hidden remote operator, and also
+remote control the robot logged as `human_local`); *neither*; or *unwitnessed* (no station
+session open, the station's input lost, or the scope not witnessed). A disagreement within tau of
+the other side's human time is *tolerated*: tau = robot clock error + station clock error (each
+side's `clock_max_error_s` on the heartbeat nearest the edge) + `react_s` (0.5 s). After the
+operator stops, a robot that keeps the last controller's state (6.14) is *held*, not disputed,
+when the station saw that run. A session is L3 when both logs are verified, neither clock is
+unsynced, and (station-only + unwitnessed) / base ≤ 0.5 % and (robot-only + station-only +
+unwitnessed) / base ≤ 2 %: unwitnessed time counts as disputed, since a station that cannot see
+cannot vouch. Station episodes the robot never logged raise an upper-bound intervention count.
+The JSON lists, per robot session, the times, shares, tau, unmatched episodes and runs, and the
+reasons a session is not L3. Exit status: 0 only when every robot session is L3; 1 otherwise; 2 on
+bad usage or unreadable input. `autonometry report ... --station LOG` puts the same in the
+report.
+
+**What L3 cannot show.** An operator using a client the station does not witness (another
+station, a laptop, a direct radio link) is invisible to it: only a witness of the control channel
+itself, the network witness of L4, can expose that. The two keys must belong to separate software
+identities, and the station logger should be one the customer or auditor installs.
+
+**On ROS 2 Jazzy**, a subscriber cannot see which publisher sent a message, so when Nav2's relay
+and a keyboard both publish `/cmd_vel`, both observers infer the source and their logs are L1
+(6.12): no L3. A run reaches L3 when each commander is the only publisher while it drives (CI:
+`connectors/ros2/ci/run_witness.sh`, an honest run with a station that must reach L3), or with an
+rclpy that reports `publisher_gid`.
 
 ## Supported platforms
 
