@@ -1,0 +1,73 @@
+{
+  "live": {
+    "start": "2026-11-14T10:00:00.000Z",
+    "end_offset_s": 160.0,
+    "log": [
+      {"t": 0.0, "type": "session_start", "initial_states": {"whole_robot": "unknown"}, "simulated": false},
+      {"t": 0.0, "type": "transition", "state": "idle", "reason": null, "actor_id": null, "x_src_ts": "2026-11-14 10:00:00", "x_src_clock": "wall"},
+      {"t": 10.0, "type": "transition", "state": "ai", "reason": null, "actor_id": "ai:outputs_train_act_so101_checkpoints_last_pretrained_model", "device_id": "so101_policy", "x_src_ts": "2026-11-14 10:00:10"},
+      {"t": 10.0, "type": "task_start", "task_id": "episode_000000", "task_definition_id": "pick_place_cube", "x_episode_index": 0},
+      {"t": 40.0, "type": "transition", "state": "shared", "reason": "human_initiated", "actor_id": "op_01", "device_id": "so101_leader", "task_id": "episode_000000"},
+      {"t": 42.0, "type": "transition", "state": "human_local", "reason": "human_initiated", "actor_id": "op_01", "device_id": "so101_leader"},
+      {"t": 52.0, "type": "transition", "state": "shared", "reason": "human_initiated"},
+      {"t": 53.0, "type": "transition", "state": "ai", "device_id": "so101_policy"},
+      {"t": 70.0, "type": "task_end", "task_id": "episode_000000", "outcome": "unknown"},
+      {"t": 70.0, "type": "task_start", "task_id": "episode_000001", "task_definition_id": "pick_place_cube", "x_episode_index": 1},
+      {"t": 100.0, "type": "transition", "state": "shared", "reason": "human_initiated", "task_id": "episode_000001"},
+      {"t": 104.0, "type": "transition", "state": "ai"},
+      {"t": 130.0, "type": "task_end", "task_id": "episode_000001", "outcome": "unknown"},
+      {"t": 130.0, "type": "task_start", "task_id": "episode_000002", "x_episode_index": 2},
+      {"t": 140.0, "type": "task_end", "task_id": "episode_000002", "outcome": "unknown"},
+      {"t": 145.0, "type": "transition", "state": "scripted", "reason": null, "actor_id": "script:return_to_initial_position", "device_id": "return_to_start", "task_id": null},
+      {"t": 149.0, "type": "transition", "state": "unknown", "reason": null, "actor_id": null, "x_src_ts": "2026-11-14 10:02:29"},
+      {"t": 160.0, "type": "session_end"}
+    ],
+    "timeline": {
+      "observed_s": 160.0,
+      "active_s": 139.0,
+      "states_s": {"ai": 118.0, "human_local": 10.0, "human_remote": 0.0, "shared": 7.0, "scripted": 4.0, "safety_stop": 0.0, "idle": 10.0, "unknown": 11.0},
+      "interventions_whole_robot": 2,
+      "tasks": [
+        {"task_id": "episode_000000", "task_definition_id": "pick_place_cube", "definition_known": true, "outcome": "unknown", "closed": true, "autonomous": false, "contains_unknown": false, "human_s": 13.0, "interventions_whole_robot": 1, "unplanned_reset_s": 0.0},
+        {"task_id": "episode_000001", "task_definition_id": "pick_place_cube", "definition_known": true, "outcome": "unknown", "closed": true, "autonomous": false, "contains_unknown": false, "human_s": 4.0, "interventions_whole_robot": 1, "unplanned_reset_s": 0.0},
+        {"task_id": "episode_000002", "task_definition_id": "pick_place_cube", "definition_known": true, "outcome": "unknown", "closed": true, "autonomous": true, "contains_unknown": false, "human_s": 0.0, "interventions_whole_robot": 0, "unplanned_reset_s": 0.0}
+      ],
+      "distinct_human_actors": 1,
+      "flag_codes": []
+    }
+  },
+  "import": {
+    "start": "2026-11-14T10:00:00Z",
+    "fps": 10,
+    "sessions": [
+      {
+        "counter": "000000",
+        "start_offset_s": 0.0,
+        "observed_s": 5.0,
+        "states_s": {"ai": 4.0, "human_local": 1.0, "unknown": 0.0},
+        "interventions_whole_robot": 1,
+        "task": {"task_id": "episode_000000", "task_definition_id": "pick_place_cube", "definition_known": true, "outcome": "unknown", "closed": true, "autonomous": false, "contains_unknown": false, "human_s": 1.0},
+        "flag_codes": ["clock_unsynced", "ts_reconstructed"]
+      },
+      {
+        "counter": "000001",
+        "start_offset_s": 5.0,
+        "observed_s": 3.0,
+        "states_s": {"ai": 2.5, "human_local": 0.0, "unknown": 0.5},
+        "interventions_whole_robot": 0,
+        "task": {"task_id": "episode_000001", "task_definition_id": "pick_place_cube", "definition_known": true, "outcome": "unknown", "closed": true, "autonomous": true, "contains_unknown": true, "human_s": 0.0},
+        "flag_codes": ["clock_unsynced", "ts_reconstructed"]
+      },
+      {
+        "counter": "000002",
+        "start_offset_s": 8.0,
+        "observed_s": 1.0,
+        "states_s": {"ai": 0.5, "human_local": 0.5, "unknown": 0.0},
+        "interventions_whole_robot": 0,
+        "task": {"task_id": "episode_000002", "definition_known": false, "outcome": "unknown", "closed": true, "autonomous": false, "contains_unknown": false, "human_s": 0.5},
+        "flag_codes": ["clock_unsynced", "ts_reconstructed", "unknown_task_definition"]
+      }
+    ],
+    "missing_data": [3]
+  }
+}
