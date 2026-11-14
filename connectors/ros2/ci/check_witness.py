@@ -3,7 +3,8 @@
 Usage: check_witness.py ROBOT_EVENTS.jsonl STATION_EVENTS.jsonl WITNESS.json
 
 The robot's base should go unknown, idle, ai (first goal), human_remote (the station's
-keyboard, held until the second goal), ai; the station's base idle, human_remote, idle; and
+keyboard, held until the second goal), ai; the station's base unknown, idle, human_remote, idle;
+and
 ``autonometry reconcile`` should find the robot session at trust level L3 (definitions.md 12).
 Exit status 0 when everything matches, 1 with the differences.
 """
@@ -14,7 +15,8 @@ from pathlib import Path
 from typing import Any
 
 ROBOT_STATES = ["unknown", "idle", "ai", "human_remote", "ai"]
-STATION_STATES = ["idle", "human_remote", "idle"]
+# The station recorder starts before its observer, so its session opens unknown, like the robot's.
+STATION_STATES = ["unknown", "idle", "human_remote", "idle"]
 #: The keyboard drives 8 s; at least this much of it must be both-human.
 MIN_BOTH_HUMAN_S = 7.0
 
