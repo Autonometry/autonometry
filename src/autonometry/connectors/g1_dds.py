@@ -116,7 +116,8 @@ WEIGHT_JOINT: Final = 29
 _INTERFACE_RE = re.compile(r"[A-Za-z0-9._:@-]{1,64}", re.ASCII)
 _VERSION_RE = re.compile(r"([0-9]+)\.([0-9]+)(?:\.[0-9]+)?(?:[-.+].*)?", re.ASCII)
 _PRINTABLE_RE = re.compile(r"[^\x20-\x7e]")
-_INTERPRETER = re.compile(r"python[0-9.]*", re.ASCII)
+#: A Python interpreter's program name: ``python3`` on Linux, ``Python`` on macOS (TEST, CI).
+_INTERPRETER = re.compile(r"python[0-9.]*", re.ASCII | re.IGNORECASE)
 _OPTION_VALUES: Final = frozenset({"-W", "-X", "--check-hash-based-pycs"})
 _REMOTE_BYTES: Final = 40
 

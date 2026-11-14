@@ -150,6 +150,7 @@ def test_participant_name_is_the_script_only_for_a_local_interpreter__notes_4() 
         return {1: "policy.py", 2: None, 3: "bad\nname"}.get(pid)
 
     assert g1_dds.participant_name(LOCAL, "python3", 1, LOCAL, resolve) == "policy.py"
+    assert g1_dds.participant_name(LOCAL, "Python", 1, LOCAL, resolve) == "policy.py"  # macOS
     assert g1_dds.participant_name("other", "python3", 1, LOCAL, resolve) == "python3"
     assert g1_dds.participant_name(LOCAL, "python3", 2, LOCAL, resolve) == "python3"
     assert g1_dds.participant_name(LOCAL, "python3", 3, LOCAL, resolve) == "bad?name"

@@ -14,10 +14,12 @@ arm action service 16 to 18 (``scripted`` on upper_body)."""
 
 import json
 import os
+import shutil
 import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -278,6 +280,8 @@ def test_discover_lists_the_programs_with_their_match_strings__notes_4(
 @pytest.mark.skipif(sys.platform == "win32", reason="the recorder needs POSIX sockets")
 def test_watch_feeds_the_recorder_end_to_end__notes_6_8(tmp_path: Path) -> None:
     domain = 23
+    # A Unix socket path has at most about 104 bytes; pytest's folders on macOS are longer.
+    short = Path(tempfile.mkdtemp(prefix="g1", dir="/tmp"))
     devices = tmp_path / "devices.json"
     devices.write_text(json.dumps(_devices()), encoding="utf-8")
     config = tmp_path / "recorder.toml"
@@ -286,7 +290,7 @@ def test_watch_feeds_the_recorder_end_to_end__notes_6_8(tmp_path: Path) -> None:
             [
                 'robot_id = "g1_test"',
                 f'data_dir = "{tmp_path / "data"}"',
-                f'socket_path = "{tmp_path / "recorder.sock"}"',
+                f'socket_path = "{short / "recorder.sock"}"',
                 'scopes = ["legs", "upper_body"]',
                 "simulated = true",
                 'clock_source = "ntp"',
@@ -304,7 +308,7 @@ def test_watch_feeds_the_recorder_end_to_end__notes_6_8(tmp_path: Path) -> None:
     )
     assert keygen.wait(timeout=30) == 0
     recorder = _autonometry("record", "--config", str(config))
-    sock = tmp_path / "recorder.sock"
+    sock = short / "recorder.sock"
     for _ in range(100):
         if sock.exists():
             break
@@ -331,6 +335,7 @@ def test_watch_feeds_the_recorder_end_to_end__notes_6_8(tmp_path: Path) -> None:
         for process in fakes:
             if process.poll() is None:
                 process.kill()
+        shutil.rmtree(short, ignore_errors=True)
     (folder,) = [p for p in (tmp_path / "data" / "g1_test").iterdir() if p.is_dir()]
     events = [json.loads(line) for line in (folder / "events.jsonl").read_bytes().splitlines()]
     legs = _changes(

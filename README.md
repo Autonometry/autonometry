@@ -761,7 +761,8 @@ autonometry g1 discover --interface eth0            # --domain 0 by default; --j
 It lists every participant with its host, program and pid, the topics and type names it
 publishes, and for each writer the exact `match` to copy into the device registry. A writer is
 observed as `(host, participant, topic)`: `host` is the participant's `__Hostname`; `participant`
-is its `__ProcessName`, except that a Python interpreter (`python`, `python3`, `python3.x`) on the
+is its `__ProcessName`, except that a Python interpreter (`python`, `python3`, `python3.x`;
+`Python` on macOS) on the
 watcher's own computer is named by its script file or `-m` module, read from its pid while that pid
 still runs that program. Python programs on another computer all show as `python3`.
 

@@ -57,7 +57,7 @@ def _fail(message: str, code: int = 2) -> NoReturn:
 
 
 def _cyclonedds() -> None:
-    """Refuse anything but Cyclone DDS 0.10 (S11), and run without psutil only with a hint."""
+    """Refuse anything but Cyclone DDS 0.10 (S11), with a one-line reason and exit status 2."""
     try:
         check_cyclonedds(cyclonedds_version())
     except G1Error as exc:
