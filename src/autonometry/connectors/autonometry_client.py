@@ -54,12 +54,17 @@ class Recorder:
     """
 
     def __init__(self, socket_path: str, client_name: str) -> None:
-        self._path = str(socket_path)
-        self._lock = threading.Lock()
+        # Reentrant: a signal handler that sends while this thread is inside a send must not
+        # wait for a lock its own thread holds, which would block the robot's code for ever.
+        self._lock = threading.RLock()
         self._n = 0
         self._dropped = 0
         self._sock = None  # type: Optional[socket.socket]
-        name = str(client_name)
+        try:
+            self._path = str(socket_path)
+            name = str(client_name)
+        except Exception:  # never raise into the robot's code
+            self._path, name = "", ""
         if not _CLIENT_RE.match(name):
             logger.warning("client name is not a valid identifier; the recorder will reject it")
         self._prefix = '{"client":' + json.dumps(name) + ',"n":'
