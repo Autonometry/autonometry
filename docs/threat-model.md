@@ -57,22 +57,29 @@ thread. An auditor verifies the files offline and turns them into metrics and a 
 ### Someone on the robot's network
 
 Can publish any ROS 2 topic or DDS sample, announce participants with any names and properties,
-and flood the graph. They can **forge control input**: a DDS writer that announces a declared
-program's host and process name looks like that program, and a forged status or response is
-believed. Without authenticated transport (DDS Security, SROS2), L1 and L2 logs assume the robot's
-network is not hostile. What the connectors still guarantee: they never write to the robot (rule 1),
-never crash or stall on any sample (bounded tables, range checks, linear-time processing), and
-resolve contradictions conservatively (a person or `unknown`, never `ai`, where the rules leave a
-choice). A remote operator hiding behind a forged identity is what L3 exposes (below). They cannot
-reach the recorder: its socket is local.
+and flood the graph. **Names on the robot network are claims, not proof**: a DDS writer that
+announces a declared program's host and process name, or a ROS node started under a declared
+node's name, looks like that program. Without authenticated transport (DDS Security, SROS2), L1
+and L2 logs assume the robot's network is not hostile. What the connectors still guarantee: they
+never write to the robot (rule 1); never crash or stall on any sample (bounded tables, range
+checks, linear-time processing); resolve contradictions conservatively (a person or `unknown`,
+never `ai`, where the rules leave a choice); treat two live writers or publishers claiming one
+identity as an undeclared person, with a note; believe the Unitree G1's RPC responses only from
+the declared built-in controller's identity and Nav2's task status and feedback only from declared
+Nav2 nodes; make an open Nav2 task whose Nav2 falls silent or leaves the graph `unknown`; and let
+an emergency stop end only when the robot confirms a change of mode. A remote operator hiding
+behind a forged identity is what L3 exposes (below). They cannot reach the recorder: its socket is
+local.
 
 ### A local user without root on the recording computer
 
 Cannot read or write the logs, the key or the socket (0700/0600, socket 0600 or group 0660), cannot
 plant links in the recorder's folders, and cannot squat the socket path: the recorder refuses a
-robot folder others can write and a socket folder or `data_dir` every user can write. If the socket's group includes them, they are a connector (next attacker
-but one). They can fill the disk or exhaust memory like any local user: the recorder has a
-per-file size limit (`max_log_bytes`) but no total disk budget (open point in the review).
+robot folder others can write and a socket folder or `data_dir` every user can write. If the
+socket's group includes them, they are a connector (next attacker but one). They can fill the disk
+or exhaust memory like any local user; the recorder itself never fills the disk: below
+`min_free_bytes` (default 1 GiB) free on the data folder's disk it stops writing, logs one error
+and resumes when space returns, and the gap is `unknown` time.
 
 ### Anyone who supplies a log, registry, config, plan, dataset or report input
 
@@ -94,7 +101,8 @@ rejection or rate-limit drop makes every scope `unknown`), cannot crash the reco
 line the verifier would reject, and can never make the recorder block the robot. Flooding is
 limited per client name (`max_events_per_s`) and to 256 names per run; a client that uses many
 names multiplies the limit, and exhausting the 256 names makes later clients' events rejected,
-which is visible as `unknown` time.
+which is visible as `unknown` time. Whatever it floods, the recorder stops writing before the disk
+falls below `min_free_bytes`.
 
 ### A dishonest operator who controls the recorder
 
@@ -105,13 +113,22 @@ against them:
 | Level | What it proves | What it does not prove |
 |---|---|---|
 | **L1** self-reported | Nothing about honesty. The log is well formed and the numbers follow the spec from it. | That any event happened, or that the log is complete. |
-| **L2** sealed log | No event committed by a checkpoint was changed, removed, reordered or inserted afterwards, **provided** the checkpoint is anchored outside the operator's control: an RFC 3161 token from a TSA the auditor trusts, within `max_commit_delay_s` (1 h) of the events, or a copy of the checkpoint held by the customer or a witness. A token's time bounds when the record existed, so a rewrite later than 1 h after the events is detected. | That the record was true when written: a modified recorder or connector can seal false states from the start. A rewrite within `max_commit_delay_s` re-anchored with a fresh token. Completeness: a log cut back to an earlier anchored checkpoint verifies as that shorter log (flag `no_session_end`, and the session census of the report catches whole sessions only), unless an anchor file kept outside the log covers the cut part. An anchor file the operator supplies is only as independent as its keeper. |
+| **L2** sealed log | No event committed by a checkpoint was changed, removed, reordered or inserted afterwards, **provided** the checkpoint is anchored outside the operator's control: an RFC 3161 token from a TSA the auditor trusts, within `max_commit_delay_s` (1 h) of the events, or a copy of the checkpoint held by the customer or a witness. A token's time bounds when the record existed, so a rewrite later than 1 h after the events is detected. | That the record was true when written: a modified recorder or connector can seal false states from the start. A rewrite within `max_commit_delay_s` re-anchored with a fresh token. Completeness: a log cut back to an earlier anchored checkpoint verifies as that shorter log (definitions.md 10.6), unless an anchor kept outside the log covers the cut part. `verify` warns for every session whose `session_end` no anchored checkpoint covers, naming the time of its last anchor, and a report with such a session is not clean; the report's session census catches whole sessions only. An anchor file the operator supplies is only as independent as its keeper. |
 | **L3** two witnesses | A remote operator who used the witnessed teleoperation station appears in the robot's log, to within tau (both clocks' reported errors plus `react_s`): the station's own sealed log under a separate key agrees with the robot's (definitions.md 12). | Control through anything the station does not witness: another station, a laptop, a direct radio link, a maintenance interface (only a network witness, L4, could). That the station's logger is honest: the two keys must belong to separate software identities, and the station logger should be installed by the customer or auditor. |
 
 L2 and L3 therefore protect the record against later tampering and against a hidden remote
 operator; they do not make a dishonest operator's original record true. Independent anchors (a
 TSA the auditor chooses, checkpoint copies sent to the customer as they are made) and an
 independently installed station logger are what give the levels their strength.
+
+**Anchor often during a session, and keep anchor files off the robot.** The recorder writes a
+checkpoint after the first event, every 1000 events, every 600 s and after the last event
+(definitions.md 10.3), and with `tsa_url` it timestamps each one: everything before the last
+anchor is then fixed, and only the time since can be cut without a trace in the session's own
+files. An anchor file kept where the operator cannot change it, such as checkpoint copies the
+auditor or customer receives as they are made, turns a later cut into `missing_events`. Requiring
+an anchored `session_end` for `verified` is proposed for spec v0.4
+([`spec-v0.4-proposals.md`](spec-v0.4-proposals.md)).
 
 ### The supply chain
 
