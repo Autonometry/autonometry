@@ -23,6 +23,10 @@ _SHA256_LEN = 32
 _KEY_ID_LEN = 4
 _VKEY_PARTS = 3
 _CHECKPOINT_BODY_LINE_COUNT = 3
+# A tree size is an unsigned 64-bit integer (c2sp.org/tlog-checkpoint): at most 20 digits, so
+# Python's 4300-digit limit on int() is never reached by a size read from a file.
+_MAX_TREE_SIZE = 2**64 - 1
+_TREE_SIZE_RE = re.compile(r"0|[1-9][0-9]{0,19}", re.ASCII)
 _MAX_SIGNATURES = 16
 _EM_DASH_SPACE = "— "
 _KEY_NAME_RE = re.compile(r"^[A-Za-z0-9._:/-]{1,256}$")
@@ -276,7 +280,7 @@ def parse_checkpoint_body(note_text: str) -> CheckpointBody:
 
     Raises:
         SignedNoteError: the text is not exactly 3 non-empty lines (no extension lines), the size
-            is not an ASCII decimal integer with no leading zero, the origin is not
+            is not an ASCII decimal integer below 2^64 with no leading zero, the origin is not
             ``autonometry/<robot_id>/<session_id>``, or the root hash is not canonical base64 of
             32 bytes.
     """
@@ -288,8 +292,8 @@ def parse_checkpoint_body(note_text: str) -> CheckpointBody:
     match = _ORIGIN_RE.fullmatch(origin)
     if match is None:
         raise SignedNoteError("checkpoint origin is not autonometry/<robot_id>/<session_id>")
-    if not size_text.isascii() or not size_text.isdigit() or size_text != str(int(size_text)):
-        raise SignedNoteError("checkpoint size is not an ASCII decimal integer")
+    if not _TREE_SIZE_RE.fullmatch(size_text) or int(size_text) > _MAX_TREE_SIZE:
+        raise SignedNoteError("checkpoint size is not an ASCII decimal integer below 2^64")
     root = _canonical_b64decode(root_b64, "checkpoint root hash")
     if len(root) != _SHA256_LEN:
         raise SignedNoteError("checkpoint root hash is not 32 bytes")

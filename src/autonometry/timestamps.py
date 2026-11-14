@@ -29,9 +29,21 @@ def ts_to_ns(ts: str) -> int:
     return seconds * _NS_PER_S + int(match.group(7).ljust(_FRACTION_DIGITS, "0"))
 
 
+#: Longer than any two possible ``ts`` values are apart (years 0001 to 9999, under 3.2e20 ns).
+#: A longer duration, such as a schema-valid ``heartbeat_interval_s`` of 1e308, compares with every
+#: time span exactly as its true value would, so it is saturated here instead of overflowing.
+MAX_DURATION_NS = 2**70
+
+
 def seconds_to_ns(seconds: float) -> int:
-    """Return a duration in seconds as integer nanoseconds, rounded to the nearest."""
-    return round(seconds * _NS_PER_S)
+    """Return a duration in seconds as integer nanoseconds, rounded to the nearest, saturated at
+    +/- :data:`MAX_DURATION_NS` (so a huge or infinite float never raises ``OverflowError``)."""
+    ns = seconds * _NS_PER_S
+    if ns >= MAX_DURATION_NS:
+        return MAX_DURATION_NS
+    if ns <= -MAX_DURATION_NS:
+        return -MAX_DURATION_NS
+    return round(ns)
 
 
 def ns_to_seconds(ns: int) -> float:
