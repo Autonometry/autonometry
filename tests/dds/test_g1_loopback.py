@@ -271,7 +271,7 @@ def test_discover_lists_the_programs_with_their_match_strings__notes_4(
         "participant": "fake_robot_lowstate.py",
         "topic": "wireless_remote",
     }
-    assert participants["fake_policy.py"]["program"].startswith("python")
+    assert participants["fake_policy.py"]["program"].lower().startswith("python")  # macOS: Python
 
 
 # -- autonometry g1 watch with a recorder -------------------------------------------------------
