@@ -31,6 +31,8 @@ data/
 !research/**/examples/*.jsonl
 # The TurtleBot 4 integration notes' worked example (section B.5)
 !research/turtlebot4/*.jsonl
+# The demo session shipped in the package (autonometry demo; tests/demo_helpers.py writes it)
+!src/autonometry/demo/session/*.jsonl
 
 # Editors and OS
 .idea/

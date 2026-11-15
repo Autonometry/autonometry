@@ -1,0 +1,12 @@
+{
+  "tasks": [
+    {
+      "task_definition_id": "deliver_tote",
+      "description": "Carry a tote from its rack to the packing station."
+    },
+    {
+      "task_definition_id": "return_to_dock",
+      "description": "Drive back to the charging dock at the end of the shift."
+    }
+  ]
+}

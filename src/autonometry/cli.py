@@ -1,7 +1,9 @@
 """Command line interface: ``autonometry``."""
 
+import contextlib
 import enum
 import hashlib
+import io
 import json
 import logging
 import sys
@@ -18,14 +20,14 @@ from typing import TYPE_CHECKING, Annotated, Any, NoReturn, cast
 import typer
 from cryptography import x509
 
-from autonometry import __version__, keys, sealfile, signednote, tsa
+from autonometry import __version__, demo, keys, sealfile, signednote, tsa
 from autonometry import verify as verify_
 from autonometry.cli_g1 import g1_app
 from autonometry.cli_lerobot import lerobot_app
 from autonometry.display import echo, printable
 from autonometry.events import LogCheck, Session, TrustLevel, TrustStatus, VerifyResult
-from autonometry.fileio import PUBLIC_FILE_MODE, append_durably, atomic_write
-from autonometry.reader import LogReadError, read_logs
+from autonometry.fileio import PUBLIC_FILE_MODE, append_durably, atomic_write, make_private_dirs
+from autonometry.reader import LogReadError, read_logs, read_streams
 from autonometry.registry import (
     LAYOUTS,
     RegistryCheck,
@@ -1606,6 +1608,137 @@ def report_cmd(  # noqa: PLR0913, PLR0917 -- matches the report CLI's documented
     if not verdict["clean"]:
         echo(f"not clean: {'; '.join(verdict['reasons'])}")
         raise typer.Exit(1)
+
+
+def _check_empty(out: Path) -> None:
+    """Stop with exit status 2 unless ``out`` is missing or an empty folder."""
+    try:
+        empty = not out.exists() or (out.is_dir() and not any(out.iterdir()))
+    except OSError as exc:
+        echo(f"error: cannot read {printable(str(out))}: {exc.strerror or exc}", err=True)
+        raise typer.Exit(2) from None
+    if not empty:
+        echo(f"error: {printable(str(out))} is not an empty folder; give a new one", err=True)
+        raise typer.Exit(2)
+
+
+@dataclass(frozen=True, slots=True)
+class _DemoRun:
+    """What the demo did: the session it read, its checkpoints, verification and report."""
+
+    events: int
+    checkpoints: int
+    verification: VerifyResult
+    report: dict[str, Any]
+
+
+def _run_demo(options: "metrics.Options") -> _DemoRun:
+    """The demo's steps, in the current folder (the output folder): copy the shipped session's
+    registries, generate a throwaway key, seal, verify, write the report. Stops with exit
+    status 1, before any metric, when the sealed session does not meet L1 (fail closed)."""
+    version = demo.SPEC_VERSION
+    rules = load_rules(version)
+    raw = read_streams([("events.jsonl", io.BytesIO(demo.data("events.jsonl")))], version)
+    make_private_dirs(demo.SESSION_DIR)
+    for name in demo.REGISTRIES:
+        atomic_write(demo.SESSION_DIR / name, demo.data(name))
+    atomic_write(demo.ABOUT, demo.data("about.txt"), PUBLIC_FILE_MODE)
+    try:
+        keys.generate(demo.KEY_NAME, demo.KEY)
+        private_key = keys.load(demo.KEY)
+    except (SignedNoteError, keys.SigningKeyError) as exc:
+        _fail(str(exc))
+    sealed, checkpoints = sealfile.seal_sessions(raw.sessions, rules, demo.KEY_NAME, private_key)
+    atomic_write(demo.LOG, sealed)
+    atomic_write(demo.CHECKPOINTS, checkpoints)
+    result = verify_.verify_log(
+        read_logs([demo.LOG], version),
+        _read_seal_files([demo.CHECKPOINTS], version, rules),
+        [],
+        _load_vkeys([demo.VKEY]),
+        [],
+        rules,
+    )
+    text = json.dumps(result.to_json("L1"), indent=2, sort_keys=True) + "\n"
+    atomic_write(demo.VERIFICATION, text.encode("utf-8"), PUBLIC_FILE_MODE)
+    if not result.verified("L1"):
+        _fail(f"the sealed demo session does not meet L1: {'; '.join(result.reasons('L1'))}")
+    report = _write_report(
+        _ReportJob(
+            logs=(demo.LOG,),
+            out=Path(),
+            vkeys=(demo.VKEY,),
+            tsa_roots=(),
+            anchors=(),
+            given=_NO_REGISTRY,
+            stations=(),
+            title=demo.TITLE,
+            about=demo.ABOUT,
+            version=version,
+        ),
+        options,
+    )
+    return _DemoRun(
+        events=sum(len(s.events) for s in raw.sessions),
+        checkpoints=checkpoints.count(b"\n"),
+        verification=result,
+        report=report,
+    )
+
+
+@app.command("demo")
+def demo_cmd(
+    out: Annotated[
+        Path,
+        typer.Option("--out", help="New or empty folder for the demo's files.", show_default=False),
+    ],
+) -> None:
+    """Run the whole chain on a session shipped with the package: no robot, no network.
+
+    Generates a throwaway key in the folder, seals the session, verifies it (L1: no timestamp
+    authority), computes the metrics and writes report.html and report.json. The same every
+    run apart from the key, its signatures and the report's generated-at time. Exit status: 0
+    when every step ran; 1 if the sealed session does not meet L1; 2 when the folder is not
+    empty, a file cannot be written or the report extra is missing.
+    """
+    _require_report_extra("demo")
+    from autonometry.stats import metrics  # noqa: PLC0415 -- optional extra
+
+    _check_empty(out)
+    try:
+        make_private_dirs(out)
+        with contextlib.chdir(out):
+            run = _run_demo(metrics.Options(0.05, 2000, 0, "auto", "day"))
+    except OSError as exc:
+        echo(
+            f"error: cannot write the demo to {printable(str(out))}: {exc.strerror or exc}",
+            err=True,
+        )
+        raise typer.Exit(2) from None
+    verdict = run.report["verdict"]
+    echo(demo.TITLE)
+    echo(f"1. session:  {run.events} events from the package ({demo.ROBOT_ID}, {demo.SUMMARY})")
+    echo(f"2. key:      a throwaway Ed25519 key in {demo.KEY.parent.as_posix()}/")
+    echo(f"3. sealed:   every event hash-chained, {run.checkpoints} signed checkpoint(s)")
+    echo("4. verify:")
+    for line in demo.why_l1(run.checkpoints):
+        echo(f"  {line}")
+    echo("5. metrics:  with 95 % confidence intervals (one session, so they are wide)")
+    for line in demo.headline_lines(run.report):
+        echo(f"  {line}")
+    echo(f"6. report:   {verdict['status']}, level {verdict['level']}, {verdict['completeness']}")
+    echo("  not clean, as expected without an anchor:")
+    for reason in verdict["reasons"]:
+        echo(f"    - {reason}")
+    echo("")
+    echo(f"Files in {printable(str(out))}:")
+    for line in demo.file_lines():
+        echo(line)
+    echo("")
+    echo(f"Open {printable(str(out / demo.REPORT_HTML))} in a browser.")
+    echo("To redo the checks by hand, inside the folder:")
+    for line in demo.next_steps():
+        echo(line)
 
 
 @app.command("record")

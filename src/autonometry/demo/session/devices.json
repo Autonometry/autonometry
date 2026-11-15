@@ -1,0 +1,27 @@
+{
+  "devices": [
+    {
+      "device_id": "nav_stack",
+      "kind": "ai",
+      "match": {
+        "node": "/nav_stack"
+      }
+    },
+    {
+      "device_id": "remote_console",
+      "kind": "human",
+      "location": "remote",
+      "match": {
+        "node": "/remote_teleop"
+      }
+    },
+    {
+      "device_id": "service_pendant",
+      "kind": "human",
+      "location": "local",
+      "match": {
+        "node": "/pendant"
+      }
+    }
+  ]
+}
