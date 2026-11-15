@@ -17,8 +17,10 @@ For each scope at each instant the first rule that applies decides:
 2. **Emergency stop.** The remote's L2 + B, or a Damp or ZeroTorque request (7101 with data 1 or
    0) from a person or an undeclared source, followed within ``gap_tolerance_s`` by a passive
    built-in state, or at once while the built-in controller is unseen or released:
-   ``safety_stop``, reason ``safety``, actor the person's, until the built-in state leaves passive
-   or the next change of mode. Writers that keep writing do not end it (6.7, 6.8).
+   ``safety_stop``, reason ``safety``, actor the person's, until the robot confirms a change: the
+   built-in state leaves passive, or the declared built-in controller answers a mode request with
+   success. A request or a remote combination alone never ends it, nor do writers that keep
+   writing (6.7, 6.8).
 3. **Released or user control** (``legs``, ``upper_body``): the active writers of ``rt/lowcmd``
    (released) or ``rt/user_lowcmd`` (user control): one source, its device's state; several within
    ``contention_window_s``, 6.12; none, inside an open task ``unknown``, outside the last
@@ -48,10 +50,19 @@ a person's open goal span contends (6.12) with an AI or scripted state on ``legs
 with an open goal span contends; while a preset runs, another ``rt/arm_sdk`` writer contends with
 it; an arm motion with no observed start (sportmodestate ``task_id`` not 0, or the arm action
 state holding) is ``unknown``; the arm action state's "no hold" ends a preset only after it held;
-a stop that began at once ends only at a change of mode; a remote stick value that is not a
+a stop that began at once ends only at a confirmed change of mode; a remote stick value that is
+not a
 finite number counts as outside the dead zone; a writer whose weight cannot be read counts as
 holding its joints (weight 1); a malformed velocity only extends a goal span; a response only
 ever keeps the robot released or in user control.
+
+**Names are claims.** Host, program and pid come from the participant itself, so anyone on the
+robot's network can claim a declared source's identity. RPC responses are believed only from the
+declared built-in controller's identity (the host and participant of its ``rt/sportmodestate``
+writer); others are ignored and noted (``x_g1_ignored_response``). Two writers with the same
+observed source that command within ``contention_window_s`` are both undeclared, a person
+(``human_remote``), and noted (``x_g1_duplicate_identity``), as the TurtleBot 4 does for a node
+name two publishers share. Only trust level L3 proves remote control.
 
 **Sources.** A source is observed as ``(host, participant, topic)`` (notes section 4) and matches
 the first device of the registry whose given ``match`` fields all equal it (6.10). The handheld
@@ -66,7 +77,8 @@ or location.
 **Evidence** goes in ``x_`` fields: ``x_g1_cause`` and ``x_g1_fsm_id`` on every state,
 ``x_g1_weight`` on states decided by an ``rt/arm_sdk`` weight, and on heartbeat notes
 ``x_g1_writers`` (the active writers when that set changes: a declared one by topic and device,
-an undeclared one by topic, program and a pseudonym of its host, never the host name),
+an undeclared one by topic and pseudonyms of its program and host, never their names: product
+rule 5, :func:`pseudonym`),
 ``x_g1_tasks: "unreadable"`` (once, when the recorder's session log cannot be followed) and
 ``x_g1_robot_returned`` (the robot came back after ``idle_threshold_s`` while released or in user
 control, which a restart ends without a request).
@@ -84,6 +96,7 @@ from typing import Any, Final, Literal
 from autonometry import strictjson
 from autonometry.connectors.lerobot import Note
 from autonometry.connectors.lerobot import wire_event as _wire_event
+from autonometry.connectors.names import pseudonym
 from autonometry.connectors.tb4 import Device, Fields, Source, StateAssertion
 
 __all__ = [
@@ -126,6 +139,7 @@ __all__ = [
     "WriterSeen",
     "decode_remote",
     "host_pseudonym",
+    "pseudonym",
     "registry_problems",
     "request_topic",
     "response_topic",
@@ -713,34 +727,29 @@ class _Preset:
 
 @dataclass(frozen=True, slots=True)
 class _Pending:
-    """A mode request waiting for its response: the mode version it made, and the flags and the
-    emergency stop before it."""
+    """A mode request waiting for its response: the mode version it made and the flags before."""
 
     version: int
     released: bool
     user_control: bool
-    stop: "_Stop | None" = None
 
 
 def host_pseudonym(host: str | None) -> str | None:
-    """A host name as it may appear in a log: the first 12 hex digits of its SHA-256, never the
-    name itself, which often holds a person's name (CLAUDE.md product rule 5). ``autonometry g1
-    discover`` prints it beside each host, so a log entry can be traced to a machine."""
-    if host is None:
-        return None
-    return hashlib.sha256(host.encode("utf-8", "replace")).hexdigest()[:_DIGEST_CHARS]
+    """A host name's :func:`pseudonym`."""
+    return pseudonym(host)
 
 
 def _writer_entry(writer: "_Writer") -> dict[str, Any]:
-    """A writer on ``x_g1_writers``: a declared one by its topic and device; an undeclared one by
-    its topic, program and host pseudonym (product rule 5)."""
+    """A writer on a heartbeat note: a declared one by its topic and device; an undeclared one by
+    its topic and pseudonyms of its program (participant) and host, never their names (product
+    rule 5)."""
     if writer.device is not None:
         return {"topic": writer.topic, "device_id": writer.device.device_id}
     identified = writer.identified
     return {
         "topic": writer.topic,
-        "program": writer.source.participant if identified else None,
-        "host": host_pseudonym(writer.source.host) if identified else None,
+        "program": pseudonym(writer.source.participant) if identified else None,
+        "host": pseudonym(writer.source.host) if identified else None,
     }
 
 
@@ -777,6 +786,9 @@ class G1Engine:
         self._sent: dict[str, tuple[str, str | None, str | None, str | None]] = {}
         self._notes: list[Note] = []
         self._noted_writers: str | None = None
+        self._ignored: set[str] = set()
+        self._duplicate_noted: set[str] = set()
+        self._duplicates: tuple[float, frozenset[Source]] = (math.nan, frozenset())
         self._preset_device = self._match(Source(topic=PRESET_TOPIC))
 
     # -- public -----------------------------------------------------------------------------
@@ -924,8 +936,49 @@ class G1Engine:
         writer.device = self._match(source)
         writer.decoded, writer.present = observation.decoded, True
 
+    def _from_builtin(self, writer: _Writer) -> bool:
+        """True when ``writer`` has the identity (host and participant) of a present writer of
+        ``rt/sportmodestate`` that the registry declares as the built-in controller (an ``ai``
+        device)."""
+        if not writer.identified:
+            return False
+        identity = (writer.source.host, writer.source.participant)
+        return any(
+            w.identified
+            and w.present
+            and w.topic == SPORTSTATE
+            and w.device is not None
+            and w.device.kind == "ai"
+            and (w.source.host, w.source.participant) == identity
+            for w in self._writers.values()
+        )
+
+    def _duplicated(self) -> frozenset[Source]:
+        """Sources that two or more writers active within ``contention_window_s`` claim at once:
+        a name is not an identity, so none of them is the declared device."""
+        if self._duplicates[0] != self._now:
+            window = self._s.contention_window_s
+            seen: dict[Source, int] = {}
+            for w in self._writers.values():
+                if w.identified and w.active(self._now, window):
+                    seen[w.source] = seen.get(w.source, 0) + 1
+            self._duplicates = (self._now, frozenset(src for src, n in seen.items() if n > 1))
+        return self._duplicates[1]
+
+    def _note_once(self, noted: set[str], key: str, field: str, writer: _Writer) -> None:
+        """One heartbeat note per writer and kind, while fewer than :data:`MAX_WRITERS` were."""
+        if key not in noted and len(noted) < MAX_WRITERS:
+            noted.add(key)
+            self._notes.append(Note(((field, _writer_entry(writer)),)))
+
     def _origin(self, writer: _Writer) -> _Origin:
         device = writer.device if writer.identified else None
+        if device is not None and writer.source in self._duplicated():
+            source = writer.source
+            identity = f"{source.host}|{source.participant}|{writer.topic}"
+            entry = replace(writer, device=None)
+            self._note_once(self._duplicate_noted, identity, "x_g1_duplicate_identity", entry)
+            device = None
         if device is not None:
             return _Origin(f"device:{device.device_id}", device, _role(device))
         if writer.identified:
@@ -1140,27 +1193,35 @@ class G1Engine:
         """A mode change by request (notes section 6, released and user control); its response
         is awaited (:meth:`_on_response`)."""
         prior = (self._released, self._user_control)
-        stop = self._stop
         self._mode_change()
         self._released, self._user_control = released, user_control
         key = (observation.service, observation.request_id)
         self._pending.pop(key, None)
         if len(self._pending) >= MAX_PENDING:
             del self._pending[next(iter(self._pending))]
-        self._pending[key] = _Pending(self._mode_version, *prior, stop)
+        self._pending[key] = _Pending(self._mode_version, *prior)
 
     def _on_response(self, observation: Response) -> None:
-        """Open case: the notes define released and user control by requests alone. A response
-        only ever keeps the robot in them (rule 3), never takes it out: a refused SelectMode or
-        SwitchToInternalCtrl leaves it released or in user control, and a CheckMode answer with
-        no mode (S8) marks it released. A refused ReleaseMode is not undone. A refused request
-        changed no mode, so an emergency stop it ended is back (rule 2): anyone on the network
-        can send a request the robot refuses."""
+        """A response, believed only from the declared built-in controller's identity; any other
+        writer's is ignored and noted, since anyone on the network can publish one.
+
+        Success to a pending mode request is the robot confirming the change, which ends an
+        emergency stop (rule 2). Open case: the notes define released and user control by
+        requests alone. A response only ever keeps the robot in them (rule 3), never takes it
+        out: a refused SelectMode or SwitchToInternalCtrl leaves it released or in user control,
+        and a CheckMode answer with no mode (S8) marks it released. A refused ReleaseMode is not
+        undone."""
+        writer = self._writer(observation.key, response_topic(observation.service))
+        writer.last_t = observation.t
+        if not self._from_builtin(writer):
+            self._note_once(self._ignored, writer.key, "x_g1_ignored_response", writer)
+            return
         pending = self._pending.pop((observation.service, observation.request_id), None)
+        if pending is not None and observation.code == 0:
+            self._stop = None
         if pending is not None and observation.code != 0 and pending.version == self._mode_version:
             self._released = self._released or pending.released
             self._user_control = self._user_control or pending.user_control
-            self._stop = self._stop or pending.stop
         if (
             observation.service == "motion_switcher"
             and observation.api_id == CHECK_MODE
@@ -1247,8 +1308,9 @@ class G1Engine:
         self._stop = _Stop(t, origin, label, immediate)
 
     def _mode_change(self) -> None:
-        """A change of mode ends an emergency stop (rule 2)."""
-        self._stop = None
+        """A request or a remote combination for another mode. It never ends an emergency stop
+        by itself: only the robot's confirmation does (rule 2; :meth:`_on_response`,
+        :meth:`_on_sport`)."""
         self._mode_version += 1
 
     def _start_preset(

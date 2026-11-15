@@ -267,6 +267,12 @@ class SessionVerdict:
 
     ``sealed_through_seq`` is the last ``seq`` proven trust level L2, or ``None`` when no span of
     the session is L2. Evidence codes made the status ``failed``; gaps never raise the level.
+
+    ``last_anchored_ts`` is the ``ts`` of the last event an anchored checkpoint covers (``None``
+    when none does) and ``end_anchored`` tells whether one covers the session's ``session_end``.
+    A session whose end is not anchored may have lost the events after its last anchor without
+    a trace in its own files: someone who can edit them can cut the log back to that anchor and
+    drop the later checkpoints (security review M10, S-14; a proposal for spec v0.4).
     """
 
     robot_id: str
@@ -275,6 +281,23 @@ class SessionVerdict:
     sealed_through_seq: int | None
     evidence: tuple[SealIssue, ...]
     gaps: tuple[SealIssue, ...]
+    last_anchored_ts: str | None = None
+    end_anchored: bool = False
+
+    def end_warning(self) -> str | None:
+        """The plain warning for a session whose ``session_end`` no anchored checkpoint covers;
+        ``None`` when one does."""
+        if self.end_anchored:
+            return None
+        if self.last_anchored_ts is None:
+            return (
+                "no anchored checkpoint covers this session: any of its events may have been "
+                "removed or changed"
+            )
+        return (
+            "its session_end is not covered by an anchored checkpoint: events after the last "
+            f"anchor ({self.last_anchored_ts}) may have been removed"
+        )
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -282,6 +305,9 @@ class SessionVerdict:
             "session_id": self.session_id,
             "status": self.status,
             "sealed_through_seq": self.sealed_through_seq,
+            "last_anchored_ts": self.last_anchored_ts,
+            "end_anchored": self.end_anchored,
+            "warning": self.end_warning(),
             "evidence": [{"code": i.code, "detail": i.detail} for i in self.evidence],
             "gaps": [{"code": i.code, "detail": i.detail} for i in self.gaps],
         }
@@ -339,16 +365,30 @@ class VerifyResult:
         return reasons
 
     def verified(self, require: TrustLevel) -> bool:
-        """True when every session meets ``require`` and nothing was rejected or malformed."""
+        """True when every session meets ``require`` and nothing was rejected or malformed.
+        Only ``verified("L2")`` means verified (definitions.md 10.6); at L1 this is "meets L1"."""
         return not self.reasons(require)
 
+    def warnings(self) -> list[str]:
+        """``robot/session: warning`` for every session with events whose ``session_end`` no
+        anchored checkpoint covers (:meth:`SessionVerdict.end_warning`)."""
+        return [
+            f"{v.robot_id}/{v.session_id}: {warning}"
+            for v in self.sessions
+            if (warning := v.end_warning()) is not None
+        ]
+
     def to_json(self, require: TrustLevel) -> dict[str, Any]:
-        """Return a JSON-serialisable summary in stable order. Event contents are left out."""
+        """Return a JSON-serialisable summary in stable order. Event contents are left out.
+        ``verified`` is true only at L2; ``meets_required_level`` says whether ``require`` was
+        met, and ``reasons`` why not."""
         return {
             "spec_version": self.spec_version,
             "require": require,
-            "verified": self.verified(require),
+            "verified": self.verified("L2"),
+            "meets_required_level": self.verified(require),
             "reasons": self.reasons(require),
+            "warnings": self.warnings(),
             "counts": {
                 "sessions": len(self.sessions),
                 "rejected_lines": sum(self.rejected_by_code.values()),

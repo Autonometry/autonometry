@@ -3,6 +3,7 @@ guard, identities, sample conversion, the observer over a fake backend, discover
 session-log task follower and the watch loop. The same code over real Cyclone DDS 0.10.5 runs in
 ``tests/dds`` (marker ``dds``)."""
 
+import hashlib
 import json
 import logging
 import math
@@ -530,20 +531,25 @@ def test_discovery_lists_participants_and_the_exact_match_strings__notes_4() -> 
         "program": None,
         "pid": None,
         "participant": None,
+        "participant_pseudonym": None,
         "writers": [],
     }
     text = g1_dds.format_discovery(report)
     assert robot["host_pseudonym"] == "2cd7dc141261"
+    hg = hashlib.sha256(b"hg_lowstate").hexdigest()[:12]
+    assert robot["participant_pseudonym"] == hg
     assert text[0] == (
-        "participant a: host g1-pc1 (in logs 2cd7dc141261), program hg_lowstate (pid 100)"
+        f"participant a: host g1-pc1 (in logs 2cd7dc141261), program hg_lowstate (pid 100) "
+        f"(in logs {hg})"
     )
+    assert text[-1].startswith("In logs an undeclared host or program is the first 12 hex")
     assert any("handheld remote match" in line for line in text)
     pseudonym = teleop["host_pseudonym"]
     assert f"participant b: host robot-pc2 (in logs {pseudonym}), program python3" in "\n".join(
         text
     )
     assert "  writes nothing" in text
-    assert text[-1] == 'Unitree\'s presets: match {"topic": "preset"}'
+    assert text[-2] == 'Unitree\'s presets: match {"topic": "preset"}'
     json.dumps(report)
 
 

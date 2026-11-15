@@ -5,7 +5,7 @@
     "log": [
       {"t": 0.0, "type": "session_start", "initial_states": {"whole_robot": "unknown"}, "simulated": false},
       {"t": 0.0, "type": "transition", "state": "idle", "reason": null, "actor_id": null, "x_src_ts": "2026-11-14 10:00:00", "x_src_clock": "wall"},
-      {"t": 10.0, "type": "transition", "state": "ai", "reason": null, "actor_id": "ai:outputs_train_act_so101_checkpoints_last_pretrained_model", "device_id": "so101_policy", "x_src_ts": "2026-11-14 10:00:10"},
+      {"t": 10.0, "type": "transition", "state": "ai", "reason": null, "actor_id": "ai:so101_policy", "device_id": "so101_policy", "x_src_ts": "2026-11-14 10:00:10"},
       {"t": 10.0, "type": "task_start", "task_id": "episode_000000", "task_definition_id": "pick_place_cube", "x_episode_index": 0},
       {"t": 40.0, "type": "transition", "state": "shared", "reason": "human_initiated", "actor_id": "op_01", "device_id": "so101_leader", "task_id": "episode_000000"},
       {"t": 42.0, "type": "transition", "state": "human_local", "reason": "human_initiated", "actor_id": "op_01", "device_id": "so101_leader"},

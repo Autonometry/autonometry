@@ -22,7 +22,9 @@ robot, dossier 14.7) are in one state, the first rule that applies (dossier 14.1
 4. A controller that stopped (control loop ended, robot disconnected, an episodic reset with no
    teleoperator) keeps its state for ``idle_threshold_s``, then ``idle`` (6.14).
 5. DAgger ``AUTONOMOUS`` and the policy loops of the other strategies: ``ai``, actor
-   ``ai:<policy path>``, the policy's device. DAgger ``PAUSED``: ``shared`` with reason
+   ``ai:<device_id>`` with the policy's device when the registry declares it, else
+   ``ai:<pseudonym>``, the first 12 hex digits of the SHA-256 of the policy path, never the path
+   (product rule 5). DAgger ``PAUSED``: ``shared`` with reason
    ``human_initiated``, a human pause (6.8). DAgger ``CORRECTING``: ``human_local``, or
    ``human_remote`` when the teleoperator's device is declared remote (6.10); reason
    ``human_initiated``. Human states carry the teleoperator's device and actor.
@@ -61,6 +63,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any, Final, Literal, cast
 
+from autonometry.connectors.names import pseudonym
 from autonometry.connectors.tb4 import (
     Device,
     Fields,
@@ -218,7 +221,7 @@ class CorrectionSaved:
 @dataclass(frozen=True, slots=True)
 class EpisodeRecording:
     """``Recording episode <n>``: an episodic episode starts (``log_say``,
-    lerobot/rollout/strategies/episodic.py:122, lerobot/utils/utils.py:147)."""
+    lerobot/rollout/strategies/episodic.py:122, lerobot/utils/utils.py:148)."""
 
     index: int
 
@@ -232,7 +235,7 @@ class ResetStart:
 @dataclass(frozen=True, slots=True)
 class RerecordKey:
     """``Left arrow key pressed. Exiting loop and rerecord the last episode...``: printed, not
-    logged, when the re-record key is pressed (lerobot/utils/keyboard_input.py:161)."""
+    logged, when the re-record key is pressed (lerobot/utils/keyboard_input.py:164)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,10 +313,6 @@ _MESSAGES: Final[tuple[tuple[re.Pattern[str], _Factory], ...]] = (
     (re.compile(r"Reset the environment"), lambda m: ResetStart()),
     (re.compile(r"Re-record episode"), lambda m: Rerecord()),
     (
-        re.compile(r"Left arrow key pressed\. Exiting loop and rerecord the last episode\.\.\."),
-        lambda m: RerecordKey(),
-    ),
-    (
         re.compile(r"DAgger continuous recording started \(.*\)"),
         lambda m: LoopStart("dagger_continuous"),
     ),
@@ -354,20 +353,30 @@ _MESSAGES: Final[tuple[tuple[re.Pattern[str], _Factory], ...]] = (
 )
 
 
+#: The one message the rollout prints instead of logging that this connector uses: the keyboard
+#: listener's (lerobot/utils/keyboard_input.py:164). It counts only as this exact whole line.
+_PRINTED: Final[Mapping[str, Signal]] = {
+    "Left arrow key pressed. Exiting loop and rerecord the last episode...": RerecordKey(),
+}
+
+
 def parse_line(text: str) -> Parsed | None:
     """Recognise one line of a ``lerobot-rollout`` log, ``None`` when it says nothing this
-    connector uses. Lines LeRobot's logging formatted keep their printed time; other lines (the
-    keyboard listener prints, it does not log) are matched as they are, without a time. Never
-    raises."""
+    connector uses. Every logged signal needs LeRobot's logging prefix, whose time it keeps; a
+    line without the prefix counts only when it is, exactly and whole, a message the rollout
+    prints (:data:`_PRINTED`), so a ``print()`` elsewhere in the rollout's process cannot pass
+    for a signal (security review M10, open point 9). Never raises."""
     line = text.rstrip("\r\n")
     if len(line) > MAX_LINE_CHARS:
         return None
     prefix = _PREFIX.fullmatch(line)
-    message, src_ts = (prefix["message"], prefix["time"]) if prefix else (line.strip(), None)
+    if prefix is None:
+        printed = _PRINTED.get(line)
+        return None if printed is None else Parsed(printed, None)
     for pattern, factory in _MESSAGES:
-        found = pattern.fullmatch(message)
+        found = pattern.fullmatch(prefix["message"])
         if found is not None:
-            return Parsed(factory(found), src_ts)
+            return Parsed(factory(found), prefix["time"])
     return None
 
 
@@ -375,9 +384,9 @@ def parse_line(text: str) -> Parsed | None:
 
 
 def controller_id(path: str) -> str:
-    """The ``<controller_id>`` of the actor ``ai:<controller_id>`` for a policy path (definitions.md
-    1, Actor; 8, Identifiers): characters outside an identifier's set become ``_``; a path longer
-    than 125 characters keeps a 12-hex SHA-256 of the whole, ``_`` and its last characters."""
+    """An identifier (definitions.md 8, Identifiers) made from free text such as a robot type:
+    characters outside an identifier's set become ``_``; a text longer than 125 characters keeps
+    a 12-hex SHA-256 of the whole, ``_`` and its last characters."""
     text = _ID_BAD.sub("_", path.strip()) or _NO_POLICY
     if len(text) <= _CONTROLLER_MAX:
         return text
@@ -425,8 +434,14 @@ def _device_id(device: Device | None) -> str | None:
 
 
 def _ai(devices: Sequence[Device], policy: str | None, src_ts: str | None = None) -> _Control:
+    """The policy's state: actor ``ai:<device_id>`` when the registry declares the policy, else
+    ``ai:<pseudonym>``, the first 12 hex digits of the SHA-256 of its path: a path such as
+    ``/home/<user>/...`` holds a person's name (product rule 5)."""
     device = None if policy is None else _match(devices, f"policy:{policy}")
-    actor = f"ai:{controller_id(policy) if policy is not None else _NO_POLICY}"
+    if device is not None:
+        actor = f"ai:{device.device_id}"
+    else:
+        actor = f"ai:{pseudonym(policy) if policy is not None else _NO_POLICY}"
     return _Control("ai", None, actor, _device_id(device), None, src_ts)
 
 

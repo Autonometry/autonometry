@@ -172,11 +172,13 @@ def test_active_writers_are_noted_on_heartbeats__notes_6(
     noted = [e["x_g1_writers"] for e in events if "x_g1_writers" in e]
     assert any({"topic": "rt/arm_sdk", "device_id": "xr_teleop"} in writers for writers in noted)
     assert any(
-        {"topic": "rt/api/sport/request", "program": "python3", "host": "5eec0dc419aa"} in writers
+        {"topic": "rt/api/sport/request", "program": "c1cc69e61c0f", "host": "5eec0dc419aa"}
+        in writers
         for writers in noted
-    )  # the undeclared laptop, its host as a pseudonym (product rule 5)
+    )  # the undeclared laptop, its program and host as pseudonyms (product rule 5)
     text = (folder / EVENTS_FILE).read_text(encoding="utf-8")
     assert "laptop" not in text
+    assert "python3" not in text
     assert "teleop-pc" not in text
 
 

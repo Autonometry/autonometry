@@ -101,6 +101,10 @@ class World:
         self.nav_status = self.nav.create_publisher(
             GoalStatusArray, "navigate_to_pose/_action/status", STATUS_QOS
         )
+        # Nav2 publishes feedback all along a goal; the observer needs it to know Nav2 is at work.
+        self.nav_feedback = self.nav.create_publisher(
+            NavigateToPose.Impl.FeedbackMessage, "navigate_to_pose/_action/feedback", 10
+        )
         self.smoothed = self.smoother.create_publisher(TwistStamped, "cmd_vel_smoothed", 10)
         self.controller_out = self.controller.create_publisher(TwistStamped, "cmd_vel_nav", 10)
         self.behaviors_out = self.behaviors.create_publisher(TwistStamped, "cmd_vel_nav", 10)
@@ -141,6 +145,7 @@ class World:
         with self.lock:
             self.wheels.publish(WheelStatus(wheels_enabled=self.wheels_enabled))
             if self.nav_speed is not None:
+                self.nav_feedback.publish(NavigateToPose.Impl.FeedbackMessage())
                 self.controller_out.publish(twist(self.nav_speed))
                 self.smoothed.publish(twist(self.nav_speed))
                 self.relay.publish(twist(0.0 if self.stopped else self.nav_speed))

@@ -4,10 +4,12 @@ docstring, named by spec section and dossier 14.1 row (research/lerobot-so101)."
 import pytest
 
 from autonometry.connectors import lerobot
+from autonometry.connectors.names import pseudonym
 from autonometry.connectors.tb4 import Device, StateAssertion, TaskEnd, TaskStart
 from lerobot_helpers import DEVICES, POLICY, engine, feed, line, settings, setup_lines, src
 
-AI = ("ai", None, f"ai:{POLICY.replace('/', '_')}", "so101_policy")
+# The declared policy appears by its device (security review M10, decision 6).
+AI = ("ai", None, "ai:so101_policy", "so101_policy")
 PAUSED = ("shared", "human_initiated", "op_01", "so101_leader")
 CORRECTING = ("human_local", "human_initiated", "op_01", "so101_leader")
 SCRIPTED = ("scripted", None, "script:return_to_initial_position", "return_to_start")
@@ -230,7 +232,8 @@ def test_undeclared_sources_carry_no_device__defs_6_10() -> None:
             (1.0, line("DAgger corrections-only recording started (target: 5 episodes)", 1)),
         ],
     )
-    assert _now(eng, 2.0) == ("ai", None, "ai:someone_else", None)
+    # An undeclared policy path appears as a pseudonym: a path can hold a person's name.
+    assert _now(eng, 2.0) == ("ai", None, f"ai:{pseudonym('someone/else')}", None)
     feed(eng, [(3.0, line("Phase transition: autonomous -> paused", 3))])
     feed(eng, [(4.0, line("Phase transition: paused -> correcting", 4))])
     assert _now(eng, 5.0) == ("human_local", "human_initiated", "person:unidentified", None)
@@ -533,5 +536,5 @@ def test_a_device_registry_without_the_sources_still_works__defs_6_10() -> None:
     lonely = (Device("other", "ai", (("node", "/nav"),)),)
     eng = engine(devices=lonely)
     _dagger(eng)
-    assert _now(eng, 6.0) == ("ai", None, AI[2], None)
+    assert _now(eng, 6.0) == ("ai", None, f"ai:{pseudonym(POLICY)}", None)  # undeclared
     assert DEVICES[0].device_id == "so101_policy"

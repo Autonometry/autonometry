@@ -920,7 +920,8 @@ class Discovery:
                 {
                     "key": key,
                     "host": info.host,
-                    "host_pseudonym": g1.host_pseudonym(info.host),
+                    "host_pseudonym": g1.pseudonym(info.host),
+                    "participant_pseudonym": g1.pseudonym(info.name),
                     "program": info.program,
                     "pid": info.pid,
                     "participant": info.name,
@@ -956,7 +957,9 @@ def discover(  # noqa: PLR0913 -- the listening loop's collaborators
 
 
 def format_discovery(report: Mapping[str, Any]) -> list[str]:
-    """The discovery as text lines, one block per participant."""
+    """The discovery as text lines, one block per participant. Each host and participant shows
+    the pseudonym an undeclared writer has in the log (first 12 hex digits of the SHA-256 of
+    its name), so a log entry can be traced back here."""
     lines = []
     for participant in report["participants"]:
         pid, name = participant["pid"], participant["participant"]
@@ -966,6 +969,8 @@ def format_discovery(report: Mapping[str, Any]) -> list[str]:
         head += f"program {participant['program'] or '?'}"
         head += f" (pid {pid})" if pid is not None else ""
         head += f", script {name}" if name != participant["program"] else ""
+        if name is not None:
+            head += f" (in logs {participant['participant_pseudonym']})"
         lines.append(head)
         for writer in participant["writers"]:
             lines.append(f"  writes {writer['topic']}  [{writer['type']}]")
@@ -975,6 +980,10 @@ def format_discovery(report: Mapping[str, Any]) -> list[str]:
         if not participant["writers"]:
             lines.append("  writes nothing")
     lines.append(f"Unitree's presets: match {_json(report['preset_match'])}")
+    lines.append(
+        "In logs an undeclared host or program is the first 12 hex digits of the SHA-256 of its "
+        "name (the pseudonyms in parentheses)."
+    )
     return lines
 
 

@@ -81,8 +81,20 @@ later, together with their checkpoints. Each session is reported `verified`, `pa
 tampering or corruption) and gap codes (never raise the trust level). Records that cannot be tied to
 one session (a malformed checkpoint, a timestamp for no checkpoint) are file problems. The output
 ends with `result: verified` or `result: NOT verified: <reasons>`; rejected lines of any file read
-and file problems make the result not verified whatever the sessions' statuses. The codes are in
+and file problems make the result not verified whatever the sessions' statuses. Only L2 is
+"verified": with `--require L1` the line says whether L1 was met and, separately, whether the log
+is verified (`result: meets L1; NOT verified at L2: <reasons>`), and the JSON carries
+`meets_required_level` beside `verified`, which is true only at L2. The codes are in
 `spec/v0.3/rules.toml` `[sealing]`.
+
+**Anchor often, and keep anchors off the robot.** A session cut back to an earlier anchored
+checkpoint, its later checkpoints and tokens removed, verifies as the shorter log
+(definitions.md 10.6). So `verify` warns for every session whose `session_end` no anchored
+checkpoint covers -- "events after the last anchor (<its time>) may have been removed" -- and a
+report with such a session is not clean. Anchor during a session, not only at its end (the
+recorder timestamps every checkpoint it writes when `tsa_url` is set), and keep anchor files
+somewhere the robot's operator cannot change: an auditor who holds a later anchor turns a cut
+into `missing_events`.
 
 What L2 proves: nothing was dropped, re-timed or edited after a checkpoint was anchored, and any
 such change is detected even without the original log. What it does not prove: a dishonest recorder
@@ -286,7 +298,9 @@ JSON and HTML apart from `generated_at`. The page shows times to the second (the
 precision), and the state table notes how much AI time approval and hint dwell moved to human
 time. The verdict box is green only for a clean report, amber for one that is not clean and red
 when a session failed. Exit status: 0 only when the report is clean: verified at L2 or L3, complete,
-no census gap, no session left out and no invariant failed; 1 when it was written but is not clean
+no census gap, no session left out, no invariant failed, and every session's `session_end` covered
+by an anchored checkpoint (else the reasons say that events after its last anchor, at the time
+given, may have been removed); 1 when it was written but is not clean
 (the last output line says why); 2 on bad usage, unreadable input or without the `report` extra.
 
 ## Recorder
@@ -357,6 +371,13 @@ current states, followed by one transition per scope that is not `unknown` repea
 continues the same session), 2 when it cannot start (config, key, registry, socket or folder in
 use). Operational messages go to stderr and never contain event contents.
 
+**It never fills the robot's disk.** Below `min_free_bytes` free on the data folder's disk
+(default 1 GiB) the recorder stops writing and logs one error; datagrams are dropped unread, so
+each connector's counter shows the loss. When space returns it writes a heartbeat with
+`x_disk_full_s` (how long it stopped) and `unknown` on every scope: the time in between, with no
+event and no heartbeat, is `unknown` like any lost data. It looks at the free space once a
+second.
+
 **Folders it trusts.** The recorder refuses to start (exit 2) when `<data_dir>/<robot_id>` belongs
 to another user or its group or others can write it, when `data_dir` can be written by every user
 without the sticky bit, or when the folder of `socket_path` can be written by every user (another
@@ -404,7 +425,8 @@ plan = "plan.json"                    # required: pre-registered human actions, 
 # tsa_roots = "freetsa.pem"
 # role = "station"                    # a teleoperation station's recorder, with station_id (12.1)
 # station_id = "operator_pc_1"
-# Defaults: fsync_interval_s = 1.0, max_events_per_s = 1000, max_log_bytes = 268435456
+# Defaults: fsync_interval_s = 1.0, max_events_per_s = 1000, max_log_bytes = 268435456,
+#           min_free_bytes = 1073741824 (1 GiB left free on the data folder's disk; 0 turns it off)
 ```
 
 ### systemd
@@ -527,7 +549,8 @@ them. Rules (integration notes B.2 under spec v0.3; the first that applies decid
 | a routine running: Create 3 dock, undock, wall follow; Nav2 spin, backup, drive on heading, assisted teleop | started by a button, a person or an undeclared client: `shared`, `human_initiated` (6.13); by a declared AI or script (bt_navigator's recoveries, a mission node): `ai` or `scripted` |
 | `/cmd_vel` from a person, or relayed by Nav2's chain from one (below) | `human_local` or `human_remote` by the device registry; undeclared publisher, or a node name two publishers share: `human_remote` (6.10); with another source within `contention_window_s`: `shared`, `human_initiated` (6.12); ends at a neutral command, a dead-man release, or `goal_release_s` after the last command (6.11) |
 | motion on `/odom` with no command for `gap_tolerance_s` | `unknown`, `x_out_of_band` |
-| Nav2 `NavigateToPose`, `NavigateThroughPoses` or `FollowWaypoints` goal | `EXECUTING` with no task: `task_start` (`nav_to_pose`, `nav_through_poses`, `patrol`) and `ai`; another task action's goal inside the task (the waypoint follower's) is part of it; `SUCCEEDED`, `ABORTED`, `CANCELED`: `task_end` `success`, `failure`, `aborted`; a person's new goal or pose estimate: a hint (`shared` under `hint_as_shared`); a person's cancel: `shared` until the task ends (6.2, 6.8); collision monitor STOP: `safety_stop` with no actor (automatic) |
+| Nav2 left the graph, or nothing from it (status or feedback of a task action) for more than `gap_tolerance_s` during a task | `unknown`, `x_cause` `nav2_left_graph` or `nav2_silent` (definitions.md 2, 6.14) |
+| Nav2 `NavigateToPose`, `NavigateThroughPoses` or `FollowWaypoints` goal, its status published by a declared AI node | `EXECUTING` with no task: `task_start` (`nav_to_pose`, `nav_through_poses`, `patrol`) and `ai`; another task action's goal inside the task (the waypoint follower's) is part of it; `SUCCEEDED`, `ABORTED`, `CANCELED`: `task_end` `success`, `failure`, `aborted`; a person's new goal or pose estimate: a hint (`shared` under `hint_as_shared`); a person's cancel: `shared` until the task ends (6.2, 6.8); collision monitor STOP: `safety_stop` with no actor (automatic) |
 | `/initialpose` from a person before a task | `human_remote`, `planned`, plan item `initial_pose` |
 | wheels enabled again, no commander yet | `unknown` |
 | no task and no command for `idle_threshold_s` | `idle`, docked or not |
@@ -549,11 +572,23 @@ seen counts as not declared. Declare the whole chain in the device registry, as
 `demo/tb4-sim/config/devices.json` does. Nav2 behaviours (`spin`, `backup`, `drive_on_heading`,
 `assisted_teleop`) are routines: one a person or an undeclared client starts (`ros2 action
 send_goal /drive_on_heading ...` from a laptop) is `shared`; the commands it relays are its own.
+The collision monitor relays each `/cmd_vel_smoothed` message once, so one relayed command counts
+per smoothed message: further commands that match it are another publisher's, and a person
+driving in Nav2's direction makes the scope `shared`, never `ai`.
+
+**Nav2 counts only as itself.** A task action's status and feedback count only when every
+publisher of the action's status topic in the ROS graph is a declared AI node and no name is
+shared, so a goal status anyone else publishes opens no task. During a task, Nav2 leaving the
+graph, or no status or feedback from it for more than `gap_tolerance_s` (2 s), makes `base`
+`unknown` until it is heard again. The observer reads feedback with the `nav2_msgs` action types;
+without that package an open task becomes `unknown` 2 s after its last status.
 
 **Who sent it.** On ROS 2 Jazzy a subscription's message info has no publisher GID (rclpy adds it
 only in later releases, and the observer uses it when present). The observer therefore maps
 publishers from the ROS graph, refreshed when a topic's publisher count changes and every second,
-and records the map once per change as `x_publishers` on a heartbeat. A topic with one publisher
+and records the map once per change as `x_publishers` on a heartbeat (a node name that is not a
+valid ROS 2 name of at most 255 characters appears there as `pseudonym:<12 hex>`, the first 12 hex
+digits of the SHA-256 of the name). A topic with one publisher
 is attributed to it. With several, a `/cmd_vel` message that relays the latest `/cmd_vel_smoothed`
 (equal, or scaled by the collision monitor) is Nav2's and any other the remaining publisher's.
 Since a relay and its `/cmd_vel_smoothed` can arrive in either order, a command that relays
@@ -617,7 +652,11 @@ a recorder config are in [`connectors/lerobot/`](connectors/lerobot/).
 
 **Live: `autonometry lerobot watch`.** Start the recorder, then the watcher, then the rollout
 with its output in a file. `PYTHONUNBUFFERED=1` matters: the re-record key's line is a `print`,
-which Python otherwise holds in its buffer while the output goes to a pipe or a file.
+which Python otherwise holds in its buffer while the output goes to a pipe or a file. Every other
+signal is a logged line and counts only with LeRobot's logging prefix (level, time, location); a
+line without the prefix counts only when it is, exactly and whole, the re-record key's printed
+message, so a `print()` elsewhere in the rollout's process cannot pass for a signal. The messages
+are checked against the pinned LeRobot source (`tests/fixtures/lerobot_source`).
 
 ```
 autonometry record --config connectors/lerobot/recorder.toml &
@@ -680,7 +719,7 @@ Rules (dossier 14.1 under spec v0.3; the first that applies decides):
 | nothing that tells the state yet | no assertion: the recorder logs `unknown` |
 | `Rollout finished`, or the rollout's process gone | `unknown`: nothing is observed any more |
 | the rollout started (`Building rollout context...`), its loop not yet | `idle` |
-| DAgger `AUTONOMOUS`, and the policy loops of `base`, `sentry`, `highlight` and `episodic` | `ai`, actor `ai:<policy path>` |
+| DAgger `AUTONOMOUS`, and the policy loops of `base`, `sentry`, `highlight` and `episodic` | `ai`, actor `ai:<device_id>` when the registry declares the policy, else `ai:<pseudonym>`: the first 12 hex digits of the SHA-256 of the policy path, never the path, which can hold a user name (`python3 -c "import hashlib; print(hashlib.sha256(b'PATH').hexdigest()[:12])"` traces it) |
 | DAgger `PAUSED` (`Phase transition: autonomous -> paused`) | `shared`, `human_initiated`: a human pause (6.8) |
 | DAgger `CORRECTING` | `human_local`, or `human_remote` when the teleoperator's device is declared remote (6.10) |
 | episodic `Reset the environment` with a teleoperator | `human_local` or `human_remote`, `planned` with the plan's `reset` item (6.3) |
@@ -831,10 +870,12 @@ that log, every moment counts as outside a task, and it says so once on a heartb
 **What the log holds.** Control metadata only (product rule 5): states, reasons, device ids and
 the pseudonymous actor ids of the registry, the `x_g1_` evidence above, and in `x_g1_writers` a
 writer that matches a device by its topic and `device_id` only. An undeclared writer is listed by
-its topic, its program (script or process name) and its host as a pseudonym, the first 12 hex
-digits of the SHA-256 of the host name, never the name itself, since machine names often hold a
-person's name; `discover` prints the same pseudonym beside each host, so a log entry can be traced
-to a machine. No video, audio, network address or process id is recorded.
+its topic and pseudonyms of its program (script or process name) and its host: the first 12 hex
+digits of the SHA-256 of the name, never the name itself, since machine and program names often
+hold a person's name. `discover` prints the same pseudonyms beside each host and participant, and
+`python3 -c "import hashlib; print(hashlib.sha256(b'NAME').hexdigest()[:12])"` computes one, so a
+log entry can be traced to a machine or program. No video, audio, network address or process id
+is recorded.
 
 **Restart the watcher after restarting the robot.** Released (debug mode) and user control end
 only on a request the watcher sees. A restarted robot comes back in Unitree's built-in program,
@@ -848,7 +889,7 @@ Rules (notes section 6 under spec v0.3; for each scope, the first that applies d
 | Observed | legs, upper_body | hands |
 |---|---|---|
 | no `rt/lowstate` for more than `gap_tolerance_s` | `unknown` | `unknown` |
-| the remote's L2 + B, or Damp or ZeroTorque (7101, data 1 or 0) from a person or an undeclared source, followed within `gap_tolerance_s` by a passive state (at once while the built-in controller is unseen or released) | `safety_stop`, the person as actor, until the state leaves passive or the next change of mode (6.7, 6.8) | the same |
+| the remote's L2 + B, or Damp or ZeroTorque (7101, data 1 or 0) from a person or an undeclared source, followed within `gap_tolerance_s` by a passive state (at once while the built-in controller is unseen or released) | `safety_stop`, the person as actor, until the robot confirms a change: the state leaves passive, or the built-in controller answers a mode request with success; a request or remote combination alone never ends it (6.7, 6.8) | the same |
 | released (ReleaseMode 1003 or L2 + R2, until SelectMode 1002) or user control (7110 until 7111) | the active writers of `rt/lowcmd` or `rt/user_lowcmd`: one, its device's state; several within `contention_window_s`, 6.12; none, `unknown` inside a task, else the last controller's state until `idle` (6.14) | |
 | no `rt/sportmodestate` from the declared built-in controller | as released when an `rt/lowcmd` writer is active, else `unknown` | |
 | a passive state (fsm 0, 1) | the hold of whoever caused it: an AI or script's request `ai` or `scripted`, the remote's L2 + Y `shared`; no observed cause `unknown`; outside a task the last controller's state (6.8) | |
@@ -868,11 +909,21 @@ released, so it becomes `shared`; every source with an open goal span contends, 
 their last inputs; a writer on `rt/arm_sdk` during a preset contends with it; an arm motion with no
 observed start (sportmodestate `task_id` not 0, or the arm action state holding) is `unknown`; the
 arm action state's "no hold" ends a preset only after it held; a stop that began at once (released
-or the controller unseen) ends only at a change of mode; a stick value that is not a number counts
+or the controller unseen) ends only at a confirmed change of mode; a stick value that is not a number counts
 as input; a writer whose weight cannot be read counts as holding its joints; a malformed velocity
 only extends a goal span; a response only ever keeps the robot released or in user control (a
 refused SelectMode or SwitchToInternalCtrl, or a CheckMode answer naming no mode), never takes it
 out. Each is marked `Open case` in the code.
+
+**Names on the robot network are claims, not proof.** Host, program and pid come from each DDS
+participant itself: anyone on the robot's network can claim a declared program's identity. The
+watcher believes RPC responses only from the declared built-in controller's identity (the host and
+participant of its `rt/sportmodestate` writer) and notes any other on a heartbeat
+(`x_g1_ignored_response`); two writers with the same observed identity that command at the same
+time are both undeclared, `human_remote`, and noted (`x_g1_duplicate_identity`), as the TurtleBot 4
+does for a node name two publishers share. What a name cannot show, trust level L3 can: the
+station's own sealed log proves remote control (see [Station
+witness](#station-witness-trust-level-l3)). DDS Security would make identities authenticated.
 
 **Blind spots.** Unitree's app (WebRTC) and voice service command the robot without anything on
 DDS: their motion is `unknown`, and a posture or stop they cause has no observed cause. A relay
@@ -914,7 +965,10 @@ registry declares only the station's own inputs. Two ways to feed it:
 - For the TurtleBot 4, the ROS 2 node `station_observer` (`ros2 launch autonometry_ros
   station.launch.py recorder_socket:=... device_registry:=...`) on the operator's PC: it watches
   `/cmd_vel` from `teleop_twist_keyboard` (or `teleop_twist_joy`) on that PC and `/joy` from its
-  joystick, and only subscribes, like the robot's observer. Configs:
+  joystick, and only subscribes, like the robot's observer. `/joy` counts only when every
+  publisher of the topic is a `human` device of the station's registry (a witness that guesses
+  cannot vouch): anyone else's joystick message is ignored, and if the station's own joystick
+  then cannot be told apart, its input counts as lost (`unknown`). Configs:
   `demo/tb4-sim/config/station-recorder.toml` and `station-devices.json`.
 
 **Reconcile.**

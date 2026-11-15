@@ -975,6 +975,8 @@ def verify_summary_lines(result: VerifyResult, require: TrustLevel) -> list[str]
         lines.append(f"  {verdict.robot_id}/{verdict.session_id}: {verdict.status}{through}")
         lines += [f"    evidence {i.code}: {i.detail}" for i in verdict.evidence]
         lines += [f"    gap {i.code}: {i.detail}" for i in verdict.gaps]
+        if (warning := verdict.end_warning()) is not None:
+            lines.append(f"    warning: {warning}")
     lines += _grouped(
         "rejected lines",
         result.rejected_lines,
@@ -989,11 +991,21 @@ def verify_summary_lines(result: VerifyResult, require: TrustLevel) -> list[str]
         code=lambda p: p.code,
         describe=lambda p: f"{p.file}:{p.line}: {p.detail}",
     )
-    reasons = result.reasons(require)
-    lines.append(
-        "result: verified" if not reasons else f"result: NOT verified: {'; '.join(reasons)}"
-    )
+    lines.append(_result_line(result, require))
     return lines
+
+
+def _result_line(result: VerifyResult, require: TrustLevel) -> str:
+    """The ``result:`` line. Only L2 is "verified" (definitions.md 10.6): at L1 the line says
+    whether the level was met and, separately, why the log is not verified."""
+    reasons, l2_reasons = result.reasons(require), result.reasons("L2")
+    if require == "L2":
+        return "result: verified" if not reasons else f"result: NOT verified: {'; '.join(reasons)}"
+    if reasons:
+        return f"result: does NOT meet {require}: {'; '.join(reasons)}"
+    if not l2_reasons:
+        return f"result: meets {require}; verified (L2)"
+    return f"result: meets {require}; NOT verified at L2: {'; '.join(l2_reasons)}"
 
 
 @app.command("verify")

@@ -89,7 +89,7 @@ def test_an_episode_is_one_session_with_one_task__defs_1_5_8__dossier_14_2_s1() 
     assert start["unobserved"] == ["safety_stops", "human_inputs"]
     assert start["simulated"] is False
     assert task_start["task_definition_id"] == "cube"
-    assert ai["actor_id"] == f"ai:{POLICY.replace('/', '_')}"
+    assert ai["actor_id"] == "ai:so101_policy"  # declared: its device (M10, decision 6)
     assert ai["device_id"] == "so101_policy"
     assert ai["task_id"] == task_start["task_id"] == "episode_000000"
     assert (human["reason"], human["actor_id"], human["device_id"]) == (

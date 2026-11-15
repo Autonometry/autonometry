@@ -3,6 +3,7 @@
 
 import math
 import struct
+from typing import Any
 
 import pytest
 
@@ -12,14 +13,17 @@ from g1_helpers import (
     ARM_SERVICE,
     DEVICES,
     LOWSTATE,
+    PC2,
     POLICY_ARM,
     POLICY_ARM_REQ,
     POLICY_LOWCMD,
     POLICY_SPORT,
     REPLAY_LOWCMD,
+    ROBOT_SWITCH_RESPONSE,
     SPORT,
     STRANGER_LOWCMD,
     STRANGER_SPORT,
+    STRANGER_SWITCH_RESPONSE,
     XR_ARM,
     XR_DEX3,
     XR_LOWCMD,
@@ -149,7 +153,9 @@ def test_damp_from_an_ai_device_is_its_hold_not_a_stop__defs_6_8() -> None:
     assert "safety_stop" not in sim.states()
 
 
-def test_stop_is_at_once_while_released_and_ends_at_the_next_mode_change__defs_6_7() -> None:
+def test_stop_is_at_once_while_released_and_ends_when_the_robot_confirms__defs_6_7() -> None:
+    """Open point 4 (security review M10): the stop holds until the robot confirms the change of
+    mode; a request alone never ends it."""
     sim = Sim()
     sim.run(0.5)
     released(sim)
@@ -161,7 +167,10 @@ def test_stop_is_at_once_while_released_and_ends_at_the_next_mode_change__defs_6
     sim.remote = remote_bytes()
     sim.run(3.0, command(0, XR_LOWCMD))  # writers that keep writing do not end it
     assert sim.state().state == "safety_stop"
-    sim.step(request(0, XR_SWITCH, "motion_switcher", 1002, {"name": "ai"}))
+    sim.step(request(0, XR_SWITCH, "motion_switcher", 1002, {"name": "ai"}, request_id=5))
+    sim.run(5.0, command(0, XR_LOWCMD))
+    assert sim.state().state == "safety_stop"  # the request alone
+    sim.step(g1.Response(0, ROBOT_SWITCH_RESPONSE, "motion_switcher", 5, 1002, 0, ""))
     assert sim.state().state != "safety_stop"
 
 
@@ -269,11 +278,11 @@ def test_a_refused_select_mode_keeps_the_robot_released__defs_6_10() -> None:
     sim = Sim()
     released(sim)
     sim.step(request(0, XR_SWITCH, "motion_switcher", 1002, {"name": "ai"}, request_id=8))
-    sim.step(g1.Response(0, "w-resp", "motion_switcher", 8, 1002, 3104, ""))
+    sim.step(g1.Response(0, ROBOT_SWITCH_RESPONSE, "motion_switcher", 8, 1002, 3104, ""))
     sim.run(1.5, command(0, POLICY_LOWCMD))
     assert cause(sim.state()) == "writer:released"
     sim.step(request(0, XR_SWITCH, "motion_switcher", 1002, {"name": "ai"}, request_id=9))
-    sim.step(g1.Response(0, "w-resp", "motion_switcher", 9, 1002, 0, ""))
+    sim.step(g1.Response(0, ROBOT_SWITCH_RESPONSE, "motion_switcher", 9, 1002, 0, ""))
     sim.run(2.0)
     assert cause(sim.state()) == "builtin"
 
@@ -282,8 +291,8 @@ def test_a_refused_release_request_is_not_undone__defs_6_10() -> None:
     """Open case: undoing it would move the robot towards the built-in AI."""
     sim = Sim()
     released(sim)
-    sim.step(g1.Response(0, "w-resp", "motion_switcher", 7, 1003, 3104, ""))
-    sim.step(g1.Response(0, "w-resp", "motion_switcher", 99, 1003, 3104, ""))  # unknown id
+    sim.step(g1.Response(0, ROBOT_SWITCH_RESPONSE, "motion_switcher", 7, 1003, 3104, ""))
+    sim.step(g1.Response(0, ROBOT_SWITCH_RESPONSE, "motion_switcher", 99, 1003, 3104, ""))
     sim.run(1.0, command(0, POLICY_LOWCMD))
     assert cause(sim.state()) == "writer:released"
 
@@ -291,10 +300,12 @@ def test_a_refused_release_request_is_not_undone__defs_6_10() -> None:
 def test_a_check_mode_answer_with_no_mode_means_released__defs_6_10() -> None:
     sim = Sim()
     sim.run(0.5)
-    sim.step(g1.Response(0, "w-resp", "motion_switcher", 1, 1001, 0, '{"form":"0","name":"ai"}'))
+    answer = '{"form":"0","name":"ai"}'
+    sim.step(g1.Response(0, ROBOT_SWITCH_RESPONSE, "motion_switcher", 1, 1001, 0, answer))
     sim.run(1.0, command(0, POLICY_LOWCMD))
     assert cause(sim.state()) == "builtin"  # an answer that names a mode changes nothing
-    sim.step(g1.Response(0, "w-resp", "motion_switcher", 2, 1001, 0, '{"form":"0","name":""}'))
+    answer = '{"form":"0","name":""}'
+    sim.step(g1.Response(0, ROBOT_SWITCH_RESPONSE, "motion_switcher", 2, 1001, 0, answer))
     sim.run(1.5, command(0, POLICY_LOWCMD))
     assert cause(sim.state()) == "writer:released"
 
@@ -701,7 +712,7 @@ def test_writers_note_names_no_host__claude_md_product_rule_5() -> None:
     released(sim)
     sim.run(1.0, command(0, STRANGER_LOWCMD), g1.Command(0, "w-new", g1.LOWCMD))
     writers = [dict(n.fields)["x_g1_writers"] for n in sim.notes][-1]
-    assert {"topic": "rt/lowcmd", "program": "python3", "host": "5eec0dc419aa"} in writers
+    assert {"topic": "rt/lowcmd", "program": "c1cc69e61c0f", "host": "5eec0dc419aa"} in writers
     assert {"topic": "rt/lowcmd", "program": None, "host": None} in writers
     assert {"topic": "rt/lowstate", "device_id": None} not in writers
     text = str([dict(n.fields) for n in sim.notes])
@@ -883,3 +894,76 @@ def test_a_long_custom_action_name_keeps_a_valid_identifier__defs_8() -> None:
     assert actor is not None
     assert actor.startswith("script:")
     assert len(actor) <= 128
+
+
+# -- security review M10, decisions 4 and 5 -----------------------------------------------------
+
+
+def _notes(sim: Sim, field: str) -> list[Any]:
+    return [dict(n.fields)[field] for n in sim.notes if field in dict(n.fields)]
+
+
+def test_a_stop_holds_until_the_robot_confirms_not_on_a_request__defs_6_7() -> None:
+    """Decision 4: a passive stop holds through a mode request until the built-in controller
+    answers it with success (or its state leaves passive)."""
+    sim = Sim()
+    sim.run(1.0)
+    sim.remote = remote_bytes("L2", "B")
+    sim.fsm = (1, 0, 0)
+    sim.run(1.5)
+    sim.remote = remote_bytes()
+    assert sim.state().state == "safety_stop"
+    sim.step(request(0, XR_SWITCH, "motion_switcher", 1002, {"name": "ai"}, request_id=11))
+    sim.run(4.0)
+    assert sim.state().state == "safety_stop"
+    sim.step(g1.Response(0, STRANGER_SWITCH_RESPONSE, "motion_switcher", 11, 1002, 0, ""))
+    sim.run(5.0)
+    assert sim.state().state == "safety_stop"  # a success from a stranger is not the robot's
+    sim.step(g1.Response(0, ROBOT_SWITCH_RESPONSE, "motion_switcher", 11, 1002, 0, ""))
+    assert sim.state().state != "safety_stop"
+
+
+def test_responses_from_another_identity_are_ignored_and_noted__defs_6_10() -> None:
+    """Decision 5: an RPC response is believed only from the built-in controller's identity (the
+    host and participant of its rt/sportmodestate writer); a stranger's CheckMode answer with no
+    mode does not mark the robot released."""
+    sim = Sim()
+    sim.run(0.5)
+    answer = '{"form":"0","name":""}'
+    sim.step(g1.Response(0, STRANGER_SWITCH_RESPONSE, "motion_switcher", 3, 1001, 0, answer))
+    sim.run(1.5, command(0, POLICY_LOWCMD))
+    assert cause(sim.state()) == "builtin"
+    (noted,) = _notes(sim, "x_g1_ignored_response")
+    assert noted == {
+        "topic": g1.response_topic("motion_switcher"),
+        "program": g1.pseudonym("python3"),
+        "host": g1.pseudonym("laptop"),
+    }
+    sim.step(g1.Response(0, STRANGER_SWITCH_RESPONSE, "motion_switcher", 4, 1001, 0, answer))
+    assert len(_notes(sim, "x_g1_ignored_response")) == 1  # once per writer
+
+
+def test_two_writers_claiming_one_identity_at_once_are_both_undeclared__defs_6_10() -> None:
+    """Decision 5: a second participant announcing the policy's host and program, writing at the
+    same time, makes both an undeclared person (human_remote), with a note; alone again, the
+    policy is the AI it declares."""
+    impostor = "w-impostor-low"
+    sim = Sim()
+    sim.feed(
+        g1.WriterSeen(
+            0.0, impostor, Source(host=PC2, participant="eval_g1.py", topic=g1.LOWCMD), ""
+        )
+    )
+    released(sim)
+    sim.run(1.5, command(0, POLICY_LOWCMD))
+    assert sim.state().state == "ai"
+    sim.run(3.0, command(0, POLICY_LOWCMD), g1.Command(0, impostor, g1.LOWCMD, None))
+    assert (sim.state().state, sim.state().device_id) == ("human_remote", None)
+    (noted,) = _notes(sim, "x_g1_duplicate_identity")
+    assert noted == {
+        "topic": g1.LOWCMD,
+        "program": g1.pseudonym("eval_g1.py"),
+        "host": g1.pseudonym(PC2),
+    }
+    sim.run(5.0, command(0, POLICY_LOWCMD))
+    assert sim.state().state == "ai"

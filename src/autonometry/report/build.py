@@ -302,7 +302,10 @@ def verdict(
 ) -> Json:
     """The verdict box: status and level, completeness, census, exclusions and the headline
     numbers. ``clean`` is true only when the report is verified at L2 or L3, complete, has no
-    census gap, leaves nothing out and no invariant fails (11.7); ``reasons`` says why not."""
+    census gap, leaves nothing out and no invariant fails (11.7), and every session's
+    ``session_end``, the robot's and the stations', is covered by an anchored checkpoint (a
+    session cut back to an earlier anchor verifies as the shorter log; security review M10,
+    S-14, a proposal for spec v0.4); ``reasons`` says why not."""
     complete = bool(groups) and all(
         g["unmeasured"]["conformance"] == "complete" for g in groups.values()
     )
@@ -311,6 +314,12 @@ def verdict(
         reasons.append(f"trust status {trust['status']}")
     if trust["level"] not in ("L2", "L3"):
         reasons.append(f"trust level {trust['level']}")
+    stations = (trust.get("stations") or {}).get("sessions", [])
+    reasons += [
+        f"session {s['robot_id']}/{s['session_id']}: {s['warning']}"
+        for s in [*trust.get("sessions", []), *stations]
+        if s.get("warning")
+    ]
     if not complete:
         reasons.append("incomplete" if groups else "incomplete: no group has metrics")
     missing = sum(r["missing_count"] for r in census["robots"])

@@ -18,6 +18,16 @@ section B.5) rebuilt as what the observer sees on a TurtleBot 4, then run throug
   became the AI's only on a declared chain: without them every relayed command would count as a
   person's. Nothing in `expected.json` changed: this session's chain is clean, and nothing in it
   comes from an undeclared device.
+- The `navigate_to_pose` statuses name their publisher, `bt_navigator` (declared AI), and
+  `ActionFeedback` lines every 0.5 s from 31.5 s to 70 s are Nav2's feedback during the goal. Both
+  were added in the security review's follow-up (M10, decision 7), when a task status began to
+  count only from a declared Nav2 node and an open task whose Nav2 falls silent for more than
+  `gap_tolerance_s` (2 s) became `unknown`. Worked out by hand before the code ran, nothing in
+  `expected.json` changes: the status opens and closes the task as before; feedback never stops
+  for more than 0.5 s, so the task is never silent; and each `/cmd_vel_smoothed` message has
+  exactly one `/cmd_vel` relaying it, while the keyboard's commands never match a smoothed
+  message (their angular velocity or direction differs), so no command moves between Nav2 and
+  the keyboard. The golden test confirms it.
 - `expected.json`: the events the log must hold (heartbeats left out) and the timeline facts,
   worked out by hand under spec v0.3 before the code ran.
 

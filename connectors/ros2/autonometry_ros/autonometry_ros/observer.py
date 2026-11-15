@@ -16,6 +16,13 @@ action goal comes from the action's clients in the graph. The publisher map is r
 ``x_publishers`` on a heartbeat each time it changes. The publishers of Nav2's chain topics
 (``cmd_vel_nav``, ``cmd_vel_smoothed``) go to the engine as well, one entry per publisher, so a
 relayed command counts as the AI's only on a declared chain and a shared node name shows.
+
+Nav2's task actions: each status goes to the engine with the publishers of its status topic (the
+action server), and so does its feedback (at most every :data:`FEEDBACK_PERIOD_S`), so a task
+counts only from a declared Nav2 node and an open task whose Nav2 falls silent is ``unknown``;
+when the action server leaves the graph the engine is told at once. Feedback needs
+``nav2_msgs``. Node names reach ``x_publishers`` only when they are valid ROS 2 names of bounded
+length; any other appears as a pseudonym (:func:`autonometry.connectors.names.node_name`).
 """
 
 import contextlib
@@ -40,6 +47,7 @@ from sensor_msgs.msg import Joy
 from std_msgs.msg import String
 
 from autonometry.connectors import tb4
+from autonometry.connectors.names import node_name
 from autonometry.registry import MAX_REGISTRY_BYTES, check_registry_bytes
 from autonometry.spec import SpecError, load_rules
 from autonometry_ros.autonometry_client import Recorder
@@ -52,6 +60,9 @@ MAX_BUTTONS = 32
 MAX_ENDPOINTS = 64
 #: ROS domain ids are 0 to 232.
 MAX_DOMAIN_DIGITS = 3
+#: Shortest time between two feedback messages of one action passed to the engine, seconds:
+#: Nav2 sends many a second, and the engine needs one within ``gap_tolerance_s``.
+FEEDBACK_PERIOD_S = 0.25
 
 #: Sensor-style topics: best effort, which also matches reliable publishers.
 SENSOR_QOS = QoSProfile(
@@ -129,6 +140,8 @@ class Observer(Node):
         self._publishers: dict[str, tuple[tuple[tb4.Source, str], ...]] = {}
         self._counts: dict[str, int] = {}
         self._requesters: dict[str, tuple[tb4.Source, ...]] = {}
+        self._servers: dict[str, tuple[tb4.Source, ...]] = {}
+        self._feedback_sent: dict[str, float] = {}
         self._recorded: str | None = None
         self._buttons: dict[str, bool] = {}
         self._chain: dict[str, tuple[tb4.Source, ...]] = {}
@@ -248,6 +261,30 @@ class Observer(Node):
         else:
             sub(CollisionMonitorState, topics["collision_monitor_state"], EVENT_QOS, self._on_cm)
         try:
+            from nav2_msgs.action import (  # noqa: PLC0415
+                FollowWaypoints,
+                NavigateThroughPoses,
+                NavigateToPose,
+            )
+        except ImportError:
+            log.warning(
+                "nav2_msgs is not installed: Nav2's feedback is not observed, so an open Nav2 "
+                "task becomes unknown gap_tolerance_s after its last status"
+            )
+        else:
+            kinds = {
+                "navigate_to_pose": NavigateToPose,
+                "navigate_through_poses": NavigateThroughPoses,
+                "follow_waypoints": FollowWaypoints,
+            }
+            for action, kind in kinds.items():
+                sub(
+                    kind.Impl.FeedbackMessage,
+                    f"{self._actions[action]}/_action/feedback",
+                    SENSOR_QOS,
+                    lambda _msg, action=action: self._on_feedback(action),
+                )
+        try:
             from irobot_create_msgs.msg import (  # noqa: PLC0415
                 DockStatus,
                 InterfaceButtons,
@@ -325,6 +362,8 @@ class Observer(Node):
             self._refresh_topic(self._topics[key])
         for action in ACTIONS:
             self._refresh_requesters(action)
+        for action in tb4.TASK_ACTIONS:
+            self._refresh_servers(action)
         self._record_publishers()
         self._observe_chain()
 
@@ -369,10 +408,27 @@ class Observer(Node):
                 found.append(tb4.Source(node=fqn))
         self._requesters[action] = tuple(sorted(found, key=lambda s: s.node or ""))[:MAX_ENDPOINTS]
 
+    def _refresh_servers(self, action: str) -> None:
+        """The publishers of an action's status topic: its server. The engine is told when
+        they change, at once when the server left the graph."""
+        topic = f"{self._actions[action]}/_action/status"
+        infos = self.get_publishers_info_by_topic(topic)[:MAX_ENDPOINTS]
+        servers = tuple(
+            sorted(
+                (tb4.Source(node=_fqn(i.node_name, i.node_namespace)) for i in infos),
+                key=lambda s: s.node or "",
+            )
+        )
+        if self._servers.get(action) != servers:
+            self._servers[action] = servers
+            self._observe(tb4.ActionServers(time.monotonic(), action, servers))
+
     def _record_publishers(self) -> None:
-        """Send ``x_publishers`` on a heartbeat when the map changed (notes B.1 item 3)."""
+        """Send ``x_publishers`` on a heartbeat when the map changed (notes B.1 item 3). A node
+        name that is not a valid ROS 2 name of bounded length appears as a pseudonym, so a name
+        from the network never carries control characters, unbounded text or personal data."""
         publishers = {
-            topic: [{"node": source.node, "gid": gid} for source, gid in found]
+            topic: [{"node": node_name(source.node or ""), "gid": gid} for source, gid in found]
             for topic, found in sorted(self._publishers.items())
         }
         text = json.dumps(publishers, sort_keys=True)
@@ -440,12 +496,24 @@ class Observer(Node):
 
     def _on_status(self, action: str, msg: GoalStatusArray) -> None:
         self._refresh_requesters(action)
+        if action in tb4.TASK_ACTIONS:
+            self._refresh_servers(action)
         goals = tuple(
             tb4.GoalStatus(_gid_hex(s.goal_info.goal_id.uuid), int(s.status))
             for s in msg.status_list[:MAX_GOALS]
         )
         now = time.monotonic()
-        self._observe(tb4.ActionStatus(now, action, goals, self._requesters.get(action, ())))
+        requesters, servers = self._requesters.get(action, ()), self._servers.get(action, ())
+        self._observe(tb4.ActionStatus(now, action, goals, requesters, servers))
+
+    def _on_feedback(self, action: str) -> None:
+        """Nav2 is at work on a task action: tell the engine, at most every
+        :data:`FEEDBACK_PERIOD_S`, with the action's server as the graph shows it."""
+        now = time.monotonic()
+        if now - self._feedback_sent.get(action, -math.inf) < FEEDBACK_PERIOD_S:
+            return
+        self._feedback_sent[action] = now
+        self._observe(tb4.ActionFeedback(now, action, self._servers.get(action, ())))
 
     def _on_cm(self, msg: Any) -> None:
         self._observe(tb4.CollisionMonitorState(time.monotonic(), int(msg.action_type)))

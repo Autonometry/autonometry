@@ -62,6 +62,9 @@ class HonestWorld:
         self.nav_status = self.nav.create_publisher(
             GoalStatusArray, "navigate_to_pose/_action/status", STATUS_QOS
         )
+        self.nav_feedback = self.nav.create_publisher(
+            NavigateToPose.Impl.FeedbackMessage, "navigate_to_pose/_action/feedback", 10
+        )
         self.smoothed = self.smoother.create_publisher(TwistStamped, "cmd_vel_smoothed", 10)
         self.controller_out = self.controller.create_publisher(TwistStamped, "cmd_vel_nav", 10)
         self.monitor_state = self.monitor.create_publisher(
@@ -80,6 +83,8 @@ class HonestWorld:
     def _fast(self) -> None:
         with self.lock:
             self.wheels.publish(WheelStatus(wheels_enabled=True))
+            if self.nav_speed is not None:
+                self.nav_feedback.publish(NavigateToPose.Impl.FeedbackMessage())
             if self.nav_speed is not None and self.relay is not None:
                 self.controller_out.publish(twist(self.nav_speed))
                 self.smoothed.publish(twist(self.nav_speed))

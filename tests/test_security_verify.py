@@ -227,3 +227,95 @@ def test_a_sealed_log_nested_to_the_limit_verifies__s03(tmp_path: Path) -> None:
             (tmp_path / name).write_bytes(data)
     code, report = _verify(tmp_path, "deep.jsonl")
     assert code == 0, report
+
+
+def _cut_back_to_first_checkpoint(sealed: Path, log: str) -> None:
+    """Cut a session back to its first checkpoint and drop its later checkpoints, from the log's
+    own file and from the anchor file (an auditor who never received the later anchors)."""
+    path, checkpoints = sealed / log, sealed / CHECKPOINTS[log]
+    path.write_bytes(_lines(path)[0])
+    first, *later = _lines(checkpoints)
+    checkpoints.write_bytes(first)
+    anchors = sealed / ANCHORS
+    anchors.write_bytes(b"".join(line for line in _lines(anchors) if line not in later))
+
+
+def test_a_session_cut_back_to_an_anchor_verifies_but_is_warned__s14(sealed: Path) -> None:
+    """S-14, decided: the statuses of definitions.md 10.6 stay (the cut session is verified, as
+    the shorter log), but verify warns that events after the last anchor may have been removed,
+    giving that anchor's time."""
+    _cut_back_to_first_checkpoint(sealed, "s4.jsonl")
+    code, report = _verify(sealed, *LOGS)
+    assert code == 0
+    assert _statuses(report)["s4"] == "verified"
+    session = next(s for s in report["sessions"] if s["session_id"] == "s4")
+    assert session["end_anchored"] is False
+    assert session["last_anchored_ts"] == "2026-11-12T08:00:00.000000000Z"
+    assert report["warnings"] == [
+        "r01/s4: its session_end is not covered by an anchored checkpoint: events after the "
+        "last anchor (2026-11-12T08:00:00.000000000Z) may have been removed"
+    ]
+    text = runner.invoke(
+        cli.app,
+        ["verify", *(str(sealed / log) for log in LOGS), "--vkey", str(sealed / VKEY),
+         "--anchor", str(sealed / ANCHORS)],
+    )  # fmt: skip
+    assert "    warning: its session_end is not covered by an anchored checkpoint" in text.output
+    assert "(2026-11-12T08:00:00.000000000Z)" in text.output
+
+
+def test_sessions_whose_end_is_anchored_carry_no_warning__s14(sealed: Path) -> None:
+    _, report = _verify(sealed, *LOGS)
+    assert report["warnings"] == []
+    assert all(s["end_anchored"] and s["warning"] is None for s in report["sessions"])
+
+
+def test_a_report_with_a_cut_session_is_not_clean__s14(sealed: Path) -> None:
+    _cut_back_to_first_checkpoint(sealed, "s4.jsonl")
+    out = sealed / "report"
+    result = runner.invoke(
+        cli.app,
+        ["report", *(str(sealed / log) for log in LOGS), "--vkey", str(sealed / VKEY),
+         "--anchor", str(sealed / ANCHORS), "--n-boot", "20", "--out", str(out)],
+    )  # fmt: skip
+    assert "unexpected failure" not in result.output
+    report = json.loads((out / "report.json").read_text(encoding="utf-8"))
+    assert report["verdict"]["status"] == "verified"
+    assert report["verdict"]["clean"] is False
+    assert any(
+        reason.startswith("session r01/s4: its session_end is not covered")
+        and "(2026-11-12T08:00:00.000000000Z)" in reason
+        for reason in report["verdict"]["reasons"]
+    )
+    page = (out / "report.html").read_text(encoding="utf-8")
+    assert "events after the last anchor (2026-11-12T08:00:00.000000000Z)" in page
+
+
+def test_require_l1_never_says_verified_below_l2__defs_10_6(tmp_path: Path) -> None:
+    """Review finding 10: ``verify --require L1`` printed "result: verified" and returned
+    ``"verified": true`` for an unverified session. Only L2 is verified; L1 is "meets L1"."""
+    log = tmp_path / "log.jsonl"
+    log.write_bytes(_nested_log(1))
+    result = runner.invoke(cli.app, ["verify", str(log), "--require", "L1"])
+    assert result.exit_code == 0
+    last = result.output.strip().splitlines()[-1]
+    assert last.startswith("result: meets L1; NOT verified at L2: r1/s1 unverified")
+    assert "result: verified" not in result.output
+    report = json.loads(
+        runner.invoke(cli.app, ["verify", str(log), "--require", "L1", "--json"]).stdout
+    )
+    assert report["verified"] is False
+    assert report["meets_required_level"] is True
+    assert report["sessions"][0]["status"] == "unverified"
+
+
+def test_require_l1_on_a_verified_set_says_both__defs_10_6(sealed: Path) -> None:
+    result = runner.invoke(
+        cli.app,
+        ["verify", *(str(sealed / log) for log in LOGS), "--vkey", str(sealed / VKEY),
+         "--anchor", str(sealed / ANCHORS), "--require", "L1"],
+    )  # fmt: skip
+    assert result.output.strip().splitlines()[-1] == "result: meets L1; verified (L2)"
+    _, report = _verify(sealed, *LOGS)
+    assert report["verified"] is True
+    assert report["meets_required_level"] is True

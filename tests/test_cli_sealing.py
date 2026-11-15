@@ -382,7 +382,7 @@ def test_verify_reports_failed_sessions_in_the_result_line(
     log.write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")  # drop s2's last event
     result = _verify(str(log), "--vkey", str(vkeys), "--anchor", str(anchor), "--require", "L1")
     assert result.exit_code == 1
-    assert result.output.strip().splitlines()[-1] == "result: NOT verified: r1/s2 failed"
+    assert result.output.strip().splitlines()[-1] == "result: does NOT meet L1: r1/s2 failed"
 
 
 def test_timestamp_refuses_a_checkpoint_file_with_rejected_lines(

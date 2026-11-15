@@ -2122,6 +2122,7 @@
     },
     "sessions": [
       {
+        "end_anchored": false,
         "evidence": [],
         "gaps": [
           {
@@ -2129,13 +2130,16 @@
             "detail": "no event is sealed"
           }
         ],
+        "last_anchored_ts": null,
         "level": "L1",
         "robot_id": "r01",
         "sealed_through_seq": null,
         "session_id": "s1",
-        "status": "unverified"
+        "status": "unverified",
+        "warning": "no anchored checkpoint covers this session: any of its events may have been removed or changed"
       },
       {
+        "end_anchored": false,
         "evidence": [],
         "gaps": [
           {
@@ -2143,13 +2147,16 @@
             "detail": "no event is sealed"
           }
         ],
+        "last_anchored_ts": null,
         "level": "L1",
         "robot_id": "r01",
         "sealed_through_seq": null,
         "session_id": "s2",
-        "status": "unverified"
+        "status": "unverified",
+        "warning": "no anchored checkpoint covers this session: any of its events may have been removed or changed"
       },
       {
+        "end_anchored": false,
         "evidence": [],
         "gaps": [
           {
@@ -2157,13 +2164,16 @@
             "detail": "no event is sealed"
           }
         ],
+        "last_anchored_ts": null,
         "level": "L1",
         "robot_id": "r01",
         "sealed_through_seq": null,
         "session_id": "s4",
-        "status": "unverified"
+        "status": "unverified",
+        "warning": "no anchored checkpoint covers this session: any of its events may have been removed or changed"
       },
       {
+        "end_anchored": false,
         "evidence": [],
         "gaps": [
           {
@@ -2171,11 +2181,13 @@
             "detail": "no event is sealed"
           }
         ],
+        "last_anchored_ts": null,
         "level": "L1",
         "robot_id": "r02",
         "sealed_through_seq": null,
         "session_id": "s3",
-        "status": "unverified"
+        "status": "unverified",
+        "warning": "no anchored checkpoint covers this session: any of its events may have been removed or changed"
       }
     ],
     "stations": null,
@@ -2288,6 +2300,10 @@
     "reasons": [
       "trust status not_verified",
       "trust level L1",
+      "session r01/s1: no anchored checkpoint covers this session: any of its events may have been removed or changed",
+      "session r01/s2: no anchored checkpoint covers this session: any of its events may have been removed or changed",
+      "session r01/s4: no anchored checkpoint covers this session: any of its events may have been removed or changed",
+      "session r02/s3: no anchored checkpoint covers this session: any of its events may have been removed or changed",
       "incomplete"
     ],
     "status": "not_verified"

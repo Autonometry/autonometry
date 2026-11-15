@@ -1,0 +1,326 @@
+{
+  "lerobot_commit": "7e241bd630a3719a56157a497ce5d08f244784f1",
+  "messages": [
+    {
+      "file": "src/lerobot/scripts/lerobot_rollout.py",
+      "line": 219,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"Building rollout context...\")",
+      "format": "Building rollout context...",
+      "args": [],
+      "message": "Building rollout context..."
+    },
+    {
+      "file": "src/lerobot/scripts/lerobot_rollout.py",
+      "line": 242,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"Rollout finished\")",
+      "format": "Rollout finished",
+      "args": [],
+      "message": "Rollout finished"
+    },
+    {
+      "file": "src/lerobot/rollout/context.py",
+      "line": 245,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"Loading policy from '%s'...\", cfg.policy.pretrained_path)",
+      "format": "Loading policy from '%s'...",
+      "args": [
+        "outputs/train/act_so101/checkpoints/last/pretrained_model"
+      ],
+      "message": "Loading policy from 'outputs/train/act_so101/checkpoints/last/pretrained_model'..."
+    },
+    {
+      "file": "src/lerobot/rollout/context.py",
+      "line": 314,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"Connecting teleoperator (%s)...\", cfg.teleop.type if cfg.teleop else \"?\")",
+      "format": "Connecting teleoperator (%s)...",
+      "args": [
+        "so101_leader"
+      ],
+      "message": "Connecting teleoperator (so101_leader)..."
+    },
+    {
+      "file": "src/lerobot/rollout/context.py",
+      "line": 456,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"Dataset ready: %s (%d existing episodes)\", dataset.repo_id, dataset.num_episodes)",
+      "format": "Dataset ready: %s (%d existing episodes)",
+      "args": [
+        "op/rollout_test_20261114_100000",
+        3
+      ],
+      "message": "Dataset ready: op/rollout_test_20261114_100000 (3 existing episodes)"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/dagger.py",
+      "line": 353,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"DAgger continuous recording started (episode_duration=%.0fs)\", episode_duration_s)",
+      "format": "DAgger continuous recording started (episode_duration=%.0fs)",
+      "args": [
+        600.0
+      ],
+      "message": "DAgger continuous recording started (episode_duration=600s)"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/dagger.py",
+      "line": 443,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info( \"Episode saved (total: %d, elapsed: %.1fs)\", dataset.num_episodes, elapsed, )",
+      "format": "Episode saved (total: %d, elapsed: %.1fs)",
+      "args": [
+        4,
+        600.2
+      ],
+      "message": "Episode saved (total: 4, elapsed: 600.2s)"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/dagger.py",
+      "line": 465,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"DAgger continuous control loop ended — pausing engine\")",
+      "format": "DAgger continuous control loop ended — pausing engine",
+      "args": [],
+      "message": "DAgger continuous control loop ended — pausing engine"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/dagger.py",
+      "line": 508,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info( \"DAgger corrections-only recording started (target: %d episodes)\", self.config.num_episodes )",
+      "format": "DAgger corrections-only recording started (target: %d episodes)",
+      "args": [
+        5
+      ],
+      "message": "DAgger corrections-only recording started (target: 5 episodes)"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/dagger.py",
+      "line": 546,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info( \"Correction %d/%d saved\", recorded, self.config.num_episodes, )",
+      "format": "Correction %d/%d saved",
+      "args": [
+        2,
+        5
+      ],
+      "message": "Correction 2/5 saved"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/dagger.py",
+      "line": 614,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"DAgger corrections-only loop ended — pausing engine\")",
+      "format": "DAgger corrections-only loop ended — pausing engine",
+      "args": [],
+      "message": "DAgger corrections-only loop ended — pausing engine"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/dagger.py",
+      "line": 659,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"Phase transition: %s -> %s\", old_phase.value, new_phase.value)",
+      "format": "Phase transition: %s -> %s",
+      "args": [
+        "correcting",
+        "autonomous"
+      ],
+      "message": "Phase transition: correcting -> autonomous"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/sentry.py",
+      "line": 102,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"Sentry recording started (episode_duration=%.0fs)\", episode_duration_s)",
+      "format": "Sentry recording started (episode_duration=%.0fs)",
+      "args": [
+        600.0
+      ],
+      "message": "Sentry recording started (episode_duration=600s)"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/sentry.py",
+      "line": 146,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info( \"Episode saved (total: %d, elapsed: %.1fs)\", dataset.num_episodes, elapsed, )",
+      "format": "Episode saved (total: %d, elapsed: %.1fs)",
+      "args": [
+        2,
+        600.1
+      ],
+      "message": "Episode saved (total: 2, elapsed: 600.1s)"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/sentry.py",
+      "line": 168,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"Sentry control loop ended — saving final episode\")",
+      "format": "Sentry control loop ended — saving final episode",
+      "args": [],
+      "message": "Sentry control loop ended — saving final episode"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/highlight.py",
+      "line": 109,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"Highlight strategy recording started (press '%s' to save)\", self.config.save_key)",
+      "format": "Highlight strategy recording started (press '%s' to save)",
+      "args": [
+        "s"
+      ],
+      "message": "Highlight strategy recording started (press 's' to save)"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/highlight.py",
+      "line": 152,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"Episode saved (total: %d)\", dataset.num_episodes)",
+      "format": "Episode saved (total: %d)",
+      "args": [
+        7
+      ],
+      "message": "Episode saved (total: 7)"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/highlight.py",
+      "line": 179,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"Highlight control loop ended\")",
+      "format": "Highlight control loop ended",
+      "args": [],
+      "message": "Highlight control loop ended"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/base.py",
+      "line": 53,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"Base strategy control loop started\")",
+      "format": "Base strategy control loop started",
+      "args": [],
+      "message": "Base strategy control loop started"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/episodic.py",
+      "line": 122,
+      "call": "log_say",
+      "kind": "log",
+      "source": "log_say(f\"Recording episode {dataset.num_episodes}\", play_sounds)",
+      "format": "Recording episode %d",
+      "args": [
+        7
+      ],
+      "message": "Recording episode 7"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/episodic.py",
+      "line": 138,
+      "call": "log_say",
+      "kind": "log",
+      "source": "log_say(\"Reset the environment\", play_sounds)",
+      "format": "Reset the environment",
+      "args": [],
+      "message": "Reset the environment"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/episodic.py",
+      "line": 183,
+      "call": "log_say",
+      "kind": "log",
+      "source": "log_say(\"Re-record episode\", play_sounds)",
+      "format": "Re-record episode",
+      "args": [],
+      "message": "Re-record episode"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/episodic.py",
+      "line": 200,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"Episodic control loop ended — saving any in-progress episode\")",
+      "format": "Episodic control loop ended — saving any in-progress episode",
+      "args": [],
+      "message": "Episodic control loop ended — saving any in-progress episode"
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/core.py",
+      "line": 122,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"Stopping inference engine...\")",
+      "format": "Stopping inference engine...",
+      "args": [],
+      "message": "Stopping inference engine..."
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/core.py",
+      "line": 127,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"Returning robot to initial position before shutdown...\")",
+      "format": "Returning robot to initial position before shutdown...",
+      "args": [],
+      "message": "Returning robot to initial position before shutdown..."
+    },
+    {
+      "file": "src/lerobot/rollout/strategies/core.py",
+      "line": 133,
+      "call": "logger.info",
+      "kind": "log",
+      "source": "logger.info(\"Disconnecting robot...\")",
+      "format": "Disconnecting robot...",
+      "args": [],
+      "message": "Disconnecting robot..."
+    },
+    {
+      "file": "src/lerobot/utils/keyboard_input.py",
+      "line": 161,
+      "call": "print",
+      "kind": "print",
+      "source": "print(\"Right arrow key pressed. Exiting loop...\")",
+      "format": "Right arrow key pressed. Exiting loop...",
+      "args": [],
+      "message": "Right arrow key pressed. Exiting loop..."
+    },
+    {
+      "file": "src/lerobot/utils/keyboard_input.py",
+      "line": 164,
+      "call": "print",
+      "kind": "print",
+      "source": "print(\"Left arrow key pressed. Exiting loop and rerecord the last episode...\")",
+      "format": "Left arrow key pressed. Exiting loop and rerecord the last episode...",
+      "args": [],
+      "message": "Left arrow key pressed. Exiting loop and rerecord the last episode..."
+    },
+    {
+      "file": "src/lerobot/utils/keyboard_input.py",
+      "line": 168,
+      "call": "print",
+      "kind": "print",
+      "source": "print(\"Escape key pressed. Stopping data recording...\")",
+      "format": "Escape key pressed. Stopping data recording...",
+      "args": [],
+      "message": "Escape key pressed. Stopping data recording..."
+    }
+  ]
+}

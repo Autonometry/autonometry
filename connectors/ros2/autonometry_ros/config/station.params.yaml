@@ -9,7 +9,6 @@
     device_registry: /etc/autonometry/station-devices.json   # the station's own inputs only
     spec_version: "0.3"
     scopes: [base]                       # must be the station recorder's scopes
-    joy_node: joy_node                   # publishes /joy from this PC's joystick
     dead_zone: 0.05                      # sticks within this of centre are neutral
     deadman_buttons: [4, 5]
     unidentified_actor_id: person:unidentified

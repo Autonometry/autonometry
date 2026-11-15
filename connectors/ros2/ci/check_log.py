@@ -116,7 +116,9 @@ def check(
     if unexpected:
         problems.append(f"unexpected flags: {sorted(unexpected)}")
 
-    expect("verified at L1", verify["verified"], True)
+    # Capped at L1 by inferred attribution: it meets L1 and is not verified, which only L2 is.
+    expect("meets L1", verify["meets_required_level"], True)
+    expect("verified (L2 only)", verify["verified"], False)
     (checked,) = verify["sessions"]
     if checked["status"] == "failed" or checked["evidence"]:
         problems.append(f"verification failed: {checked['evidence']}")

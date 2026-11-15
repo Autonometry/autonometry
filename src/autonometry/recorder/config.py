@@ -38,6 +38,8 @@ MAX_CONFIG_BYTES = 1 << 20
 #: Smallest allowed ``max_log_bytes``: room for a session's opening events and many 64 KiB lines.
 MIN_LOG_BYTES = 1 << 20
 _DEFAULT_LOG_BYTES = 256 << 20
+#: Default ``min_free_bytes``: below 1 GiB free on its disk the recorder stops writing.
+DEFAULT_MIN_FREE_BYTES = 1 << 30
 #: Most scopes a config may declare.
 MAX_SCOPES = 256
 
@@ -96,6 +98,8 @@ class RecorderConfig(BaseModel):
     fsync_interval_s: PositiveSeconds = 1.0
     max_events_per_s: PositiveInt = 1000
     max_log_bytes: Annotated[int, Field(ge=MIN_LOG_BYTES)] = _DEFAULT_LOG_BYTES
+    #: Free space the recorder leaves on the data folder's disk; 0 turns the floor off.
+    min_free_bytes: Annotated[int, Field(ge=0)] = DEFAULT_MIN_FREE_BYTES
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
