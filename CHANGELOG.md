@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-15
+
 ### Added
 
 - Project skeleton: `src/autonometry` package, uv lockfile, hatchling build, Apache-2.0 licence.
@@ -95,6 +97,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Unitree G1, after review: the G1 commands refuse any Python but 3.12 in one line (Cyclone DDS 0.10 for Python does not load on 3.13), and a binding that fails to load ends in one line too, not an unexpected failure. `x_g1_writers` names a declared writer by topic and `device_id` only and an undeclared one by topic, program and a pseudonym of its host (the first 12 hex digits of the SHA-256 of the host name, never the name); `discover` prints the pseudonym beside each host. When `rt/lowstate` returns after more than `idle_threshold_s` while released or in user control, the watcher keeps the mode, logs one warning and notes `x_g1_robot_returned` on a heartbeat.
 - Tests: one per rule citing the spec section; Hypothesis properties (random observations never crash, `legs` is never `ai` while a person's goal span is open, every scope is `unknown` once the robot is lost, determinism); version guard; registry ambiguity; a golden session through the recorder to a report, hand-worked first (`tests/golden/g1/`). CI job `dds` (Linux and macOS): Cyclone DDS C 0.10.5 built from its tag (cached) and the binding from source, five fake G1 programs in separate processes over loopback, a second participant confirming through DCPSPublication that the observer has no writer, and `discover` and `watch` end to end with a recorder (tests marked `dds`, skipped elsewhere).
 
+- `autonometry demo --out DIR` (needs the `report` extra): the whole chain on a synthetic session shipped in the package (`autonometry/demo/session/`: one twelve-minute warehouse shift with six tasks, a remote takeover, an automatic safety stop and 15 s unknown), with no robot, no network and no source checkout. It generates a throwaway Ed25519 key in `DIR/key/` (0700), seals, verifies and explains in plain words why the result is L1 and not L2 (no timestamp authority), and writes `verification.json`, `report.json` and `report.html`, naming each file and the one to open. Paths in its outputs are relative to `DIR`; two runs differ only in the key, its signatures and `generated_at`. It refuses a folder that is not empty and prints one line without the `report` extra. `tests/demo_helpers.py` rebuilds the shipped log from its scenario.
+- Wheel smoke test, `scripts/smoke_wheel.sh`: `twine check --strict` on the sdist and wheel (the README must render on PyPI), the wheel installed with the `report` extra in a fresh virtual environment outside the source tree, then `autonometry --version` (must match the wheel), `autonometry spec show` and `autonometry demo`. CI job `wheel` on Linux, macOS and Windows; in `release.yml` the job `smoke` runs it on the files to be published, before `publish`.
+- Release automation: after `publish`, the job `github-release` (permission `contents: write`, that job only) creates the GitHub release for the tag with the CHANGELOG section as notes and attaches the sdist, the wheel, `spec-v<spec>.zip` (byte-identical for the same folder) and `SHA256SUMS`, assembled by `scripts/release_assets.py`. A test checks that CHANGELOG.md has a section for the package version.
+- `sealfile.seal_sessions`, the sealing that `autonometry seal` and the demo share.
+- `CONTRIBUTING.md` (setup, the definition of done, commit style, proposing a spec change through `docs/spec-v0.4-proposals.md`), `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `CITATION.cff`, issue templates (bug, feature or connector, spec change) and a pull request template; a status note in `spec/README.md` (draft, versioning, feedback through issues).
+
 ### Changed
 
 - The spec draft v0.2 became v0.3 in place (`spec/v0.3/`, schema `$id`s, `spec_version = "0.3"`); nothing had been released, so no v0.2 is kept.
@@ -115,10 +123,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Section 11 of the spec and the report: L3 is shown when station logs are given (11.2), a station log given as a robot log is left out of the metrics and the census (11.4), and the witnesses invariant is defined (11.7). `metrics` lists station sessions apart and never assigns them to a group.
 - Spec v0.3 section 6.14 (change 34): outside an open task, a scope that no source commands keeps its last controller's state until it is idle; `unknown` is for lost input, not for a robot seen standing still. The golden reports were regenerated for the new spec file hash.
 
+- The README is written for newcomers: what Autonometry is, the 60-second demo, install, how it works, the connectors and their status, the trust levels in plain words, and links that are absolute GitHub URLs so they work on PyPI. The reference moved without loss to `docs/`: `cli.md`, `recorder.md`, `verification.md`, `metrics-and-report.md`, `witness.md` and `connectors/turtlebot4.md`, `lerobot.md`, `unitree-g1.md`; code, configs and tests cite those pages.
+- Development status Alpha (classifier `Development Status :: 3 - Alpha`), version 0.1.0.
+
 ### Fixed
 
 - Overlapping approval and hint dwell windows moved the same AI time more than once, which could push the time share below 0 and a task's human time above its duration. The AI time inside the union of the windows now moves once, for every scope, the whole robot, the scope-weighted and unsupported totals, and each task (within the task's own time); each item's own `moved_from_ai_s` is unchanged.
 - The Kaplan-Meier median is the smallest gap with S(t) ≤ 0.5, as lifelines and the reference package (it was the first with S(t) < 0.5), and its interval is the medians of the pointwise cloglog band, the method the simulation study validated.
+
+- Unitree G1: `rt/lowstate` (the robot's presence and the handheld remote's bytes) and `rt/arm/action/state` are believed only from the robot, the host of the declared built-in controller's `rt/sportmodestate` writer (remembered once seen, so the robot is not lost when that writer goes away in debug mode). Samples from any other computer, or from a writer discovery has not shown, are ignored and noted once per writer (`x_g1_ignored_robot_state`): a forged lowstate can no longer keep a silent robot present or pass for the remote, and a forged arm state cannot end a preset (security review S-22).
+- TurtleBot 4: a publisher map larger than one heartbeat is sent in numbered parts of at most 48 KiB (`x_publishers_part: [i, n]`; `autonometry.connectors.heartbeats`), never dropped until the publishers change; an entry too large for any part would be counted in `x_publishers_dropped` (security review S-55).
+- LeRobot: with `--from-start`, a rollout read from the part of the log written before the watcher started, whose process cannot be found once that part is read, is taken as gone: the open task closes with outcome `unknown`, every scope is `unknown` and a heartbeat notes `x_lerobot_process_exit: not_found`, instead of keeping the state the log last showed. A later line from that rollout re-attaches it, keeping the policy and teleoperator already learned; the state is `unknown` until a line tells it.
+
+- Reports and JSON outputs are the same on every system (product rule 4): every file name in `report.json`, `report.html`, `verify --json`, `registry check --json`, rejected lines, file problems and the demo's files is written with forward slashes and stays relative where it was given relative (`autonometry.paths.path_text`); a path given with backslashes on Windows gives byte-identical output to the same path with forward slashes.
 
 ### Security
 
@@ -151,3 +168,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Removed
 
 - The `License :: OSI Approved` classifier: the SPDX `license` field replaces it (PEP 639).
+
+[Unreleased]: https://github.com/Autonometry/autonometry/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Autonometry/autonometry/releases/tag/v0.1.0

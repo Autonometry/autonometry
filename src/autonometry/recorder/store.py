@@ -1,4 +1,4 @@
-"""Sealed session logs on disk (README, "Recorder"; definitions.md 8, 10.3, 10.4).
+"""Sealed session logs on disk (docs/recorder.md; definitions.md 8, 10.3, 10.4).
 
 Layout: ``<data_dir>/<robot_id>/<session_id>/events.jsonl`` and ``events.checkpoints.jsonl``;
 folders 0700, files 0600. Every write goes through one :class:`FileOps`, so tests can record

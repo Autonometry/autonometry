@@ -69,7 +69,7 @@ class ConfigError(Exception):
 
 
 class RecorderConfig(BaseModel):
-    """The recorder's settings (README, "Recorder"). Frozen; unknown keys are rejected."""
+    """The recorder's settings (docs/recorder.md). Frozen; unknown keys are rejected."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

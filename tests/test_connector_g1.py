@@ -11,6 +11,7 @@ from autonometry.connectors import g1
 from autonometry.connectors.tb4 import Device, Source
 from g1_helpers import (
     ARM_SERVICE,
+    ARM_STATE,
     DEVICES,
     LOWSTATE,
     PC2,
@@ -21,7 +22,9 @@ from g1_helpers import (
     REPLAY_LOWCMD,
     ROBOT_SWITCH_RESPONSE,
     SPORT,
+    STRANGER_ARM_STATE,
     STRANGER_LOWCMD,
+    STRANGER_LOWSTATE,
     STRANGER_SPORT,
     STRANGER_SWITCH_RESPONSE,
     XR_ARM,
@@ -403,10 +406,10 @@ def test_remote_select_y_preset_is_scripted_started_by_a_person__defs_6_9_6_13()
 def test_preset_ends_when_the_arm_action_state_releases__defs_6_13() -> None:
     sim = Sim()
     sim.step(request(0, XR_SPORT, "sport", 7106, {"data": 0}))
-    sim.step(g1.ArmState(0, "w-state", '{"holding": true, "id": 1, "name": "wave"}'))
+    sim.step(g1.ArmState(0, ARM_STATE, '{"holding": true, "id": 1, "name": "wave"}'))
     sim.run(3.0)
     assert sim.state(g1.UPPER_BODY).actor_id == "script:arm_task_0"
-    sim.step(g1.ArmState(0, "w-state", '{"holding": false, "id": 1, "name": "wave"}'))
+    sim.step(g1.ArmState(0, ARM_STATE, '{"holding": false, "id": 1, "name": "wave"}'))
     assert sim.state(g1.UPPER_BODY).state == "ai"
 
 
@@ -462,9 +465,9 @@ def test_an_arm_motion_with_no_observed_start_is_unknown__defs_7() -> None:
     sim.run(1.0)
     assert (sim.state(g1.UPPER_BODY).state, sim.state(g1.LEGS).state) == ("unknown", "ai")
     sim.fsm = (500, 0, 0)
-    sim.step(g1.ArmState(0, "w-state", '{"holding": true, "id": 2, "name": "x"}'))
+    sim.step(g1.ArmState(0, ARM_STATE, '{"holding": true, "id": 2, "name": "x"}'))
     assert sim.state(g1.UPPER_BODY).state == "unknown"
-    sim.step(g1.ArmState(0, "w-state", '{"holding": false, "id": 2, "name": "x"}'))
+    sim.step(g1.ArmState(0, ARM_STATE, '{"holding": false, "id": 2, "name": "x"}'))
     assert sim.state(g1.UPPER_BODY).state == "ai"
 
 
@@ -941,6 +944,63 @@ def test_responses_from_another_identity_are_ignored_and_noted__defs_6_10() -> N
     }
     sim.step(g1.Response(0, STRANGER_SWITCH_RESPONSE, "motion_switcher", 4, 1001, 0, answer))
     assert len(_notes(sim, "x_g1_ignored_response")) == 1  # once per writer
+
+
+def test_lowstate_from_another_computer_keeps_no_robot_present__defs_2_6_10() -> None:
+    """rt/lowstate is believed only from the robot (the host of the declared built-in
+    controller's writer): a stranger's samples, even under the declared program's name, cannot
+    keep a robot that went silent present, and are noted once."""
+    sim = Sim()
+    sim.run(0.5)
+    assert sim.state().state == "ai"
+    sim.robot = False
+    sim.run(3.5, g1.LowState(0, STRANGER_LOWSTATE, remote_bytes()))
+    assert {sim.state(scope).state for scope in (g1.LEGS, g1.UPPER_BODY)} == {"unknown"}
+    (noted,) = _notes(sim, "x_g1_ignored_robot_state")
+    assert noted == {
+        "topic": g1.LOWSTATE,
+        "program": g1.pseudonym("hg_lowstate"),
+        "host": g1.pseudonym("laptop"),
+    }
+
+
+def test_the_remote_s_bytes_count_only_from_the_robot__defs_6_10_6_11() -> None:
+    """A stranger's rt/lowstate carrying stick input is no remote: the legs stay the built-in
+    controller's; the same bytes from the robot's own lowstate are the person's goal input."""
+    pushed = remote_bytes(ly=0.8)
+    sim = Sim()
+    sim.run(1.0, g1.LowState(0, STRANGER_LOWSTATE, pushed))
+    assert sim.state().state == "ai"
+    sim.remote = pushed
+    sim.run(2.0)
+    assert sim.state().state == "shared"
+
+
+def test_an_arm_state_from_another_computer_is_ignored_and_noted__defs_6_13() -> None:
+    """rt/arm/action/state is believed only from the robot: a holding state from PC2 does not
+    make the upper body unknown, nor does its release end a preset."""
+    sim = Sim()
+    sim.run(1.0)
+    sim.step(g1.ArmState(0, STRANGER_ARM_STATE, '{"holding": true, "id": 2, "name": "x"}'))
+    sim.run(2.0)
+    assert sim.state(g1.UPPER_BODY).state == "ai"
+    (noted,) = _notes(sim, "x_g1_ignored_robot_state")
+    assert noted["topic"] == g1.ARM_STATE
+    sim.step(g1.ArmState(0, ARM_STATE, '{"holding": true, "id": 2, "name": "x"}'))
+    assert sim.state(g1.UPPER_BODY).state == "unknown"
+
+
+def test_a_writer_not_yet_discovered_is_not_the_robot__defs_2() -> None:
+    """Until discovery shows a lowstate writer on the robot's host, its samples keep nothing
+    present: the same samples that keep the robot present from its discovered writer leave it
+    lost from a writer discovery never showed."""
+    sim = Sim()
+    sim.run(1.0)
+    assert sim.state().state == "ai"
+    unseen = Sim()
+    unseen.robot = False
+    unseen.run(1.0, g1.LowState(0, "w-unseen", remote_bytes()), g1.SportState(0, SPORT, 500, 0, 0))
+    assert unseen.state().state == "unknown"
 
 
 def test_two_writers_claiming_one_identity_at_once_are_both_undeclared__defs_6_10() -> None:

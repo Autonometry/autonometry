@@ -1,0 +1,45 @@
+name: Bug report
+description: Something Autonometry does wrong, crashes on, or reports incorrectly.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems go through private vulnerability reporting (SECURITY.md), not here.
+        Never attach real robot logs, keys or personal data: reduce the problem to a synthetic log.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `autonometry --version`.
+      placeholder: autonometry 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: Operating system, Python version, and robot or connector if any.
+      placeholder: Ubuntu 24.04, Python 3.12, TurtleBot 4 observer
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The command you ran and its full output.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: If a number or a state is wrong, say which spec section (definitions.md) gives the right one.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: A synthetic log or the smallest steps that show it.

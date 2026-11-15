@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use Autonometry, please cite it as below."
+type: software
+title: Autonometry
+abstract: >-
+  Autonometry measures how much of a robot's work is done by its AI and how much by humans,
+  local or remote. It records every change of control in a sealed, tamper-evident log, verifies
+  logs, reconciles a robot's log with a teleoperation station's log, and reports autonomy
+  metrics with confidence intervals. It is the reference implementation of an open
+  specification.
+authors:
+  - given-names: Aaryan
+    family-names: Solanki
+version: 0.1.0
+license: Apache-2.0
+repository-code: "https://github.com/Autonometry/autonometry"
+url: "https://github.com/Autonometry/autonometry"
+keywords:
+  - robotics
+  - autonomy
+  - teleoperation
+  - audit log
+  - metrics

@@ -23,6 +23,7 @@ import jsonschema_rs
 import rfc8785
 
 from autonometry import strictjson
+from autonometry.paths import path_text
 from autonometry.reader import describe_schema_error, first_schema_error
 from autonometry.spec import (
     REGISTRY_SCHEMA_FILES,
@@ -207,7 +208,7 @@ def check_registry(
     Raises:
         RegistryReadError: the file cannot be opened or read.
     """
-    name = os.fspath(path)
+    name = path_text(path)
     try:
         with open(name, "rb") as stream:
             data = stream.read(MAX_REGISTRY_BYTES + 1)

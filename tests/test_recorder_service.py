@@ -1,5 +1,5 @@
 """Tests for the recorder process over a real Unix datagram socket, driven by the real client
-(README "Recorder"; definitions.md 8, 10.6). POSIX only."""
+(docs/recorder.md; definitions.md 8, 10.6). POSIX only."""
 
 import sys
 

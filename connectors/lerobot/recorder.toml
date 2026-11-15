@@ -1,4 +1,4 @@
-# Recorder config for an SO-101 on LeRobot (README, "LeRobot"). Relative paths are relative to
+# Recorder config for an SO-101 on LeRobot (docs/connectors/lerobot.md). Relative paths are relative to
 # this file. Start the recorder, then the watcher, then the rollout:
 #   autonometry record --config recorder.toml &
 #   autonometry lerobot watch --config recorder.toml --log rollout.log &

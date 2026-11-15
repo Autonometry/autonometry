@@ -1,4 +1,4 @@
-"""Launch the Autonometry station observer on a teleoperation station (README, "Station witness").
+"""Launch the Autonometry station observer on a teleoperation station (docs/witness.md).
 
 Arguments: ``namespace`` (the robot namespace, empty by default), ``params_file`` (default: this
 package's ``config/station.params.yaml``), ``recorder_socket`` and ``device_registry`` (the

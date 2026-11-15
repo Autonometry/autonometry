@@ -1,4 +1,4 @@
-"""Autonometry station observer: the teleoperation station's witness (README, "Station witness").
+"""Autonometry station observer: the teleoperation station's witness (docs/witness.md).
 
 Runs on the operator's PC, beside an Autonometry recorder configured with ``role = "station"``
 and its own key (definitions.md 12.1). A ROS 2 node that only subscribes, like the robot's

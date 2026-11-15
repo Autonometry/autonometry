@@ -38,7 +38,10 @@ POLICY_LOWCMD, POLICY_ARM, POLICY_SPORT, POLICY_ARM_REQ = (
     "w-pol-armreq",
 )
 REPLAY_LOWCMD = "w-replay-low"
+ARM_STATE = "w-arm-state"
 STRANGER_LOWCMD, STRANGER_SPORT = "w-stranger-low", "w-stranger-sport"
+#: rt/lowstate and rt/arm/action/state from a computer that is not the robot.
+STRANGER_LOWSTATE, STRANGER_ARM_STATE = "w-stranger-lowstate", "w-stranger-arm-state"
 #: The built-in controller's answers (its rt/sportmodestate identity) and a stranger's.
 ROBOT_SWITCH_RESPONSE, STRANGER_SWITCH_RESPONSE = "w-resp-ms", "w-stranger-resp"
 
@@ -56,6 +59,9 @@ _WRITERS: dict[str, tuple[str | None, str | None, str]] = {
     POLICY_SPORT: (PC2, "eval_g1.py", g1.request_topic("sport")),
     POLICY_ARM_REQ: (PC2, "eval_g1.py", g1.request_topic("arm")),
     REPLAY_LOWCMD: (PC2, "replay_robot.py", g1.LOWCMD),
+    ARM_STATE: (PC1, "g1_arm_action", g1.ARM_STATE),
+    STRANGER_LOWSTATE: ("laptop", "hg_lowstate", g1.LOWSTATE),
+    STRANGER_ARM_STATE: (PC2, "g1_arm_action", g1.ARM_STATE),
     STRANGER_LOWCMD: ("laptop", "python3", g1.LOWCMD),
     STRANGER_SPORT: ("laptop", "python3", g1.request_topic("sport")),
     ROBOT_SWITCH_RESPONSE: (PC1, "ai_sport", g1.response_topic("motion_switcher")),

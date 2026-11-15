@@ -1,4 +1,4 @@
-"""Tests for clients/python/autonometry_client.py (README "Wire format").
+"""Tests for clients/python/autonometry_client.py (docs/recorder.md, "Wire format").
 
 Written with unittest and Python 3.8 syntax so CI can run them on Python 3.8 without pytest:
 ``python -m unittest discover -s tests/client``. POSIX only.

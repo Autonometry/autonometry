@@ -1,5 +1,5 @@
 """The recorder process (POSIX): one loop owns the socket and every file write
-(README, "Recorder").
+(docs/recorder.md).
 
 Connectors send fire-and-forget datagrams to a Unix datagram socket; the loop (``selectors``)
 reads them, runs timers and writes the log through :class:`~autonometry.recorder.runtime.Recorder`.

@@ -1,4 +1,4 @@
-"""Launch the read-only Autonometry observer for a TurtleBot 4 (README, "TurtleBot 4").
+"""Launch the read-only Autonometry observer for a TurtleBot 4 (docs/connectors/turtlebot4.md).
 
 Arguments: ``namespace`` (the robot namespace, empty by default), ``params_file`` (default: this
 package's ``config/observer.params.yaml``), ``recorder_socket`` and ``device_registry`` (override

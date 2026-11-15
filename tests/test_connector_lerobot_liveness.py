@@ -19,6 +19,7 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures" / "lerobot_windows"
 OWN = 4242
 GONE = lerobot.Note((("x_lerobot_process_exit", "unlogged"),))
 UNWATCHED = lerobot.Note((("x_lerobot_liveness", "unwatched"),))
+NOT_FOUND = lerobot.Note((("x_lerobot_process_exit", "not_found"),))
 
 
 class _Process:
@@ -288,6 +289,117 @@ def test_a_new_rollout_in_the_same_log_is_looked_up_again__defs_6_14(run: _Run) 
     run.write("Building rollout context...", at=20)
     run.pump(2.0)
     assert run.opened == [100, 100]
+
+
+def _backlog(tmp_path: Path, table: list[ProcessInfo]) -> _Run:
+    """A rollout that started and took control before the watcher, followed --from-start."""
+    run = _Run(tmp_path, table)
+    run.write(*(text.split(" ", 4)[-1] for _, text in setup_lines()))
+    run.write("DAgger continuous recording started (episode_duration=60s)", at=5)
+    run.follower.close()
+    run.follower = LogFollower(run.log, from_start=True)
+    return run
+
+
+def _last(messages: Iterable[lerobot.Message]) -> StateAssertion:
+    return [m for m in messages if isinstance(m, StateAssertion)][-1]
+
+
+def test_a_rollout_from_before_the_watcher_with_no_process_is_unknown__defs_2_6_14(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    run = _backlog(tmp_path, [])
+    try:
+        out = run.pump(0.0)
+        assert "ai" in _states(out)
+        ends = [m for m in out if isinstance(m, TaskEnd)]
+        assert [e.outcome for e in ends] == ["unknown"]
+        assert NOT_FOUND in out
+        assert UNWATCHED not in out
+        assert _states(out)[-1] == "unknown"
+        assert not run.engine.following
+        assert "taken as ended" in caplog.text
+        assert _states(run.pump(3600.0)) == ["unknown"]
+        assert NOT_FOUND not in run.pump(3601.0)
+    finally:
+        run.close()
+
+
+def test_a_later_line_reattaches_keeping_policy_and_teleoperator__defs_2_6_10(
+    tmp_path: Path,
+) -> None:
+    table: list[ProcessInfo] = []
+    run = _backlog(tmp_path, table)
+    try:
+        out = run.pump(0.0)
+        before = next(m for m in out if isinstance(m, StateAssertion) and m.state == "ai")
+        assert _last(out).state == "unknown"
+        generation = run.engine.generation
+        table.append(ROLLOUT)
+        run.write("Phase transition: autonomous -> correcting", at=4000)
+        out = run.pump(4000.0)
+        assert run.engine.generation == generation + 1
+        assert run.opened == [100]
+        correcting = _last(out)
+        assert (correcting.state, correcting.device_id) == ("human_local", "so101_leader")
+        run.write("Phase transition: correcting -> autonomous", at=4001)
+        back = _last(run.pump(4001.0))
+        assert (back.state, back.actor_id, back.device_id) == (
+            "ai",
+            before.actor_id,
+            before.device_id,
+        )
+    finally:
+        run.close()
+
+
+def test_a_line_that_does_not_tell_the_state_reattaches_as_unknown__defs_2_6_14(
+    tmp_path: Path,
+) -> None:
+    run = _backlog(tmp_path, [])
+    try:
+        run.pump(0.0)
+        run.write("Disconnecting robot...", at=4000)
+        out = run.pump(4000.0)
+        assert run.engine.following
+        assert _states(out)[-1] == "unknown"
+        assert UNWATCHED in out
+    finally:
+        run.close()
+
+
+def test_a_rollout_from_before_the_watcher_that_still_runs_is_watched__defs_6_14(
+    tmp_path: Path,
+) -> None:
+    run = _backlog(tmp_path, [ROLLOUT])
+    try:
+        assert _states(run.pump(0.0))[-1] == "ai"
+        assert run.opened == [100]
+        run.processes[100].running = False
+        assert GONE in run.pump(1.0)
+    finally:
+        run.close()
+
+
+def test_the_process_is_looked_for_once_the_earlier_part_is_read__defs_6_14(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(lerobot_io, "MAX_READ_BYTES", 120)
+    run = _backlog(tmp_path, [])
+    try:
+        sent_before_end: list[lerobot.Message] = []
+        while run.follower.backlog_pending or not sent_before_end:
+            sent_before_end += run.pump(0.0)
+            if run.follower.backlog_pending:
+                assert NOT_FOUND not in sent_before_end
+        assert run.sent.count(NOT_FOUND) == 1
+        assert _states(run.pump(1.0)) == ["unknown"]
+    finally:
+        run.close()
+
+
+def test_the_engine_says_nothing_when_no_rollout_is_absent__defs_2() -> None:
+    assert engine().process_absent(1.0) == []
 
 
 def test_the_process_is_checked_about_once_a_second(run: _Run) -> None:

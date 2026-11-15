@@ -1,4 +1,5 @@
-"""The recorder's wire format: one UTF-8 JSON object per Unix datagram (README, "Wire format").
+"""The recorder's wire format: one UTF-8 JSON object per Unix datagram (docs/recorder.md, "Wire
+format").
 
 ``{"client": <name>, "n": <counter>, "event": {...}}`` carries one event (a heartbeat from a
 client carries only ``x_`` fields), and
@@ -16,7 +17,8 @@ from typing import Any
 
 from autonometry import strictjson
 
-#: Event types a client sends as level-triggered state assertions (README, "Level triggering").
+#: Event types a client sends as level-triggered state assertions (docs/recorder.md,
+#: "Level-triggered states").
 STATE_TYPE = "transition"
 #: Event types written as received.
 DISCRETE_TYPES = frozenset(

@@ -86,4 +86,4 @@ autonomous, outcome aborted. Under v0.3:
 7. **Attribution is marked inferred.** The keyboard's two spans and the cancel carry
    `x_attribution_inferred: true` (6.12), which caps the session at trust level L1 (10.6).
 8. **The publisher map is a heartbeat field**, `x_publishers`, sent by the observer when the ROS
-   graph changes, since connectors cannot add fields to `session_start` (README, "TurtleBot 4").
+   graph changes, since connectors cannot add fields to `session_start` (docs/connectors/turtlebot4.md).

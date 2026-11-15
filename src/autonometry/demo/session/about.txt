@@ -1,0 +1,12 @@
+Synthetic data shipped with autonometry for its demo: one twelve-minute shift of a warehouse
+robot (demo_amr_01) that carries totes, written the way the recorder writes a log. The session
+is marked simulated, so a report never pools it with real runs.
+
+What happens: six tasks; in the second, the robot asks for help in a blocked aisle and a remote
+operator drives it out (one intervention); in the third, the safety scanner stops it for four
+seconds when a person crosses its path (an automatic safety stop, not an intervention); in the
+fourth, the robot's connector crashes and restarts, so 13 seconds are unknown; the fifth task
+fails because the tote is missing.
+
+The demo signs the log with a key it generates in the output folder and uses no timestamp
+authority, so the trust level is L1: see verification.json and the Trust section.

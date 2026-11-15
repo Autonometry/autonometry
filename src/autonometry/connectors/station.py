@@ -1,5 +1,5 @@
 """Teleoperation station engine: the station's own input in, station-log states out
-(definitions.md 12.1; README, "Station witness").
+(definitions.md 12.1; docs/witness.md).
 
 Pure and standard library only: no rclpy, no input or output, no clock. The ROS 2 node
 ``station_observer`` in ``connectors/ros2/autonometry_ros`` runs on the operator's PC beside the

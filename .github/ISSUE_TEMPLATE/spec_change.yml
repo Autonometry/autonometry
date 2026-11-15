@@ -1,0 +1,23 @@
+name: Spec change
+description: A case the specification gets wrong or leaves open (CONTRIBUTING.md, "Proposing a change to the specification").
+labels: [spec]
+body:
+  - type: input
+    id: section
+    attributes:
+      label: Section
+      description: The spec version and section, for example v0.3 definitions.md 6.12.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What goes wrong or is undefined today, with an example (a synthetic log excerpt helps).
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The rule you would add or change, and its effect on the metrics or trust levels.

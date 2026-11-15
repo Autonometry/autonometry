@@ -1,5 +1,5 @@
 """Tests for the recorder's files: partial lines, session folders and the checks of crash
-recovery (README "Crash recovery"; definitions.md 8, 10.1)."""
+recovery (docs/recorder.md, "Crash recovery"; definitions.md 8, 10.1)."""
 
 import json
 import os

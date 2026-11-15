@@ -1,0 +1,20 @@
+name: Feature or connector request
+description: A new capability, connector or report feature.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you need
+      description: The problem it solves and who would use it (a buyer, an insurer, an operator, a researcher).
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+      description: For a connector, the robot, its software stack and how control changes can be observed without writing to the robot.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered

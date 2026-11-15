@@ -1,4 +1,4 @@
-# Recorder config for a Unitree G1 (README, "Unitree G1"). Relative paths are relative to this file.
+# Recorder config for a Unitree G1 (docs/connectors/unitree-g1.md). Relative paths are relative to this file.
 # Start the recorder, then the watcher, then the robot's programs:
 #   autonometry record --config recorder.toml &
 #   autonometry g1 watch --config recorder.toml --interface eth0 &

@@ -1,4 +1,4 @@
-"""Autonometry observer for the TurtleBot 4 (README, "TurtleBot 4").
+"""Autonometry observer for the TurtleBot 4 (docs/connectors/turtlebot4.md).
 
 A ROS 2 node that only subscribes: it never publishes on a robot topic, never calls a service and
 never sends an action goal, so it cannot slow or stop the robot, and a crash of this process
@@ -13,7 +13,8 @@ publisher count changes and every ``graph_period_s``. A topic with one publisher
 it; with several, the engine applies the topic-level rule and marks its states
 ``x_attribution_inferred``. Where a newer rclpy gives ``publisher_gid``, it is used. Who sent an
 action goal comes from the action's clients in the graph. The publisher map is recorded as
-``x_publishers`` on a heartbeat each time it changes. The publishers of Nav2's chain topics
+``x_publishers`` on a heartbeat each time it changes, in numbered parts when it is larger than
+one heartbeat (:mod:`autonometry.connectors.heartbeats`). The publishers of Nav2's chain topics
 (``cmd_vel_nav``, ``cmd_vel_smoothed``) go to the engine as well, one entry per publisher, so a
 relayed command counts as the AI's only on a declared chain and a shared node name shows.
 
@@ -47,6 +48,7 @@ from sensor_msgs.msg import Joy
 from std_msgs.msg import String
 
 from autonometry.connectors import tb4
+from autonometry.connectors.heartbeats import publisher_heartbeats
 from autonometry.connectors.names import node_name
 from autonometry.registry import MAX_REGISTRY_BYTES, check_registry_bytes
 from autonometry.spec import SpecError, load_rules
@@ -369,7 +371,7 @@ class Observer(Node):
 
     def _observe_chain(self) -> None:
         """Tell the engine the publishers of Nav2's chain topics when they changed: one entry
-        per publisher, so a node name two publishers share shows (README, "TurtleBot 4")."""
+        per publisher, so a node name two publishers share shows (docs/connectors/turtlebot4.md)."""
         for key in tb4.CHAIN_TOPICS:
             sources = tuple(source for source, _ in self._publishers.get(self._topics[key], ()))
             if self._chain.get(key) != sources:
@@ -426,8 +428,9 @@ class Observer(Node):
     def _record_publishers(self) -> None:
         """Send ``x_publishers`` on a heartbeat when the map changed (notes B.1 item 3). A node
         name that is not a valid ROS 2 name of bounded length appears as a pseudonym, so a name
-        from the network never carries control characters, unbounded text or personal data."""
-        publishers = {
+        from the network never carries control characters, unbounded text or personal data. A
+        map too large for one heartbeat goes in numbered parts (``x_publishers_part``, S-55)."""
+        publishers: dict[str, list[dict[str, Any]]] = {
             topic: [{"node": node_name(source.node or ""), "gid": gid} for source, gid in found]
             for topic, found in sorted(self._publishers.items())
         }
@@ -443,7 +446,8 @@ class Observer(Node):
         domain = os.environ.get("ROS_DOMAIN_ID", "0")
         valid = domain.isdigit() and len(domain) <= MAX_DOMAIN_DIGITS
         extra["x_ros_domain_id"] = int(domain) if valid else None
-        self._recorder.event("heartbeat", **extra)
+        for fields in publisher_heartbeats(publishers, extra):
+            self._recorder.event("heartbeat", **fields)
 
     def _attribution(
         self, topic: str, info: Any

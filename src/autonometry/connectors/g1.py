@@ -1,4 +1,4 @@
-"""Unitree G1 engine: DDS observations in, recorder messages out (README, "Unitree G1").
+"""Unitree G1 engine: DDS observations in, recorder messages out (docs/connectors/unitree-g1.md).
 
 Pure and standard library only: no Cyclone DDS, no input or output, no clock. The edge
 (:mod:`autonometry.connectors.g1_dds`) turns what it reads on the robot's network into the plain
@@ -44,7 +44,8 @@ For each scope at each instant the first rule that applies decides:
 8. **hands.** The active hand writers: one, its state; several, 6.12; none, as in rule 3.
 
 **Where the notes leave a case open** the engine takes the more conservative state, never
-``ai``; each such place says so in a comment starting ``Open case``, and the README lists them:
+``ai``; each such place says so in a comment starting ``Open case``, and
+docs/connectors/unitree-g1.md lists them:
 a person's open goal span contends (6.12) with an AI or scripted state on ``legs`` (and on
 ``upper_body`` where it follows the same source), so that state becomes ``shared``; every source
 with an open goal span contends; while a preset runs, another ``rt/arm_sdk`` writer contends with
@@ -59,7 +60,10 @@ ever keeps the robot released or in user control.
 **Names are claims.** Host, program and pid come from the participant itself, so anyone on the
 robot's network can claim a declared source's identity. RPC responses are believed only from the
 declared built-in controller's identity (the host and participant of its ``rt/sportmodestate``
-writer); others are ignored and noted (``x_g1_ignored_response``). Two writers with the same
+writer); others are ignored and noted (``x_g1_ignored_response``). ``rt/lowstate`` (the robot's
+presence and the remote's bytes) and ``rt/arm/action/state`` are believed only from the robot,
+the host of that writer (an open case); others are ignored and noted
+(``x_g1_ignored_robot_state``). Two writers with the same
 observed source that command within ``contention_window_s`` are both undeclared, a person
 (``human_remote``), and noted (``x_g1_duplicate_identity``), as the TurtleBot 4 does for a node
 name two publishers share. Only trust level L3 proves remote control.
@@ -457,7 +461,7 @@ Message = StateAssertion | Note
 
 
 def wire_event(message: Message) -> dict[str, Any]:
-    """The event a message stands for, as a connector sends it (README, "Wire format")."""
+    """The event a message stands for, as a connector sends it (docs/recorder.md, "Wire format")."""
     return _wire_event(message)
 
 
@@ -787,6 +791,8 @@ class G1Engine:
         self._notes: list[Note] = []
         self._noted_writers: str | None = None
         self._ignored: set[str] = set()
+        self._ignored_robot_state: set[str] = set()
+        self._robot_hosts: set[str] = set()
         self._duplicate_noted: set[str] = set()
         self._duplicates: tuple[float, frozenset[Source]] = (math.nan, frozenset())
         self._preset_device = self._match(Source(topic=PRESET_TOPIC))
@@ -934,6 +940,9 @@ class G1Engine:
             self._add_writer(writer)
         writer.topic, writer.source, writer.identified = topic, source, True
         writer.device = self._match(source)
+        builtin = topic == SPORTSTATE and writer.device is not None and writer.device.kind == "ai"
+        if builtin and source.host is not None and len(self._robot_hosts) < MAX_WRITERS:
+            self._robot_hosts.add(source.host)
         writer.decoded, writer.present = observation.decoded, True
 
     def _from_builtin(self, writer: _Writer) -> bool:
@@ -952,6 +961,17 @@ class G1Engine:
             and (w.source.host, w.source.participant) == identity
             for w in self._writers.values()
         )
+
+    def _from_robot(self, writer: _Writer) -> bool:
+        """True when ``writer`` runs on the robot: its host is that of a writer of
+        ``rt/sportmodestate`` the registry declares as the built-in controller, seen in this run.
+
+        Open case: the notes name no program for ``rt/lowstate`` and ``rt/arm/action/state``, and
+        Unitree's services on PC1 are separate programs, so the robot's identity is its host,
+        remembered once seen, so that the robot is not lost when the controller's writer goes
+        away (debug mode). A writer not yet seen in discovery, or one with no host (another DDS
+        vendor), is not the robot."""
+        return writer.identified and writer.source.host in self._robot_hosts
 
     def _duplicated(self) -> frozenset[Source]:
         """Sources that two or more writers active within ``contention_window_s`` claim at once:
@@ -1030,9 +1050,17 @@ class G1Engine:
         return 1.0 if writer.weight is None else writer.weight
 
     def _on_lowstate(self, observation: LowState) -> None:
+        """The robot's presence and the remote's bytes, believed only from the robot
+        (:meth:`_from_robot`): anyone else's sample is ignored and noted, so it can neither keep
+        a lost robot present nor pass for the remote."""
         t = observation.t
         writer = self._writer(observation.key, LOWSTATE)
         writer.last_t = t
+        if not self._from_robot(writer):
+            self._note_once(
+                self._ignored_robot_state, writer.key, "x_g1_ignored_robot_state", writer
+            )
+            return
         last = self._last_lowstate
         if (
             last is not None
@@ -1041,7 +1069,8 @@ class G1Engine:
         ):
             # The robot was away long enough to have restarted, which ends a release or user
             # control without a request: the mode stands (it never moves towards ai), and the
-            # log says the robot returned in it (README, restart the watcher too).
+            # log says the robot returned in it (docs/connectors/unitree-g1.md: restart the
+            # watcher too).
             mode = "released" if self._released else "user_control"
             self._notes.append(Note((("x_g1_robot_returned", mode),)))
         self._last_lowstate = t if last is None else max(last, t)
@@ -1231,6 +1260,15 @@ class G1Engine:
             self._released = True
 
     def _on_arm_state(self, observation: ArmState) -> None:
+        """The arm action state, believed only from the robot (:meth:`_from_robot`); anyone
+        else's is ignored and noted."""
+        writer = self._writer(observation.key, ARM_STATE)
+        writer.last_t = observation.t
+        if not self._from_robot(writer):
+            self._note_once(
+                self._ignored_robot_state, writer.key, "x_g1_ignored_robot_state", writer
+            )
+            return
         params = _parameters(observation.text)
         holding = params.get("holding")
         action = _int(params.get("id"))

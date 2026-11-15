@@ -12,7 +12,7 @@ We aim to acknowledge a report within 5 working days and to tell you what we pla
 
 ## Supported versions
 
-Autonometry is pre-alpha. Only the latest release and the `main` branch receive security fixes.
+Autonometry is alpha software. Only the latest release and the `main` branch receive security fixes.
 
 ## Scope
 

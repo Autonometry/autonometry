@@ -1,4 +1,4 @@
-"""The recorder's decisions: which events to write, and when (README, "Recorder").
+"""The recorder's decisions: which events to write, and when (docs/recorder.md).
 
 Pure apart from reading the injected clocks: the engine takes datagrams and the passing of time
 and returns events that lack only ``robot_id``, ``session_id``, ``seq`` and the seal, which the
@@ -96,7 +96,8 @@ class Settings:
 
 @dataclass(frozen=True, slots=True)
 class Restored:
-    """State rebuilt from a session's events on disk after a crash (README, "Crash recovery")."""
+    """State rebuilt from a session's events on disk after a crash (docs/recorder.md, "Crash
+    recovery")."""
 
     values: Mapping[str, ScopeValue]
     open_task: str | None
