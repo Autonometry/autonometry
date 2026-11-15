@@ -1857,7 +1857,7 @@
     ],
     "software": {
       "name": "autonometry",
-      "version": "0.0.1.dev0"
+      "version": "0.1.0"
     },
     "spec_files": {
       "checkpoint.schema.json": "df303f5e55b38a51baad7a02aabf3b7a83a8db2b1dd32c64577bd7e455f70a9c",
