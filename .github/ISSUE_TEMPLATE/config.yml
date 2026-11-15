@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Autonometry/autonometry/security/advisories/new
+    about: Privately, through GitHub private vulnerability reporting (SECURITY.md). Never in a public issue.
+  - name: Ask a general question
+    url: mailto:aaryan.solanki@thestatsigma.com
+    about: Questions about using or adopting Autonometry.
