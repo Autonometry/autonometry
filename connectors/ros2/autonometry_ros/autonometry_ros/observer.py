@@ -1,4 +1,4 @@
-"""Autonometry observer for the TurtleBot 4 (README, "TurtleBot 4").
+"""Autonometry observer for the TurtleBot 4 (docs/connectors/turtlebot4.md).
 
 A ROS 2 node that only subscribes: it never publishes on a robot topic, never calls a service and
 never sends an action goal, so it cannot slow or stop the robot, and a crash of this process
@@ -371,7 +371,7 @@ class Observer(Node):
 
     def _observe_chain(self) -> None:
         """Tell the engine the publishers of Nav2's chain topics when they changed: one entry
-        per publisher, so a node name two publishers share shows (README, "TurtleBot 4")."""
+        per publisher, so a node name two publishers share shows (docs/connectors/turtlebot4.md)."""
         for key in tb4.CHAIN_TOPICS:
             sources = tuple(source for source, _ in self._publishers.get(self._topics[key], ()))
             if self._chain.get(key) != sources:

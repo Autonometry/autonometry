@@ -1,5 +1,5 @@
 """Tests for the recorder writing sealed logs in-process: layout, durability, crash recovery,
-rotation and anchoring (README "Recorder"; definitions.md 2, 8, 10.3, 10.4, 10.6)."""
+rotation and anchoring (docs/recorder.md; definitions.md 2, 8, 10.3, 10.4, 10.6)."""
 
 import hashlib
 import itertools

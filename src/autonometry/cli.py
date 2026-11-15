@@ -386,7 +386,7 @@ def _counts_text(counts: Mapping[str, int]) -> str:
 
 
 def timeline_lines(timeline: Timeline) -> list[str]:
-    """Return the human summary of one session's timeline (README, "Read a timeline")."""
+    """Return the human summary of one session's timeline (docs/metrics-and-report.md, "Read a timeline")."""
     data = timeline.to_json()
     name = f"{timeline.robot_id}/{timeline.session_id}"
     if timeline.start_ns is None:

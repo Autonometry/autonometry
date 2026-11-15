@@ -48,5 +48,5 @@
     }
   ],
   "x_robot_model": "Unitree G1 EDU, 29 DoF",
-  "x_note": "Unitree G1 template (README, Unitree G1). Run autonometry g1 discover and copy each match from what it prints: host, participant and topic must equal what the watcher observes."
+  "x_note": "Unitree G1 template (docs/connectors/unitree-g1.md). Run autonometry g1 discover and copy each match from what it prints: host, participant and topic must equal what the watcher observes."
 }

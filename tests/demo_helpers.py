@@ -1,7 +1,7 @@
 """The demo's shipped session, rebuilt from its scenario.
 
 ``autonometry demo`` reads ``src/autonometry/demo/session/events.jsonl``. This module writes that
-file the way the recorder would have written it (README, "Recorder"): ``session_start`` with
+file the way the recorder would have written it (docs/recorder.md): ``session_start`` with
 every scope ``unknown``, a heartbeat every second with the clock status and the distance, a
 transition only when a connector's state changes, ``unknown`` with ``x_cause: "silent"`` after
 ``gap_tolerance_s`` without an assertion, and ``session_end`` after a last heartbeat. The test

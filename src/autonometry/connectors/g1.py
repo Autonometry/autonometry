@@ -1,4 +1,4 @@
-"""Unitree G1 engine: DDS observations in, recorder messages out (README, "Unitree G1").
+"""Unitree G1 engine: DDS observations in, recorder messages out (docs/connectors/unitree-g1.md).
 
 Pure and standard library only: no Cyclone DDS, no input or output, no clock. The edge
 (:mod:`autonometry.connectors.g1_dds`) turns what it reads on the robot's network into the plain
@@ -44,7 +44,7 @@ For each scope at each instant the first rule that applies decides:
 8. **hands.** The active hand writers: one, its state; several, 6.12; none, as in rule 3.
 
 **Where the notes leave a case open** the engine takes the more conservative state, never
-``ai``; each such place says so in a comment starting ``Open case``, and the README lists them:
+``ai``; each such place says so in a comment starting ``Open case``, and docs/connectors/unitree-g1.md lists them:
 a person's open goal span contends (6.12) with an AI or scripted state on ``legs`` (and on
 ``upper_body`` where it follows the same source), so that state becomes ``shared``; every source
 with an open goal span contends; while a preset runs, another ``rt/arm_sdk`` writer contends with
@@ -460,7 +460,7 @@ Message = StateAssertion | Note
 
 
 def wire_event(message: Message) -> dict[str, Any]:
-    """The event a message stands for, as a connector sends it (README, "Wire format")."""
+    """The event a message stands for, as a connector sends it (docs/recorder.md, "Wire format")."""
     return _wire_event(message)
 
 
@@ -1068,7 +1068,7 @@ class G1Engine:
         ):
             # The robot was away long enough to have restarted, which ends a release or user
             # control without a request: the mode stands (it never moves towards ai), and the
-            # log says the robot returned in it (README, restart the watcher too).
+            # log says the robot returned in it (docs/connectors/unitree-g1.md: restart the watcher too).
             mode = "released" if self._released else "user_control"
             self._notes.append(Note((("x_g1_robot_returned", mode),)))
         self._last_lowstate = t if last is None else max(last, t)

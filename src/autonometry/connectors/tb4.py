@@ -1,4 +1,4 @@
-"""TurtleBot 4 engine: ROS 2 observations in, recorder messages out (README, "TurtleBot 4").
+"""TurtleBot 4 engine: ROS 2 observations in, recorder messages out (docs/connectors/turtlebot4.md).
 
 Pure and standard library only: no rclpy, no input or output, no clock. The ROS 2 node in
 ``connectors/ros2/autonometry_ros`` turns each message into one of the observation classes below,
@@ -530,7 +530,7 @@ Message = StateAssertion | TaskStart | TaskEnd | Hint | Distance
 
 
 def wire_event(message: StateAssertion | TaskStart | TaskEnd | Hint) -> dict[str, Any]:
-    """The event a message stands for, as a connector sends it (README, "Wire format"): no
+    """The event a message stands for, as a connector sends it (docs/recorder.md, "Wire format"): no
     ``ts``, ``seq`` or ids the recorder writes. A :class:`Distance` goes to
     ``Recorder.distance`` instead."""
     event: dict[str, Any]

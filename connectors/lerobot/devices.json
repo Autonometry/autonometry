@@ -48,5 +48,5 @@
     }
   ],
   "x_robot_model": "SO-101 follower on LeRobot v0.6.1",
-  "x_note": "SO-101 template (README, LeRobot). LeRobot has no ROS graph: the watcher matches what the rollout's log names as node policy:<path>, teleop:<type> or script:return_to_initial_position."
+  "x_note": "SO-101 template (docs/connectors/lerobot.md). LeRobot has no ROS graph: the watcher matches what the rollout's log names as node policy:<path>, teleop:<type> or script:return_to_initial_position."
 }

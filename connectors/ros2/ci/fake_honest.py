@@ -1,5 +1,5 @@
-"""An honest TurtleBot 4 run with a teleoperation station, for the witness check (README,
-"Station witness"; no Gazebo).
+"""An honest TurtleBot 4 run with a teleoperation station, for the witness check
+(docs/witness.md; no Gazebo).
 
 Every command has a source the ROS graph can name, so neither observer has to infer one
 (definitions.md 6.12) and both logs can be trust level L2: Nav2's collision monitor is the only

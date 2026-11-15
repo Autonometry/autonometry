@@ -1,4 +1,4 @@
-"""One recorder: the engine's events written to sealed session logs (README, "Recorder").
+"""One recorder: the engine's events written to sealed session logs (docs/recorder.md).
 
 No sockets here: the service feeds datagrams and timer ticks in, so the whole recorder runs and
 is tested on any platform with fake clocks and fake file operations. One thread calls every
@@ -79,7 +79,7 @@ def tsa_anchorer(prepared: Prepared, notify: Callable[[], None]) -> Anchorer | N
 
 
 class Recorder:
-    """Writes the sealed, crash-safe log of one robot (README, "Recorder")."""
+    """Writes the sealed, crash-safe log of one robot (docs/recorder.md)."""
 
     def __init__(  # noqa: PLR0913 -- the recorder's collaborators, each replaceable in tests
         self,
@@ -127,7 +127,7 @@ class Recorder:
 
     def start(self) -> None:
         """Continue the newest session if it has no ``session_end`` and its chain verifies,
-        else open a new session (README, "Crash recovery")."""
+        else open a new session (docs/recorder.md, "Crash recovery")."""
         if self._anchorer is not None:
             self._anchorer.start()
         robot = robot_dir(self._prepared)

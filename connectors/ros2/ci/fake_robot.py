@@ -1,4 +1,4 @@
-"""A fake TurtleBot 4 for the ROS end-to-end check (README, "TurtleBot 4"; no Gazebo).
+"""A fake TurtleBot 4 for the ROS end-to-end check (docs/connectors/turtlebot4.md; no Gazebo).
 
 Nodes named like the real ones publish what a TurtleBot 4 running Nav2 publishes, and play the
 storyline of the integration notes' worked example: docked and idle, an undock by a Create 3

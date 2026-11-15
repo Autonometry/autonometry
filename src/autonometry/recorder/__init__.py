@@ -1,4 +1,4 @@
-"""The recorder: ``autonometry record --config FILE`` (README, "Recorder").
+"""The recorder: ``autonometry record --config FILE`` (docs/recorder.md).
 
 It receives control events from connectors over a local Unix datagram socket and writes a sealed,
 crash-safe log (definitions.md sections 8 and 10). It never sits in a control loop: connectors

@@ -1,5 +1,5 @@
 """Tests for the recorder's engine: level triggering, loss, ownership, rate limit, clock
-(README "Recorder"; definitions.md 2, 3, 6.14, 8)."""
+(docs/recorder.md; definitions.md 2, 3, 6.14, 8)."""
 
 import json
 from typing import Any

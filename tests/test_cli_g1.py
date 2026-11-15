@@ -54,7 +54,7 @@ def test_g1_commands_refuse_python_3_13_first(
     assert result.exit_code == 2
     assert result.output.strip() == (
         "error: the G1 watcher needs Python 3.12: Cyclone DDS 0.10 for Python does not "
-        "support Python 3.13 (README, Unitree G1)"
+        "support Python 3.13 (docs/connectors/unitree-g1.md)"
     )
 
 

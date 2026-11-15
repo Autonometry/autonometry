@@ -1,4 +1,4 @@
-"""LeRobot (SO-101) engine and importer (README, "LeRobot").
+"""LeRobot (SO-101) engine and importer (docs/connectors/lerobot.md).
 
 Pure and standard library only: no lerobot, torch or pyarrow, no input or output, no clock. The
 formats are those of LeRobot v0.6.1, commit ``7e241bd630a3719a56157a497ce5d08f244784f1``
@@ -515,7 +515,7 @@ class Settings:
 
 @dataclass(frozen=True, slots=True)
 class Note:
-    """``x_`` fields for a heartbeat the recorder writes at once (README, "Wire format")."""
+    """``x_`` fields for a heartbeat the recorder writes at once (docs/recorder.md, "Wire format")."""
 
     fields: Fields
 
@@ -526,7 +526,7 @@ _ROTATING: Final = frozenset({"dagger_continuous", "sentry"})
 
 
 def wire_event(message: Message) -> dict[str, Any]:
-    """The event a message stands for, as a connector sends it (README, "Wire format")."""
+    """The event a message stands for, as a connector sends it (docs/recorder.md, "Wire format")."""
     if isinstance(message, Note):
         return {"type": "heartbeat", **dict(message.fields)}
     return _tb4_wire_event(message)

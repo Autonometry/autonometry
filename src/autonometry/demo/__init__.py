@@ -1,4 +1,4 @@
-"""``autonometry demo``: the whole chain on a session shipped with the package (README, "Try it").
+"""``autonometry demo``: the whole chain on a session shipped with the package (docs/cli.md, "The demo").
 
 The session (``session/events.jsonl``) is synthetic, written the way the recorder writes a log:
 one twelve-minute shift of a warehouse robot with six tasks, a remote takeover, an automatic

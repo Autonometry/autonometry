@@ -1,5 +1,5 @@
 """``autonometry lerobot``: follow a LeRobot rollout's log live, or import a LeRobotDataset after
-the fact (README, "LeRobot"). The ``lerobot`` extra (pyarrow, watchfiles, psutil) is imported
+the fact (docs/connectors/lerobot.md). The ``lerobot`` extra (pyarrow, watchfiles, psutil) is imported
 only when a command runs."""
 
 import logging
@@ -150,7 +150,7 @@ def import_cmd(  # noqa: PLR0913, PLR0917 -- matches the import CLI's documented
     ] = None,
 ) -> None:
     """Import a LeRobotDataset v3.0 recorded by DAgger: one session log per episode, from its
-    per-frame intervention labels (definitions.md 8; README, "LeRobot").
+    per-frame intervention labels (definitions.md 8; docs/connectors/lerobot.md).
 
     Times are rebuilt as start + frame_index / fps and marked x_ts_reconstructed, so the logs are
     trust level L1 at most. Pauses, resets and the time between episodes were never recorded.
@@ -258,7 +258,7 @@ def watch_cmd(  # noqa: PLR0913, PLR0917 -- matches the watch CLI's documented o
     ] = None,
 ) -> None:
     """Follow a lerobot-rollout log and send the robot's control state and tasks to the recorder
-    (Linux and macOS; README, "LeRobot"). Read-only: it never touches the robot or its process.
+    (Linux and macOS; docs/connectors/lerobot.md). Read-only: it never touches the robot or its process.
 
     A log that exists when the watcher starts is followed from its end unless --from-start.
     The rollout's process is watched, read-only, about once a second: a rollout that ends without
