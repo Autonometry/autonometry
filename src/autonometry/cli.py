@@ -13,14 +13,12 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
-from typing import Annotated, Any, NoReturn, cast
+from typing import TYPE_CHECKING, Annotated, Any, NoReturn, cast
 
-import rfc8785
 import typer
 from cryptography import x509
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from autonometry import __version__, keys, sealfile, sealing, signednote, tsa
+from autonometry import __version__, keys, sealfile, signednote, tsa
 from autonometry import verify as verify_
 from autonometry.cli_g1 import g1_app
 from autonometry.cli_lerobot import lerobot_app
@@ -48,6 +46,9 @@ from autonometry.spec import (
 )
 from autonometry.timeline import Registries, StateTotals, Timeline, build_timeline
 from autonometry.witness import Reconciliation, WitnessParams, reconcile
+
+if TYPE_CHECKING:
+    from autonometry.stats import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -766,19 +767,6 @@ def _key_name(key_path: Path) -> str:
         _fail(str(exc))
 
 
-def _sign_checkpoint(
-    checkpoint: sealing.Checkpoint,
-    session: Session,
-    key_name: str,
-    private_key: Ed25519PrivateKey,
-) -> bytes:
-    body = signednote.checkpoint_body(
-        session.robot_id, session.session_id, checkpoint.size, checkpoint.root
-    )
-    signed = signednote.sign_note(body, key_name, private_key)
-    return sealfile.encode_checkpoint_line(signed)
-
-
 @app.command("seal")
 def seal(
     log: Annotated[
@@ -832,29 +820,11 @@ def seal(
     key_name = _key_name(key)
     rules = load_rules(version)
 
-    sealed_lines: list[bytes] = []
-    checkpoint_lines: list[bytes] = []
-    for session in log_check.sessions:
-        sealer = sealing.Sealer(
-            rules.chain_genesis_prefix,
-            session.robot_id,
-            session.session_id,
-            rules.sealing.checkpoint_every_events,
-            rules.sealing.checkpoint_every_s,
-        )
-        for event in session.events:
-            sealed_event, checkpoint = sealer.add(event)
-            sealed_lines.append(rfc8785.dumps(sealed_event) + b"\n")
-            if checkpoint is not None:
-                checkpoint_lines.append(
-                    _sign_checkpoint(checkpoint, session, key_name, private_key)
-                )
-        final = sealer.finish()
-        if final is not None:
-            checkpoint_lines.append(_sign_checkpoint(final, session, key_name, private_key))
-
-    atomic_write(out, b"".join(sealed_lines))
-    atomic_write(checkpoints_out, b"".join(checkpoint_lines))
+    sealed, checkpoint_lines = sealfile.seal_sessions(
+        log_check.sessions, rules, key_name, private_key
+    )
+    atomic_write(out, sealed)
+    atomic_write(checkpoints_out, checkpoint_lines)
     total_events = sum(len(session.events) for session in log_check.sessions)
     echo(f"sealed {total_events} event(s) in {len(log_check.sessions)} session(s)")
     echo(f"wrote {out} and {checkpoints_out}")
@@ -1390,6 +1360,100 @@ def _input_files(roles: Sequence[tuple[str, Path]]) -> list[tuple[str, str, str]
     return [(role, str(path), _sha256_file(path)) for role, path in sorted(set(roles))]
 
 
+def _require_report_extra(command: str) -> None:
+    """Stop with one line and exit status 2 when the ``report`` extra is not installed."""
+    try:
+        from autonometry.report import build, html  # noqa: F401, PLC0415 -- optional extra
+        from autonometry.stats import metrics, report  # noqa: F401, PLC0415 -- optional extra
+    except ImportError:
+        echo(
+            f"error: autonometry {command} needs the report extra: "
+            "pip install 'autonometry[report]'",
+            err=True,
+        )
+        raise typer.Exit(2) from None
+
+
+@dataclass(frozen=True, slots=True)
+class _ReportJob:
+    """The inputs of one report (definitions.md 11): logs, trust roots, registries given on the
+    command line (``None`` reads the copy beside each log), station logs and the page's text."""
+
+    logs: tuple[Path, ...]
+    out: Path
+    vkeys: tuple[Path, ...]
+    tsa_roots: tuple[Path, ...]
+    anchors: tuple[Path, ...]
+    given: Mapping[RegistryKind, Path | None]
+    stations: tuple[Path, ...]
+    title: str | None
+    about: Path | None
+    version: str
+
+
+def _write_report(job: _ReportJob, options: "metrics.Options") -> dict[str, Any]:
+    """Verify, reconcile, build and write ``report.json`` and ``report.html`` into ``job.out``
+    atomically (definitions.md 11, 12); returns the report. Input and write errors stop with
+    exit status 2. Needs the ``report`` extra (:func:`_require_report_extra`)."""
+    from autonometry.report import build, html  # noqa: PLC0415 -- optional extra
+    from autonometry.stats import report as stats_report  # noqa: PLC0415 -- optional extra
+
+    with _input_errors_exit(2):
+        rules = _rules(job.version)
+        trusted_keys = _load_vkeys(job.vkeys)
+        trusted_roots = _load_tsa_roots(job.tsa_roots)
+        anchor_files = _read_seal_files(job.anchors, job.version, rules)
+        robots = _read_side(job.logs, job.given, job.version)
+        stations = _read_side(job.stations, _NO_REGISTRY, job.version) if job.stations else None
+        robot_result, station_result = _verify_sides(
+            robots, stations, anchor_files, trusted_keys, trusted_roots, rules
+        )
+        about_text = None if job.about is None else _read_about(job.about)
+        files = _input_files(
+            [
+                *_side_files("", job.logs, robots),
+                *(("anchor", p) for p in job.anchors),
+                *(("vkey", p) for p in job.vkeys),
+                *(("tsa_root", p) for p in job.tsa_roots),
+                *([] if job.about is None else [("about", job.about)]),
+                *([] if stations is None else _side_files("station_", job.stations, stations)),
+            ]
+        )
+    problems: dict[tuple[str, str], tuple[str, ...]] = {}
+    for session, problem in robots.registry_errors:
+        key = (session.robot_id, session.session_id)
+        problems[key] = (*problems.get(key, ()), problem)
+    inputs = build.ReportInputs(
+        log_check=robots.log_check,
+        verification=robot_result,
+        timelines=robots.timelines,
+        generated_at=_utc_now(),
+        registry_problems=problems,
+        files=tuple(build.InputFile(*row) for row in files),
+        spec_files=spec_file_hashes(job.version),
+        trusted_keys=len(trusted_keys),
+        trusted_tsa_roots=len(trusted_roots),
+        anchor_files=len(job.anchors),
+        title=job.title,
+        about=about_text,
+        witness=None
+        if stations is None or station_result is None
+        else _reconcile_sides(robots, stations, robot_result, station_result, rules),
+        station_verification=station_result,
+    )
+    body = build.build_report(inputs, rules, options)
+    page = html.render_html(body)
+    try:
+        job.out.mkdir(parents=True, exist_ok=True)
+        text = stats_report.to_json(body)
+        atomic_write(job.out / "report.json", text.encode("utf-8"), PUBLIC_FILE_MODE)
+        atomic_write(job.out / "report.html", page.encode("utf-8"), PUBLIC_FILE_MODE)
+    except OSError as exc:
+        echo(f"error: cannot write the report to {job.out}: {exc.strerror or exc}", err=True)
+        raise typer.Exit(2) from None
+    return body
+
+
 @app.command("report")
 def report_cmd(  # noqa: PLR0913, PLR0917 -- matches the report CLI's documented options
     logs: Annotated[
@@ -1512,72 +1576,27 @@ def report_cmd(  # noqa: PLR0913, PLR0917 -- matches the report CLI's documented
     2 on bad usage, unreadable input or without the report extra. No network access; actor ids
     never appear in the report.
     """
-    try:
-        from autonometry.report import build, html  # noqa: PLC0415 -- optional extra
-        from autonometry.stats import metrics  # noqa: PLC0415 -- optional extra
-        from autonometry.stats import report as stats_report  # noqa: PLC0415 -- optional extra
-    except ImportError:
-        echo(
-            "error: autonometry report needs the report extra: pip install 'autonometry[report]'",
-            err=True,
-        )
-        raise typer.Exit(2) from None
+    _require_report_extra("report")
+    from autonometry.stats import metrics  # noqa: PLC0415 -- optional extra
+
     given: dict[RegistryKind, Path | None] = {"devices": devices, "tasks": tasks, "plan": plan}
     with _input_errors_exit(2):
         version = _spec_version(spec)
-        rules = _rules(version)
-        trusted_keys = _load_vkeys(vkey or [])
-        trusted_roots = _load_tsa_roots(tsa_root or [])
-        anchor_files = _read_seal_files(anchor or [], version, rules)
-        robots = _read_side(logs, given, version)
-        stations = _read_side(station, _NO_REGISTRY, version) if station else None
-        robot_result, station_result = _verify_sides(
-            robots, stations, anchor_files, trusted_keys, trusted_roots, rules
-        )
-        about_text = None if about is None else _read_about(about)
-        files = _input_files(
-            [
-                *_side_files("", logs, robots),
-                *(("anchor", p) for p in anchor or []),
-                *(("vkey", p) for p in vkey or []),
-                *(("tsa_root", p) for p in tsa_root or []),
-                *([] if about is None else [("about", about)]),
-                *([] if stations is None else _side_files("station_", station or [], stations)),
-            ]
-        )
-    problems: dict[tuple[str, str], tuple[str, ...]] = {}
-    for session, problem in robots.registry_errors:
-        key = (session.robot_id, session.session_id)
-        problems[key] = (*problems.get(key, ()), problem)
-    inputs = build.ReportInputs(
-        log_check=robots.log_check,
-        verification=robot_result,
-        timelines=robots.timelines,
-        generated_at=_utc_now(),
-        registry_problems=problems,
-        files=tuple(build.InputFile(*row) for row in files),
-        spec_files=spec_file_hashes(version),
-        trusted_keys=len(trusted_keys),
-        trusted_tsa_roots=len(trusted_roots),
-        anchor_files=len(anchor or []),
-        title=title,
-        about=about_text,
-        witness=None
-        if stations is None or station_result is None
-        else _reconcile_sides(robots, stations, robot_result, station_result, rules),
-        station_verification=station_result,
+    body = _write_report(
+        _ReportJob(
+            logs=tuple(logs),
+            out=out,
+            vkeys=tuple(vkey or ()),
+            tsa_roots=tuple(tsa_root or ()),
+            anchors=tuple(anchor or ()),
+            given=given,
+            stations=tuple(station or ()),
+            title=title,
+            about=about,
+            version=version,
+        ),
+        metrics.Options(alpha, n_boot, seed, cluster.value, drift_bin.value),
     )
-    options = metrics.Options(alpha, n_boot, seed, cluster.value, drift_bin.value)
-    body = build.build_report(inputs, rules, options)
-    page = html.render_html(body)
-    try:
-        out.mkdir(parents=True, exist_ok=True)
-        text = stats_report.to_json(body)
-        atomic_write(out / "report.json", text.encode("utf-8"), PUBLIC_FILE_MODE)
-        atomic_write(out / "report.html", page.encode("utf-8"), PUBLIC_FILE_MODE)
-    except OSError as exc:
-        echo(f"error: cannot write the report to {out}: {exc.strerror or exc}", err=True)
-        raise typer.Exit(2) from None
     verdict = body["verdict"]
     echo(
         f"report: {verdict['status']}, level {verdict['level']}, {verdict['completeness']}; "

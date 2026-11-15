@@ -13,18 +13,20 @@ import binascii
 import functools
 import json
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import IO, Any, cast
 
 import jsonschema_rs
+import rfc8785
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from autonometry import strictjson
-from autonometry.events import ErrorCode, LineError
+from autonometry import sealing, signednote, strictjson
+from autonometry.events import ErrorCode, LineError, Session
 from autonometry.reader import iter_lines
-from autonometry.spec import compile_schema, load_checkpoint_schema
+from autonometry.spec import Rules, compile_schema, load_checkpoint_schema
 
 _JSON_SPACE = b" \t\r"
 _LOG_SUFFIX = ".jsonl"
@@ -79,6 +81,44 @@ class SealFile:
 def encode_checkpoint_line(note: str) -> bytes:
     """Return one ``checkpoint`` line, ready to append to a ``.checkpoints.jsonl`` file."""
     return json.dumps({"type": "checkpoint", "note": note}, sort_keys=True).encode("utf-8") + b"\n"
+
+
+def seal_sessions(
+    sessions: Sequence[Session], rules: Rules, key_name: str, private_key: Ed25519PrivateKey
+) -> tuple[bytes, bytes]:
+    """Seal unsealed sessions (definitions.md 8, 10.3): hash-chain every event and sign a
+    checkpoint whenever the policy says so and after each session's last event.
+
+    Returns:
+        The sealed log (one RFC 8785 line per event, sessions in the order given) and its
+        checkpoint file, both as bytes ready to write.
+    """
+    sealed_lines: list[bytes] = []
+    checkpoint_lines: list[bytes] = []
+    for session in sessions:
+        sealer = sealing.Sealer(
+            rules.chain_genesis_prefix,
+            session.robot_id,
+            session.session_id,
+            rules.sealing.checkpoint_every_events,
+            rules.sealing.checkpoint_every_s,
+        )
+        checkpoints: list[sealing.Checkpoint] = []
+        for event in session.events:
+            sealed_event, checkpoint = sealer.add(event)
+            sealed_lines.append(rfc8785.dumps(sealed_event) + b"\n")
+            if checkpoint is not None:
+                checkpoints.append(checkpoint)
+        if (final := sealer.finish()) is not None:
+            checkpoints.append(final)
+        for checkpoint in checkpoints:
+            body = signednote.checkpoint_body(
+                session.robot_id, session.session_id, checkpoint.size, checkpoint.root
+            )
+            checkpoint_lines.append(
+                encode_checkpoint_line(signednote.sign_note(body, key_name, private_key))
+            )
+    return b"".join(sealed_lines), b"".join(checkpoint_lines)
 
 
 def encode_timestamp_line(note_sha256: str, tsr: bytes) -> bytes:
