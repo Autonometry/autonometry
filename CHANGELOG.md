@@ -135,6 +135,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - TurtleBot 4: a publisher map larger than one heartbeat is sent in numbered parts of at most 48 KiB (`x_publishers_part: [i, n]`; `autonometry.connectors.heartbeats`), never dropped until the publishers change; an entry too large for any part would be counted in `x_publishers_dropped` (security review S-55).
 - LeRobot: with `--from-start`, a rollout read from the part of the log written before the watcher started, whose process cannot be found once that part is read, is taken as gone: the open task closes with outcome `unknown`, every scope is `unknown` and a heartbeat notes `x_lerobot_process_exit: not_found`, instead of keeping the state the log last showed. A later line from that rollout re-attaches it, keeping the policy and teleoperator already learned; the state is `unknown` until a line tells it.
 
+- Reports and JSON outputs are the same on every system (product rule 4): every file name in `report.json`, `report.html`, `verify --json`, `registry check --json`, rejected lines, file problems and the demo's files is written with forward slashes and stays relative where it was given relative (`autonometry.paths.path_text`); a path given with backslashes on Windows gives byte-identical output to the same path with forward slashes.
+
 ### Security
 
 - `validate` output cannot carry terminal control codes from a log: robot and session ids, the only event values it prints, must match `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`, so a line with escape codes in them is rejected (`schema_violation`) and never echoed.

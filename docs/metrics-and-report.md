@@ -188,7 +188,8 @@ What the report holds, in the order of the page:
   file (paths as given on the command line) and of every spec file.
 
 The report contains no actor ids, only counts. The same inputs and options give byte-identical
-JSON and HTML apart from `generated_at`. The page shows times to the second (the JSON keeps full
+JSON and HTML apart from `generated_at`, on every system: file names are written with forward
+slashes, relative where they were given relative. The page shows times to the second (the JSON keeps full
 precision), and the state table notes how much AI time approval and hint dwell moved to human
 time. The verdict box is green only for a clean report, amber for one that is not clean and red
 when a session failed. Exit status: 0 only when the report is clean: verified at L2 or L3, complete,

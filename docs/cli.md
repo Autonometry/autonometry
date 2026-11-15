@@ -49,7 +49,8 @@ a connector crash that leaves 15 s unknown. Into a new or empty folder it writes
 - `report.json` and `report.html`: the report. Open `report.html` in a browser.
 
 It prints what each file is and the commands that redo each step by hand. Everything is the same
-every run apart from the key, the signatures it makes and the report's generated-at time. It
+every run, on every system, apart from the key, the signatures it makes and the report's
+generated-at time. It
 refuses a folder that is not empty, and without the `report` extra it prints one line and exits
 2. Exit status 1 means the sealed session did not meet L1, which should never happen.
 
