@@ -1,6 +1,6 @@
 """``autonometry g1``: list a Unitree G1's DDS participants, or watch who commands it
-(docs/connectors/unitree-g1.md). Cyclone DDS 0.10 and psutil are imported only when a command runs; both commands
-only subscribe."""
+(docs/connectors/unitree-g1.md). Cyclone DDS 0.10 and psutil are imported only when a command
+runs; both commands only subscribe."""
 
 import json
 import logging
@@ -162,9 +162,9 @@ def watch_cmd(
     ] = "g1_watch",
 ) -> None:
     """Watch a Unitree G1's DDS traffic and send the control state of legs, upper_body and
-    hands to the recorder (Linux and macOS; docs/connectors/unitree-g1.md). Subscribe-only: it creates no
-    writer and sends no request to the robot, not even a query. Tasks are read from the
-    recorder's current session log.
+    hands to the recorder (Linux and macOS; docs/connectors/unitree-g1.md). Subscribe-only: it
+    creates no writer and sends no request to the robot, not even a query. Tasks are read from
+    the recorder's current session log.
 
     Exit status: 0 after SIGINT or SIGTERM, 2 when it cannot start.
     """

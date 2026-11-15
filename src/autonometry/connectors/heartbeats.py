@@ -1,7 +1,8 @@
 """Heartbeat notes a connector records, split so that none is too large to log.
 
 Pure and standard library only. A connector records evidence as ``x_`` fields on a client
-heartbeat (docs/recorder.md, "Wire format"); the recorder rejects one whose log line would pass 64 KiB.
+heartbeat (docs/recorder.md, "Wire format"); the recorder rejects one whose log line would pass
+64 KiB.
 The ROS observer's publisher map (``x_publishers``: topic to its publishers) grows with the
 publishers in the graph, so a large one is sent in parts rather than dropped (security review
 S-55).

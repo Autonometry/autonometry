@@ -515,7 +515,8 @@ class Settings:
 
 @dataclass(frozen=True, slots=True)
 class Note:
-    """``x_`` fields for a heartbeat the recorder writes at once (docs/recorder.md, "Wire format")."""
+    """``x_`` fields for a heartbeat the recorder writes at once (docs/recorder.md, "Wire
+    format")."""
 
     fields: Fields
 

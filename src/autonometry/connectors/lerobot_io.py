@@ -1,5 +1,5 @@
-"""LeRobot input and output (docs/connectors/lerobot.md): read a LeRobotDataset v3.0 and write one session
-log per episode; follow a rollout's log for the live engine.
+"""LeRobot input and output (docs/connectors/lerobot.md): read a LeRobotDataset v3.0 and write
+one session log per episode; follow a rollout's log for the live engine.
 
 The edge of :mod:`autonometry.connectors.lerobot`, which makes every decision: this module reads
 files, the clock and the process table and hands over what it read. pyarrow, watchfiles and

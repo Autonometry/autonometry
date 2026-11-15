@@ -1,6 +1,6 @@
 """``autonometry lerobot``: follow a LeRobot rollout's log live, or import a LeRobotDataset after
-the fact (docs/connectors/lerobot.md). The ``lerobot`` extra (pyarrow, watchfiles, psutil) is imported
-only when a command runs."""
+the fact (docs/connectors/lerobot.md). The ``lerobot`` extra (pyarrow, watchfiles, psutil) is
+imported only when a command runs."""
 
 import logging
 import re
@@ -258,7 +258,8 @@ def watch_cmd(  # noqa: PLR0913, PLR0917 -- matches the watch CLI's documented o
     ] = None,
 ) -> None:
     """Follow a lerobot-rollout log and send the robot's control state and tasks to the recorder
-    (Linux and macOS; docs/connectors/lerobot.md). Read-only: it never touches the robot or its process.
+    (Linux and macOS; docs/connectors/lerobot.md). Read-only: it never touches the robot or its
+    process.
 
     A log that exists when the watcher starts is followed from its end unless --from-start.
     The rollout's process is watched, read-only, about once a second: a rollout that ends without

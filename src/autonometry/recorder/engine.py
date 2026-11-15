@@ -96,7 +96,8 @@ class Settings:
 
 @dataclass(frozen=True, slots=True)
 class Restored:
-    """State rebuilt from a session's events on disk after a crash (docs/recorder.md, "Crash recovery")."""
+    """State rebuilt from a session's events on disk after a crash (docs/recorder.md, "Crash
+    recovery")."""
 
     values: Mapping[str, ScopeValue]
     open_task: str | None

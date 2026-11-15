@@ -7,7 +7,8 @@ request is a write to the robot's services (integration notes section 3). Its re
 best-effort and volatile, so the robot's writers never wait for or resend to it.
 
 Cyclone DDS for Python is not a declared dependency: there are no 0.10 wheels for Python 3.12,
-so it is built from source (docs/connectors/unitree-g1.md). It is imported only inside the functions that need it, after
+so it is built from source (docs/connectors/unitree-g1.md). It is imported only inside the
+functions that need it, after
 :func:`check_cyclonedds` accepted its version: only the 0.10 line, the robot's own, since an
 observer on Cyclone DDS 11.1 crashed 0.10 publishers as soon as it subscribed (research
 ``unitree-g1/dds_compat``). psutil (the ``g1`` extra) names Python programs by their script.
@@ -165,13 +166,15 @@ def check_cyclonedds(version: str | None) -> str:
     """
     if version is None:
         raise G1Error(
-            "Cyclone DDS for Python is not installed; build 0.10.5 from source (docs/connectors/unitree-g1.md)"
+            "Cyclone DDS for Python is not installed; build 0.10.5 from source "
+            "(docs/connectors/unitree-g1.md)"
         )
     found = _VERSION_RE.fullmatch(version)
     if found is None or (int(found[1]), int(found[2])) != SUPPORTED_LINE:
         raise G1Error(
             f"Cyclone DDS {version} is not supported: the G1 runs 0.10, and an observer on "
-            "Cyclone DDS 11 crashed its 0.10 publishers; install 0.10.5 (docs/connectors/unitree-g1.md)"
+            "Cyclone DDS 11 crashed its 0.10 publishers; install 0.10.5 "
+            "(docs/connectors/unitree-g1.md)"
         )
     return version
 
@@ -863,7 +866,8 @@ def open_backend(domain: int, interface: str | None) -> Backend:
     except ImportError as exc:
         raise G1Error(
             f"Cyclone DDS for Python cannot be loaded ({type(exc).__name__}): the G1 watcher "
-            "needs Python 3.12 and Cyclone DDS 0.10.5 built from source (docs/connectors/unitree-g1.md)"
+            "needs Python 3.12 and Cyclone DDS 0.10.5 built from source "
+            "(docs/connectors/unitree-g1.md)"
         ) from None
 
 
