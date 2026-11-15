@@ -16,7 +16,10 @@ robot, dossier 14.7) are in one state, the first rule that applies (dossier 14.1
 1. Before a line that tells the state (the rollout's start, its control loop, a phase
    transition): no assertion, so the recorder logs ``unknown`` (section 2).
 2. After ``Rollout finished``, or once the rollout's process is gone without logging it
-   (:meth:`LeRobotEngine.process_gone`): ``unknown``; nothing is observed any more.
+   (:meth:`LeRobotEngine.process_gone`): ``unknown``; nothing is observed any more. A rollout
+   read from the part of the log written before the watcher started, whose process cannot be
+   found (:meth:`LeRobotEngine.process_absent`), is ``unknown`` too, until a line appended later
+   re-attaches it.
 3. The rollout started, its control loop not yet: ``idle``; it connects and loads, no task
    is open and nothing commands the arm.
 4. A controller that stopped (control loop ended, robot disconnected, an episodic reset with no
@@ -597,6 +600,23 @@ class LeRobotEngine:
         out.append(Note((("x_lerobot_process_exit", "unlogged"),)))
         return out
 
+    def process_absent(self, t: float) -> list[Message]:
+        """The followed rollout was read from the part of the log written before the watcher
+        started (``--from-start``) and its process cannot be found: it is gone as far as anyone
+        can tell, so what :meth:`process_gone` does (the open task closed with outcome
+        ``unknown``, every scope ``unknown``, section 2 and 6.14), with the note
+        ``x_lerobot_process_exit: not_found``. A line appended later re-attaches the rollout
+        (:meth:`_reattach`). Nothing when no rollout is followed."""
+        self._now = max(self._now, t)
+        if not self.following:
+            return []
+        out: list[Message] = []
+        self._close("unknown", None, out)
+        self._ended, self._end_src = "absent", None
+        self._flush(out)
+        out.append(Note((("x_lerobot_process_exit", "not_found"),)))
+        return out
+
     def log_lost(self, t: float) -> list[Message]:
         """The followed log vanished, was replaced or was cut at or before ``t``: lines may be
         written where the watcher cannot read them, so what the log said last no longer holds
@@ -633,6 +653,16 @@ class LeRobotEngine:
         self._control = None
         self._released = None
         self._rerecord = False
+
+    def _reattach(self, src_ts: str | None) -> None:
+        """A line from a rollout thought absent: it runs after all. It is followed again, as a
+        new generation so that its process is looked for again, keeping the policy, teleoperator,
+        strategy and episode count learned from the earlier part of the log. Until a line tells
+        the state, it is ``unknown``: the one held before the watcher started proves nothing."""
+        self._generation += 1
+        self._ended, self._end_src = None, None
+        self._control = _Control("unknown", src_ts=src_ts)
+        self._released = None
 
     def _attach(self, src_ts: str | None) -> None:
         """A line that only a running rollout writes: start following one if none is."""
@@ -704,6 +734,8 @@ class LeRobotEngine:
     def _dispatch(self, signal: Signal, src: str | None, out: list[Message]) -> None:  # noqa: PLR0912 -- one branch per signal
         if self._ended == "gone" and not isinstance(signal, ProcessStart):
             return  # a late line of a process known dead (a buffer flushed after a kill)
+        if self._ended == "absent" and not isinstance(signal, ProcessStart):
+            self._reattach(src)
         match signal:
             case ProcessStart() | PolicyPath() | TeleopType() | ExistingEpisodes():
                 self._on_setup(signal, src, out)

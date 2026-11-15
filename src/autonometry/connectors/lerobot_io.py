@@ -528,12 +528,30 @@ class LogFollower:
         self._lost = False
         #: The file and its size when following started: what is skipped unless ``from_start``.
         self._skip: tuple[tuple[int, int], int] | None = None
-        if not from_start:
-            try:
-                status = os.stat(path)
-            except OSError:
-                return
-            self._skip = ((status.st_dev, status.st_ino), status.st_size)
+        #: The same, read with ``from_start``: the part of the log written before the watcher.
+        self._backlog: tuple[tuple[int, int], int] | None = None
+        try:
+            status = os.stat(path)
+        except OSError:
+            return
+        start = ((status.st_dev, status.st_ino), status.st_size)
+        if from_start:
+            self._backlog = start
+        else:
+            self._skip = start
+
+    @property
+    def in_backlog(self) -> bool:
+        """True while every byte read so far was in the file when following started with
+        ``from_start``: lines returned until now were written before the watcher started."""
+        backlog = self._backlog
+        return backlog is not None and backlog[0] == self._identity and self._position <= backlog[1]
+
+    @property
+    def backlog_pending(self) -> bool:
+        """True while part of what the file held when following started is still unread."""
+        backlog = self._backlog
+        return self.in_backlog and backlog is not None and self._position < backlog[1]
 
     def close(self) -> None:
         """Close the file; a later read opens it again from its start."""
@@ -758,7 +776,10 @@ class Liveness:
     does not leave its last state in place (definitions.md 2, 6.14). The process is ``pid`` when
     given, else the one :func:`rollout_pids` finds when the engine starts following a rollout.
     With none or several the rollout is unwatched: one warning, ``x_lerobot_liveness:
-    unwatched`` on a heartbeat, and the log alone decides, as without this class."""
+    unwatched`` on a heartbeat, and the log alone decides, as without this class. A rollout read
+    from the part of the log written before the watcher started (``--from-start``) whose process
+    cannot be found is absent instead (:meth:`LeRobotEngine.process_absent`): its last state was
+    written who knows how long ago."""
 
     def __init__(
         self,
@@ -773,6 +794,7 @@ class Liveness:
         self._opener = opener
         self._own_pid = os.getpid() if own_pid is None else own_pid
         self._generation = 0
+        self._backlog_generation: int | None = None
         self._process: Watched | None = None
         self._checked: float | None = None
 
@@ -780,11 +802,20 @@ class Liveness:
         """Find the process of a newly followed rollout; then, at most every
         :data:`PROCESS_CHECK_S` seconds, see whether it is still there. When it is gone, the
         lines left in the log are read first, then the engine is told, unless those lines ended
-        the rollout."""
+        the rollout. A rollout that began in the part of the log written before the watcher
+        started is looked for once that whole part is read."""
         if engine.following and engine.generation != self._generation:
+            if follower.in_backlog:
+                self._backlog_generation = engine.generation
+                if follower.backlog_pending:
+                    return
             self._generation = engine.generation
-            self._process = self._find(send)
             self._checked = now
+            self._process, reason = self._find()
+            if self._process is None:
+                self._not_found(
+                    reason, engine.generation == self._backlog_generation, engine, now, send
+                )
         if self._process is None or not engine.following:
             return
         if self._checked is not None and now - self._checked < PROCESS_CHECK_S:
@@ -802,24 +833,36 @@ class Liveness:
             )
             send(engine.process_gone(now))
 
-    def _find(self, send: Sender) -> Watched | None:
+    def _find(self) -> tuple[Watched | None, str]:
+        """The rollout's process, or ``None`` and why it is not watched."""
         if self._pid is not None:
             process = self._opener(self._pid)
             if process is not None and process.alive():
-                return process
-            reason = f"no running process has --pid {self._pid}"
-        else:
-            pids = rollout_pids(self._lister(), self._own_pid)
-            process = self._opener(pids[0]) if len(pids) == 1 else None
-            if process is not None:
-                return process
-            if len(pids) > 1:
-                reason = f"{len(pids)} lerobot-rollout processes here; name one with --pid"
-            else:
-                reason = "no lerobot-rollout process on this computer"
+                return process, ""
+            return None, f"no running process has --pid {self._pid}"
+        pids = rollout_pids(self._lister(), self._own_pid)
+        process = self._opener(pids[0]) if len(pids) == 1 else None
+        if process is not None:
+            return process, ""
+        if len(pids) > 1:
+            return None, f"{len(pids)} lerobot-rollout processes here; name one with --pid"
+        return None, "no lerobot-rollout process on this computer"
+
+    @staticmethod
+    def _not_found(
+        reason: str, backlog: bool, engine: LeRobotEngine, now: float, send: Sender
+    ) -> None:
+        """A rollout from the log's earlier part is absent; any other is unwatched."""
+        if backlog:
+            logger.warning(
+                "%s: the rollout read from the log's earlier part is taken as ended; "
+                "its state is unknown until it writes again",
+                reason,
+            )
+            send(engine.process_absent(now))
+            return
         logger.warning("%s: the rollout's process is not watched", reason)
         send([Note((("x_lerobot_liveness", "unwatched"),))])
-        return None
 
 
 def _observe(lines: Iterable[str], engine: LeRobotEngine, send: Sender, now: float) -> None:

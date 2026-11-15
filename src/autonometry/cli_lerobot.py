@@ -242,7 +242,11 @@ def watch_cmd(  # noqa: PLR0913, PLR0917 -- matches the watch CLI's documented o
     ] = "lerobot_watch",
     from_start: Annotated[
         bool,
-        typer.Option("--from-start", help="Read a log that already exists from its first line."),
+        typer.Option(
+            "--from-start",
+            help="Read a log that already exists from its first line; a rollout found there "
+            "whose process is gone is unknown until it writes again.",
+        ),
     ] = False,
     pid: Annotated[
         int | None,
