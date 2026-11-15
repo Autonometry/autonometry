@@ -166,7 +166,7 @@ def test_validate_shows_twenty_per_code_then_a_count(tmp_path: Path) -> None:
     result = _validate(str(log))
     lines = result.output.splitlines()
     assert lines[2] == "  not_an_object (26)"
-    assert len([line for line in lines if line.startswith(f"    {log}:")]) == 20
+    assert len([line for line in lines if line.startswith(f"    {log.as_posix()}:")]) == 20
     assert lines[-1] == "    ... and 6 more"
 
 

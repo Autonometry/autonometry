@@ -34,6 +34,7 @@ from autonometry.events import (
     Session,
     TimelineFlagCode,
 )
+from autonometry.paths import path_text
 from autonometry.spec import (
     Rules,
     SpecError,
@@ -410,7 +411,7 @@ def read_logs(paths: Sequence[str | os.PathLike[str]], spec_version: str) -> Log
     """
     reader = _Reader(_load_spec(spec_version))
     for path in paths:
-        name = os.fspath(path)
+        name = path_text(path)
         try:
             with open(path, "rb") as stream:
                 reader.read(name, stream)

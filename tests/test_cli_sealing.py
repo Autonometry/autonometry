@@ -335,7 +335,7 @@ def test_verify_lists_rejected_lines_of_a_checkpoint_file(
     lines = result.output.strip().splitlines()
     assert "rejected lines:" in lines
     assert "  invalid_json (1)" in lines
-    assert any(line.startswith(f"    {checkpoints}:5: ") for line in lines)
+    assert any(line.startswith(f"    {checkpoints.as_posix()}:5: ") for line in lines)
     assert lines[-1] == "result: NOT verified: 1 rejected line(s)"
 
 
@@ -367,7 +367,7 @@ def test_verify_json_has_verified_rejected_lines_and_file_problems(
     assert payload["verified"] is False
     assert payload["require"] == "L2"
     assert [e["code"] for e in payload["rejected_lines"]] == ["not_an_object"]
-    assert payload["rejected_lines"][0]["file"] == str(anchor)
+    assert payload["rejected_lines"][0]["file"] == anchor.as_posix()
     assert [p["code"] for p in payload["file_problems"]] == ["orphan_timestamp"]
     assert payload["reasons"] == ["1 rejected line(s)", "1 file problem(s)"]
 

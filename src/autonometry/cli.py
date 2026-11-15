@@ -27,6 +27,7 @@ from autonometry.cli_lerobot import lerobot_app
 from autonometry.display import echo, printable
 from autonometry.events import LogCheck, Session, TrustLevel, TrustStatus, VerifyResult
 from autonometry.fileio import PUBLIC_FILE_MODE, append_durably, atomic_write, make_private_dirs
+from autonometry.paths import path_text
 from autonometry.reader import LogReadError, read_logs, read_streams
 from autonometry.registry import (
     LAYOUTS,
@@ -922,7 +923,7 @@ def _read_seal_files(paths: Sequence[Path], version: str, rules: Rules) -> list[
             with open(path, "rb") as stream:
                 seal_files.append(
                     sealfile.read_seal_file(
-                        str(path),
+                        path_text(path),
                         stream,
                         rules.errors.max_line_bytes,
                         rules.errors.list_max_per_code,
@@ -1360,7 +1361,7 @@ def _utc_now() -> str:
 
 def _input_files(roles: Sequence[tuple[str, Path]]) -> list[tuple[str, str, str]]:
     """``(role, path as given, SHA-256)`` of every input file, once each, sorted."""
-    return [(role, str(path), _sha256_file(path)) for role, path in sorted(set(roles))]
+    return [(role, path_text(path), _sha256_file(path)) for role, path in sorted(set(roles))]
 
 
 def _require_report_extra(command: str) -> None:
